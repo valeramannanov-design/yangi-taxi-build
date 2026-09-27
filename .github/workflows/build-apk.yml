@@ -1,4 +1,4 @@
-name: Build Yangi Taxi APK
+name: Build Yangi Taxi v0.2 APK
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -28,13 +28,21 @@ jobs:
         run: |
           flutter create --platforms=android --org uz.yangi --project-name yangi_taxi shell
           cp -R shell/android flutter/android
-      - name: Set app name
+      - name: Configure Android app
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('flutter/android/app/src/main/AndroidManifest.xml')
-          s=p.read_text()
-          s=s.replace('android:label="yangi_taxi"', 'android:label="Yangi Taxi"')
+          p = Path('flutter/android/app/src/main/AndroidManifest.xml')
+          s = p.read_text()
+          s = s.replace('android:label="yangi_taxi"', 'android:label="Yangi Taxi"')
+          if 'android:usesCleartextTraffic=' not in s:
+              s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
+          perms = '''    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+'''
+          if 'ACCESS_FINE_LOCATION' not in s:
+              s = s.replace('<application', perms + '    <application', 1)
           p.write_text(s)
           PY
       - name: Get packages
@@ -44,9 +52,9 @@ jobs:
         working-directory: flutter
         run: flutter build apk --release
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-demo.apk
+        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v0.2.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-demo-apk
-          path: Yangi-Taxi-demo.apk
+          name: Yangi-Taxi-v0.2-apk
+          path: Yangi-Taxi-v0.2.apk
           if-no-files-found: error

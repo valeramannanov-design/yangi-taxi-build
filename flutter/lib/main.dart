@@ -1,7 +1,313 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
+
+const defaultLat = 41.3111;
+const defaultLon = 69.2797;
 
 void main() => runApp(const YangiTaxiApp());
+
+const words = <String, Map<String, String>>{
+  'ru': {
+    'app': 'Yangi Taxi',
+    'login': 'Войти',
+    'register': 'Регистрация',
+    'name': 'Имя',
+    'phone': 'Телефон',
+    'password': 'Пароль',
+    'order': 'Заказ',
+    'ride': 'Поездка',
+    'history': 'История',
+    'profile': 'Профиль',
+    'from': 'Откуда',
+    'to': 'Куда',
+    'estimate': 'Рассчитать стоимость',
+    'book': 'Заказать',
+    'price': 'Стоимость',
+    'cancel': 'Отменить заказ',
+    'logout': 'Выйти',
+    'backend': 'Backend',
+    'demo': 'Демо-режим',
+    'empty': 'Нет активного заказа',
+    'searching': 'Ищем машину',
+    'assigned': 'Водитель назначен',
+    'arrived': 'Машина подана',
+    'trip': 'Вы в пути',
+    'finished': 'Поездка завершена',
+    'aborted': 'Заказ отменён',
+    'address': 'Поиск адреса',
+    'serverHelp': 'Оставьте demo для демонстрации. Для реальной работы укажите адрес Yangi Taxi backend.',
+  },
+  'uz': {
+    'app': 'Yangi Taxi',
+    'login': 'Kirish',
+    'register': 'Ro‘yxatdan o‘tish',
+    'name': 'Ism',
+    'phone': 'Telefon',
+    'password': 'Parol',
+    'order': 'Buyurtma',
+    'ride': 'Safar',
+    'history': 'Tarix',
+    'profile': 'Profil',
+    'from': 'Qayerdan',
+    'to': 'Qayerga',
+    'estimate': 'Narxni hisoblash',
+    'book': 'Buyurtma berish',
+    'price': 'Narx',
+    'cancel': 'Buyurtmani bekor qilish',
+    'logout': 'Chiqish',
+    'backend': 'Backend',
+    'demo': 'Demo rejimi',
+    'empty': 'Faol buyurtma yo‘q',
+    'searching': 'Mashina qidirilmoqda',
+    'assigned': 'Haydovchi tayinlandi',
+    'arrived': 'Mashina yetib keldi',
+    'trip': 'Yo‘ldasiz',
+    'finished': 'Safar tugadi',
+    'aborted': 'Buyurtma bekor qilindi',
+    'address': 'Manzil qidirish',
+    'serverHelp': 'Demo uchun demo qoldiring. Haqiqiy ishlash uchun Yangi Taxi backend manzilini kiriting.',
+  },
+};
+
+String tx(String lang, String key) => words[lang]?[key] ?? words['ru']?[key] ?? key;
+
+class ApiException implements Exception {
+  ApiException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+class ApiClient {
+  ApiClient(this.baseUrl);
+  String baseUrl;
+  String? token;
+  Map<String, dynamic>? _demoOrder;
+  DateTime? _demoStarted;
+  final List<Map<String, dynamic>> _demoHistory = [];
+
+  bool get isDemo => baseUrl.trim().isEmpty || baseUrl.toLowerCase() == 'demo';
+
+  void setBaseUrl(String value) {
+    var v = value.trim();
+    if (v.isEmpty || v.toLowerCase() == 'demo') {
+      baseUrl = 'demo';
+    } else {
+      if (!v.startsWith('http://') && !v.startsWith('https://')) v = 'http://' + v;
+      while (v.endsWith('/')) {
+        v = v.substring(0, v.length - 1);
+      }
+      baseUrl = v;
+    }
+    token = null;
+  }
+
+  Map<String, String> get headers => <String, String>{
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer ' + token!,
+      };
+
+  Future<Map<String, dynamic>> health() async {
+    if (isDemo) return <String, dynamic>{'ok': true, 'tmApi': 'demo'};
+    try {
+      final r = await http.get(Uri.parse(baseUrl + '/health')).timeout(const Duration(seconds: 10));
+      final b = jsonDecode(r.body);
+      if (b is! Map || b['ok'] != true) throw ApiException('Backend недоступен');
+      return Map<String, dynamic>.from(b as Map);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Нет соединения с backend: ' + e.toString());
+    }
+  }
+
+  Future<dynamic> get(String path, {Map<String, String>? query}) async {
+    if (isDemo) return _demoGet(path, query ?? const <String, String>{});
+    final uri = Uri.parse(baseUrl + path).replace(queryParameters: query);
+    final r = await http.get(uri, headers: headers).timeout(const Duration(seconds: 15));
+    return _decode(r);
+  }
+
+  Future<dynamic> post(String path, Map<String, dynamic> body) async {
+    if (isDemo) return _demoPost(path, body);
+    final r = await http
+        .post(Uri.parse(baseUrl + path), headers: headers, body: jsonEncode(body))
+        .timeout(const Duration(seconds: 20));
+    return _decode(r);
+  }
+
+  dynamic _decode(http.Response r) {
+    dynamic b;
+    try {
+      b = jsonDecode(r.body);
+    } catch (_) {
+      throw ApiException('Сервер вернул некорректный ответ');
+    }
+    if (r.statusCode < 200 || r.statusCode >= 300 || b is! Map || b['ok'] != true) {
+      var message = 'Ошибка сервера';
+      if (b is Map && b['error'] is Map && b['error']['message'] != null) {
+        message = b['error']['message'].toString();
+      }
+      throw ApiException(message);
+    }
+    return b['data'];
+  }
+
+  Map<String, dynamic> get demoMe => <String, dynamic>{
+        'client_id': 501,
+        'name': 'Yangi Taxi Demo',
+        'phones': <dynamic>[<String, dynamic>{'phone': '+998901234567'}],
+        'bonus_balance': 12000,
+      };
+
+  List<Map<String, dynamic>> get demoAddresses => <Map<String, dynamic>>[
+        <String, dynamic>{'label': 'Amir Temur xiyoboni, Toshkent', 'lat': 41.3111, 'lon': 69.2797, 'source': 'demo'},
+        <String, dynamic>{'label': 'Toshkent xalqaro aeroporti', 'lat': 41.2579, 'lon': 69.2812, 'source': 'demo'},
+        <String, dynamic>{'label': 'Chorsu bozori, Toshkent', 'lat': 41.3265, 'lon': 69.2358, 'source': 'demo'},
+        <String, dynamic>{'label': 'Tashkent City Park', 'lat': 41.3160, 'lon': 69.2487, 'source': 'demo'},
+        <String, dynamic>{'label': 'Magic City, Toshkent', 'lat': 41.3047, 'lon': 69.2457, 'source': 'demo'},
+      ];
+
+  Future<dynamic> _demoGet(String path, Map<String, String> query) async {
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (path == '/api/me') return demoMe;
+    if (path == '/api/addresses/search') {
+      final q = (query['q'] ?? '').toLowerCase();
+      if (q.isEmpty) return demoAddresses;
+      final list = demoAddresses.where((x) => x['label'].toString().toLowerCase().contains(q)).toList();
+      return list.isEmpty ? demoAddresses : list;
+    }
+    if (path == '/api/orders/current') {
+      final s = _demoState();
+      if (s == null || s['state_kind'] == 'finished' || s['state_kind'] == 'aborted') return <dynamic>[];
+      return <dynamic>[s];
+    }
+    if (path == '/api/orders/history') {
+      final out = <Map<String, dynamic>>[..._demoHistory];
+      final s = _demoState();
+      if (s != null && (s['state_kind'] == 'finished' || s['state_kind'] == 'aborted')) {
+        if (!out.any((x) => x['order_id'] == s['order_id'])) out.insert(0, s);
+      }
+      return out;
+    }
+    final driverMatch = RegExp(r'^/api/orders/(\d+)/driver-location$').firstMatch(path);
+    if (driverMatch != null) {
+      final s = _demoState();
+      if (s == null) throw ApiException('Заказ не найден');
+      final seconds = DateTime.now().difference(_demoStarted!).inSeconds;
+      final aLat = (s['source_lat'] as num).toDouble();
+      final aLon = (s['source_lon'] as num).toDouble();
+      final bLat = (s['destination_lat'] as num).toDouble();
+      final bLon = (s['destination_lon'] as num).toDouble();
+      final k = math.min(1.0, math.max(0.0, (seconds - 8) / 62));
+      final loc = seconds < 8
+          ? null
+          : <String, dynamic>{
+              'lat': aLat + (bLat - aLat) * k,
+              'lon': aLon + (bLon - aLon) * k,
+              'speed': seconds > 35 && seconds < 70 ? 38 : 0,
+            };
+      return <String, dynamic>{'state': s, 'location': loc};
+    }
+    if (RegExp(r'^/api/orders/(\d+)/cancel-penalty$').hasMatch(path)) {
+      return <String, dynamic>{'cancel_order_penalty_sum': 0};
+    }
+    throw ApiException('Demo: неизвестный запрос ' + path);
+  }
+
+  Future<dynamic> _demoPost(String path, Map<String, dynamic> body) async {
+    await Future<void>.delayed(const Duration(milliseconds: 220));
+    if (path == '/api/auth/login' || path == '/api/auth/register') {
+      token = 'demo-session';
+      return <String, dynamic>{'token': token, 'client': demoMe};
+    }
+    if (path == '/api/orders/estimate') {
+      final a = Map<String, dynamic>.from(body['source'] as Map);
+      final b = Map<String, dynamic>.from(body['destination'] as Map);
+      final aLat = (a['lat'] as num).toDouble();
+      final aLon = (a['lon'] as num).toDouble();
+      final bLat = (b['lat'] as num).toDouble();
+      final bLon = (b['lon'] as num).toDouble();
+      final dist = math.sqrt(math.pow(aLat - bLat, 2) + math.pow(aLon - bLon, 2));
+      final cost = 12000 + dist * 560000;
+      return <String, dynamic>{
+        'cost': cost.roundToDouble(),
+        'route': <String, dynamic>{
+          'full_route_coords': <dynamic>[
+            <String, dynamic>{'lat': aLat, 'lon': aLon},
+            <String, dynamic>{'lat': (aLat + bLat) / 2 + 0.003, 'lon': (aLon + bLon) / 2 - 0.002},
+            <String, dynamic>{'lat': bLat, 'lon': bLon},
+          ],
+        },
+      };
+    }
+    if (path == '/api/orders') {
+      final a = Map<String, dynamic>.from(body['source'] as Map);
+      final b = Map<String, dynamic>.from(body['destination'] as Map);
+      final id = 30000 + DateTime.now().millisecondsSinceEpoch.remainder(9000);
+      _demoStarted = DateTime.now();
+      _demoOrder = <String, dynamic>{
+        'order_id': id,
+        'state_kind': 'new_order',
+        'source': a['address'],
+        'destination': b['address'],
+        'source_lat': a['lat'],
+        'source_lon': a['lon'],
+        'destination_lat': b['lat'],
+        'destination_lon': b['lon'],
+        'car_mark': 'Chevrolet',
+        'car_model': 'Cobalt',
+        'car_number': '01 Y 001 TX',
+        'total_cost': 28000,
+      };
+      return <String, dynamic>{'order_id': id};
+    }
+    if (RegExp(r'^/api/orders/(\d+)/cancel$').hasMatch(path)) {
+      if (_demoOrder != null) _demoOrder!['state_kind'] = 'aborted';
+      return <String, dynamic>{'ok': true};
+    }
+    throw ApiException('Demo: неизвестный запрос ' + path);
+  }
+
+  Map<String, dynamic>? _demoState() {
+    if (_demoOrder == null || _demoStarted == null) return null;
+    final out = Map<String, dynamic>.from(_demoOrder!);
+    if (out['state_kind'] == 'aborted') return out;
+    final seconds = DateTime.now().difference(_demoStarted!).inSeconds;
+    out['state_kind'] = seconds < 8
+        ? 'new_order'
+        : seconds < 20
+            ? 'driver_assigned'
+            : seconds < 35
+                ? 'car_at_place'
+                : seconds < 70
+                    ? 'client_inside'
+                    : 'finished';
+    _demoOrder = out;
+    return out;
+  }
+}
+
+class Place {
+  Place(this.address, this.lat, this.lon);
+  final String address;
+  final double lat;
+  final double lon;
+  LatLng get point => LatLng(lat, lon);
+  Map<String, dynamic> toJson() => <String, dynamic>{'address': address, 'lat': lat, 'lon': lon};
+
+  factory Place.fromJson(Map<String, dynamic> j) => Place(
+        (j['label'] ?? '').toString(),
+        (j['lat'] as num).toDouble(),
+        (j['lon'] as num).toDouble(),
+      );
+}
 
 class YangiTaxiApp extends StatefulWidget {
   const YangiTaxiApp({super.key});
@@ -10,174 +316,993 @@ class YangiTaxiApp extends StatefulWidget {
 }
 
 class _YangiTaxiAppState extends State<YangiTaxiApp> {
-  String lang = 'ru';
+  final storage = const FlutterSecureStorage();
+  final api = ApiClient('demo');
+  bool loading = true;
   bool loggedIn = false;
+  String lang = 'ru';
+
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    debugShowCheckedModeBanner: false,
-    title: 'Yangi Taxi',
-    theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF16A34A)), useMaterial3: true),
-    home: loggedIn
-      ? Home(lang: lang, onLang: (v) => setState(() => lang = v), onLogout: () => setState(() => loggedIn = false))
-      : Login(lang: lang, onLang: (v) => setState(() => lang = v), onLogin: () => setState(() => loggedIn = true)),
-  );
-}
+  void initState() {
+    super.initState();
+    restore();
+  }
 
-String tr(String lang, String ru, String uz) => lang == 'uz' ? uz : ru;
+  Future<void> restore() async {
+    final savedUrl = await storage.read(key: 'backend_url');
+    final savedLang = await storage.read(key: 'lang');
+    final session = await storage.read(key: 'session');
+    api.setBaseUrl(savedUrl ?? 'demo');
+    if (savedLang == 'uz' || savedLang == 'ru') lang = savedLang!;
+    if (session != null) {
+      api.token = session;
+      try {
+        await api.get('/api/me');
+        loggedIn = true;
+      } catch (_) {
+        api.token = null;
+        await storage.delete(key: 'session');
+      }
+    }
+    if (mounted) setState(() => loading = false);
+  }
 
-class Login extends StatelessWidget {
-  const Login({super.key, required this.lang, required this.onLang, required this.onLogin});
-  final String lang;
-  final ValueChanged<String> onLang;
-  final VoidCallback onLogin;
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(child: Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 430),
-      child: Card(child: Padding(padding: const EdgeInsets.all(24), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Container(width: 54, height: 54, decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.local_taxi, color: Colors.white, size: 30)),
-          const SizedBox(width: 14),
-          const Expanded(child: Text('Yangi Taxi', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800))),
-          SegmentedButton<String>(segments: const [ButtonSegment(value: 'ru', label: Text('RU')), ButtonSegment(value: 'uz', label: Text('UZ'))], selected: {lang}, onSelectionChanged: (v) => onLang(v.first)),
-        ]),
-        const SizedBox(height: 28),
-        TextField(controller: TextEditingController(text: '+998 90 123 45 67'), decoration: InputDecoration(labelText: tr(lang, 'Телефон', 'Telefon'), prefixIcon: const Icon(Icons.phone), border: const OutlineInputBorder())),
-        const SizedBox(height: 14),
-        TextField(controller: TextEditingController(text: '123456'), obscureText: true, decoration: InputDecoration(labelText: tr(lang, 'Пароль', 'Parol'), prefixIcon: const Icon(Icons.lock_outline), border: const OutlineInputBorder())),
-        const SizedBox(height: 18),
-        FilledButton.icon(onPressed: onLogin, icon: const Icon(Icons.login), label: Text(tr(lang, 'Войти', 'Kirish'))),
-        const SizedBox(height: 12),
-        Text(tr(lang, 'Демо-версия. Сервер не требуется.', 'Demo versiya. Server kerak emas.'), textAlign: TextAlign.center),
-      ]))))))),
-  );
-}
+  Future<void> saveLang(String value) async {
+    lang = value;
+    await storage.write(key: 'lang', value: value);
+    if (mounted) setState(() {});
+  }
 
-class Ride {
-  Ride(this.from, this.to, this.price, this.tariff, {this.cancelled = false});
-  final String from, to, tariff;
-  final int price;
-  final bool cancelled;
-  Ride cancel() => Ride(from, to, price, tariff, cancelled: true);
-}
+  Future<void> saveBackend(String value) async {
+    api.setBaseUrl(value);
+    await storage.write(key: 'backend_url', value: api.baseUrl);
+    await storage.delete(key: 'session');
+    loggedIn = false;
+    if (mounted) setState(() {});
+  }
 
-class Home extends StatefulWidget {
-  const Home({super.key, required this.lang, required this.onLang, required this.onLogout});
-  final String lang;
-  final ValueChanged<String> onLang;
-  final VoidCallback onLogout;
-  @override
-  State<Home> createState() => _HomeState();
-}
+  Future<void> saveToken(String value) async {
+    api.token = value;
+    await storage.write(key: 'session', value: value);
+    if (mounted) setState(() => loggedIn = true);
+  }
 
-class _HomeState extends State<Home> {
-  int tab = 0;
-  Ride? ride;
-  final history = <Ride>[];
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    body: IndexedStack(index: tab, children: [
-      OrderPage(lang: widget.lang, active: ride != null, onOrder: (r) => setState(() { ride = r; tab = 1; })),
-      RidePage(lang: widget.lang, ride: ride, onDone: (r) => setState(() { history.insert(0, r); ride = null; })),
-      HistoryPage(lang: widget.lang, items: history),
-      ProfilePage(lang: widget.lang, onLang: widget.onLang, onLogout: widget.onLogout),
-    ]),
-    bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v), destinations: [
-      NavigationDestination(icon: const Icon(Icons.route), label: tr(widget.lang, 'Заказ', 'Buyurtma')),
-      NavigationDestination(icon: const Icon(Icons.local_taxi), label: tr(widget.lang, 'Поездка', 'Safar')),
-      NavigationDestination(icon: const Icon(Icons.history), label: tr(widget.lang, 'История', 'Tarix')),
-      NavigationDestination(icon: const Icon(Icons.person), label: tr(widget.lang, 'Профиль', 'Profil')),
-    ]),
-  );
-}
+  Future<void> logout() async {
+    api.token = null;
+    await storage.delete(key: 'session');
+    if (mounted) setState(() => loggedIn = false);
+  }
 
-class OrderPage extends StatefulWidget {
-  const OrderPage({super.key, required this.lang, required this.active, required this.onOrder});
-  final String lang;
-  final bool active;
-  final ValueChanged<Ride> onOrder;
-  @override
-  State<OrderPage> createState() => _OrderPageState();
-}
-
-class _OrderPageState extends State<OrderPage> {
-  final from = TextEditingController(text: 'Amir Temur xiyoboni');
-  final to = TextEditingController(text: 'Toshkent xalqaro aeroporti');
-  int tariff = 0;
   @override
   Widget build(BuildContext context) {
-    final names = [tr(widget.lang, 'Эконом', 'Ekonom'), tr(widget.lang, 'Комфорт', 'Komfort'), tr(widget.lang, 'Бизнес', 'Biznes')];
-    const prices = [28000, 36000, 52000];
-    return Scaffold(appBar: AppBar(title: const Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w800))), body: ListView(padding: const EdgeInsets.all(16), children: [
-      Container(height: 200, decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), gradient: const LinearGradient(colors: [Color(0xFFDCFCE7), Color(0xFFDBEAFE)])), child: const Stack(children: [Positioned(left: 24, top: 30, child: Icon(Icons.location_on, size: 44)), Positioned(right: 30, bottom: 30, child: Icon(Icons.local_taxi, size: 58)), Center(child: Text('Tashkent', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800)))])),
-      const SizedBox(height: 16),
-      TextField(controller: from, decoration: InputDecoration(labelText: tr(widget.lang, 'Откуда', 'Qayerdan'), prefixIcon: const Icon(Icons.radio_button_checked), border: const OutlineInputBorder())),
-      const SizedBox(height: 12),
-      TextField(controller: to, decoration: InputDecoration(labelText: tr(widget.lang, 'Куда', 'Qayerga'), prefixIcon: const Icon(Icons.location_on), border: const OutlineInputBorder())),
-      const SizedBox(height: 16),
-      ...List.generate(3, (i) => Card(child: RadioListTile<int>(value: i, groupValue: tariff, onChanged: (v) => setState(() => tariff = v ?? 0), title: Text(names[i], style: const TextStyle(fontWeight: FontWeight.w700)), secondary: Text('${prices[i]} UZS')))),
-      const SizedBox(height: 10),
-      FilledButton.icon(onPressed: widget.active ? null : () => widget.onOrder(Ride(from.text, to.text, prices[tariff], names[tariff])), icon: const Icon(Icons.local_taxi), label: Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(widget.active ? tr(widget.lang, 'Уже есть заказ', 'Faol buyurtma bor') : '${tr(widget.lang, 'Заказать', 'Buyurtma')} • ${prices[tariff]} UZS'))),
-    ]));
+    final scheme = ColorScheme.fromSeed(seedColor: const Color(0xFF238B45));
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Yangi Taxi',
+      theme: ThemeData(
+        colorScheme: scheme,
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF7F8F4),
+      ),
+      home: loading
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          : loggedIn
+              ? Shell(api: api, lang: lang, onLang: saveLang, onBackend: saveBackend, onLogout: logout)
+              : LoginScreen(api: api, lang: lang, onLang: saveLang, onBackend: saveBackend, onToken: saveToken),
+    );
   }
 }
 
-class RidePage extends StatefulWidget {
-  const RidePage({super.key, required this.lang, required this.ride, required this.onDone});
-  final String lang;
-  final Ride? ride;
-  final ValueChanged<Ride> onDone;
-  @override
-  State<RidePage> createState() => _RidePageState();
+Future<void> backendDialog(BuildContext context, ApiClient api, Future<void> Function(String) onSave) async {
+  final c = TextEditingController(text: api.baseUrl);
+  final value = await showDialog<String>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: const Text('Yangi Taxi backend'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(tx('ru', 'serverHelp')),
+          const SizedBox(height: 14),
+          TextField(
+            controller: c,
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+            decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Backend URL', hintText: 'demo'),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(onPressed: () => Navigator.pop(d, 'demo'), child: const Text('Demo')),
+        FilledButton(onPressed: () => Navigator.pop(d, c.text.trim()), child: const Text('Сохранить')),
+      ],
+    ),
+  );
+  c.dispose();
+  if (value == null) return;
+  await onSave(value);
+  if (!context.mounted) return;
+  try {
+    final h = await api.health();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backend: ' + (h['tmApi'] ?? 'ok').toString())));
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+  }
 }
 
-class _RidePageState extends State<RidePage> {
-  int step = 0;
-  Timer? timer;
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({
+    super.key,
+    required this.api,
+    required this.lang,
+    required this.onLang,
+    required this.onBackend,
+    required this.onToken,
+  });
+  final ApiClient api;
+  final String lang;
+  final ValueChanged<String> onLang;
+  final Future<void> Function(String) onBackend;
+  final Future<void> Function(String) onToken;
+
   @override
-  void didUpdateWidget(covariant RidePage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.ride != null && oldWidget.ride != widget.ride) {
-      step = 0; timer?.cancel(); timer = Timer.periodic(const Duration(seconds: 4), (_) { if (mounted && step < 3) setState(() => step++); });
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final phone = TextEditingController(text: '+998901234567');
+  final pass = TextEditingController(text: '123456');
+  final name = TextEditingController();
+  bool register = false;
+  bool busy = false;
+  String? error;
+
+  Future<void> submit() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final data = register
+          ? await widget.api.post('/api/auth/register', <String, dynamic>{
+              'name': name.text.trim(),
+              'phone': phone.text.trim(),
+              'password': pass.text,
+            })
+          : await widget.api.post('/api/auth/login', <String, dynamic>{
+              'phone': phone.text.trim(),
+              'password': pass.text,
+            });
+      await widget.onToken(data['token'].toString());
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
     }
   }
+
   @override
-  void dispose() { timer?.cancel(); super.dispose(); }
-  String status() => [tr(widget.lang, 'Ищем машину', 'Mashina qidirilmoqda'), tr(widget.lang, 'Водитель назначен', 'Haydovchi tayinlandi'), tr(widget.lang, 'Машина подана', 'Mashina yetib keldi'), tr(widget.lang, 'Вы в пути', 'Yo‘ldasiz')][step];
+  Widget build(BuildContext context) => Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Card(
+                  elevation: 0,
+                  child: Padding(
+                    padding: const EdgeInsets.all(22),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              child: const Icon(Icons.local_taxi, color: Colors.white),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Yangi Taxi',
+                                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: busy ? null : () => backendDialog(context, widget.api, widget.onBackend),
+                              icon: const Icon(Icons.settings_outlined),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: <Widget>[
+                            Chip(
+                              avatar: Icon(widget.api.isDemo ? Icons.science_outlined : Icons.cloud_done_outlined, size: 18),
+                              label: Text(widget.api.isDemo ? tx(widget.lang, 'demo') : widget.api.baseUrl),
+                            ),
+                            const Spacer(),
+                            SegmentedButton<String>(
+                              segments: const <ButtonSegment<String>>[
+                                ButtonSegment<String>(value: 'ru', label: Text('RU')),
+                                ButtonSegment<String>(value: 'uz', label: Text('UZ')),
+                              ],
+                              selected: <String>{widget.lang},
+                              onSelectionChanged: (x) => widget.onLang(x.first),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        if (register) ...<Widget>[
+                          TextField(
+                            controller: name,
+                            decoration: InputDecoration(border: const OutlineInputBorder(), labelText: tx(widget.lang, 'name')),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        TextField(
+                          controller: phone,
+                          keyboardType: TextInputType.phone,
+                          decoration: InputDecoration(border: const OutlineInputBorder(), labelText: tx(widget.lang, 'phone')),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: pass,
+                          obscureText: true,
+                          onSubmitted: (_) => submit(),
+                          decoration: InputDecoration(border: const OutlineInputBorder(), labelText: tx(widget.lang, 'password')),
+                        ),
+                        if (error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                          ),
+                        const SizedBox(height: 14),
+                        FilledButton.icon(
+                          onPressed: busy ? null : submit,
+                          icon: busy
+                              ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.login),
+                          label: Text(register ? tx(widget.lang, 'register') : tx(widget.lang, 'login')),
+                        ),
+                        TextButton(
+                          onPressed: busy ? null : () => setState(() => register = !register),
+                          child: Text(register ? tx(widget.lang, 'login') : tx(widget.lang, 'register')),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class Shell extends StatefulWidget {
+  const Shell({
+    super.key,
+    required this.api,
+    required this.lang,
+    required this.onLang,
+    required this.onBackend,
+    required this.onLogout,
+  });
+  final ApiClient api;
+  final String lang;
+  final ValueChanged<String> onLang;
+  final Future<void> Function(String) onBackend;
+  final VoidCallback onLogout;
+
+  @override
+  State<Shell> createState() => _ShellState();
+}
+
+class _ShellState extends State<Shell> {
+  int tab = 0;
+  int? activeId;
+
+  void orderCreated(int id) {
+    setState(() {
+      activeId = id;
+      tab = 1;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final r = widget.ride;
-    if (r == null) return Scaffold(appBar: AppBar(title: Text(tr(widget.lang, 'Текущий заказ', 'Joriy buyurtma'))), body: Center(child: Text(tr(widget.lang, 'Нет активного заказа', 'Faol buyurtma yo‘q'))));
-    return Scaffold(appBar: AppBar(title: Text(status(), style: const TextStyle(fontWeight: FontWeight.w800))), body: ListView(padding: const EdgeInsets.all(16), children: [
-      Container(height: 240, decoration: BoxDecoration(color: const Color(0xFFEAF4EE), borderRadius: BorderRadius.circular(20)), child: Stack(children: [const Positioned(left: 26, top: 34, child: Icon(Icons.radio_button_checked, size: 32)), const Positioned(right: 30, bottom: 30, child: Icon(Icons.location_on, size: 42)), Positioned(left: 55.0 + step * 55, top: 105.0 + step * 15, child: Container(padding: const EdgeInsets.all(10), decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF16A34A)), child: const Icon(Icons.local_taxi, color: Colors.white)))])),
-      const SizedBox(height: 12),
-      const Card(child: ListTile(leading: CircleAvatar(child: Icon(Icons.person)), title: Text('Azizbek Karimov'), subtitle: Text('Chevrolet Cobalt • 01 Y 001 TX'), trailing: Icon(Icons.phone))),
-      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(status(), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)), const SizedBox(height: 12), Text('● ${r.from}'), const SizedBox(height: 8), Text('● ${r.to}'), const Divider(height: 24), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(r.tariff), Text('${r.price} UZS', style: const TextStyle(fontWeight: FontWeight.w800))])]))),
-      const SizedBox(height: 10),
-      if (step < 3) OutlinedButton.icon(onPressed: () { timer?.cancel(); widget.onDone(r.cancel()); }, icon: const Icon(Icons.close), label: Text(tr(widget.lang, 'Отменить заказ', 'Buyurtmani bekor qilish'))) else FilledButton.icon(onPressed: () { timer?.cancel(); widget.onDone(r); }, icon: const Icon(Icons.check), label: Text(tr(widget.lang, 'Завершить демо-поездку', 'Demo safarni tugatish'))),
-    ]));
+    final pages = <Widget>[
+      OrderScreen(api: widget.api, lang: widget.lang, onOrder: orderCreated),
+      RideScreen(api: widget.api, lang: widget.lang, orderId: activeId),
+      HistoryScreen(api: widget.api, lang: widget.lang),
+      ProfileScreen(
+        api: widget.api,
+        lang: widget.lang,
+        onLang: widget.onLang,
+        onBackend: widget.onBackend,
+        onLogout: widget.onLogout,
+      ),
+    ];
+    return Scaffold(
+      body: IndexedStack(index: tab, children: pages),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: tab,
+        onDestinationSelected: (x) => setState(() => tab = x),
+        destinations: <NavigationDestination>[
+          NavigationDestination(icon: const Icon(Icons.route_outlined), selectedIcon: const Icon(Icons.route), label: tx(widget.lang, 'order')),
+          NavigationDestination(icon: const Icon(Icons.local_taxi_outlined), selectedIcon: const Icon(Icons.local_taxi), label: tx(widget.lang, 'ride')),
+          NavigationDestination(icon: const Icon(Icons.history), label: tx(widget.lang, 'history')),
+          NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: tx(widget.lang, 'profile')),
+        ],
+      ),
+    );
   }
 }
 
-class HistoryPage extends StatelessWidget {
-  const HistoryPage({super.key, required this.lang, required this.items});
+class OrderScreen extends StatefulWidget {
+  const OrderScreen({super.key, required this.api, required this.lang, required this.onOrder});
+  final ApiClient api;
   final String lang;
-  final List<Ride> items;
+  final ValueChanged<int> onOrder;
+
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(tr(lang, 'История', 'Tarix'))), body: items.isEmpty ? Center(child: Text(tr(lang, 'История пока пуста', 'Tarix hozircha bo‘sh'))) : ListView.builder(padding: const EdgeInsets.all(12), itemCount: items.length, itemBuilder: (_, i) { final r = items[i]; return Card(child: ListTile(leading: CircleAvatar(child: Icon(r.cancelled ? Icons.close : Icons.check)), title: Text('${r.from} → ${r.to}', maxLines: 2, overflow: TextOverflow.ellipsis), subtitle: Text(r.cancelled ? tr(lang, 'Отменён', 'Bekor qilingan') : tr(lang, 'Завершён', 'Tugallangan')), trailing: Text('${r.price}'))); }));
+  State<OrderScreen> createState() => _OrderScreenState();
 }
 
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key, required this.lang, required this.onLang, required this.onLogout});
+class _OrderScreenState extends State<OrderScreen> {
+  final map = MapController();
+  Place? from;
+  Place? to;
+  double? cost;
+  List<LatLng> route = <LatLng>[];
+  bool busy = false;
+  String? error;
+
+  Future<Place?> selectAddress(String title) => showModalBottomSheet<Place>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title),
+      );
+
+  Future<void> estimate() async {
+    if (from == null || to == null) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final data = await widget.api.post('/api/orders/estimate', <String, dynamic>{
+        'source': from!.toJson(),
+        'destination': to!.toJson(),
+      });
+      final points = <LatLng>[];
+      final mapData = data['route'];
+      if (mapData is Map && mapData['full_route_coords'] is List) {
+        for (final dynamic x in mapData['full_route_coords'] as List) {
+          if (x is Map && x['lat'] != null && x['lon'] != null) {
+            points.add(LatLng((x['lat'] as num).toDouble(), (x['lon'] as num).toDouble()));
+          }
+        }
+      }
+      if (mounted) {
+        setState(() {
+          cost = (data['cost'] as num).toDouble();
+          route = points;
+        });
+        if (points.isNotEmpty) {
+          map.fitCamera(CameraFit.coordinates(coordinates: points, padding: const EdgeInsets.all(55)));
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> createOrder() async {
+    if (from == null || to == null) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final data = await widget.api.post('/api/orders', <String, dynamic>{
+        'source': from!.toJson(),
+        'destination': to!.toJson(),
+      });
+      widget.onOrder((data['order_id'] as num).toInt());
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final center = from?.point ?? const LatLng(defaultLat, defaultLon);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w800))),
+      body: Stack(
+        children: <Widget>[
+          FlutterMap(
+            mapController: map,
+            options: MapOptions(initialCenter: center, initialZoom: 13),
+            children: <Widget>[
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'uz.yangi.taxi',
+              ),
+              if (route.isNotEmpty) PolylineLayer(polylines: <Polyline>[Polyline(points: route, strokeWidth: 5)]),
+              MarkerLayer(
+                markers: <Marker>[
+                  if (from != null)
+                    Marker(point: from!.point, width: 44, height: 44, child: const Icon(Icons.radio_button_checked, size: 34)),
+                  if (to != null)
+                    Marker(point: to!.point, width: 44, height: 44, child: const Icon(Icons.location_on, size: 40)),
+                ],
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: SafeArea(
+              minimum: const EdgeInsets.all(12),
+              child: Card(
+                elevation: 8,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      addressButton(
+                        context,
+                        Icons.radio_button_checked,
+                        from?.address ?? tx(widget.lang, 'from'),
+                        () async {
+                          final p = await selectAddress(tx(widget.lang, 'from'));
+                          if (p != null) {
+                            setState(() {
+                              from = p;
+                              cost = null;
+                              route = <LatLng>[];
+                            });
+                            map.move(p.point, 14);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      addressButton(
+                        context,
+                        Icons.location_on,
+                        to?.address ?? tx(widget.lang, 'to'),
+                        () async {
+                          final p = await selectAddress(tx(widget.lang, 'to'));
+                          if (p != null) {
+                            setState(() {
+                              to = p;
+                              cost = null;
+                              route = <LatLng>[];
+                            });
+                          }
+                        },
+                      ),
+                      if (error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                        ),
+                      if (cost != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: <Widget>[
+                              Text(tx(widget.lang, 'price')),
+                              Text(
+                                cost!.toStringAsFixed(0) + ' UZS',
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: busy || from == null || to == null ? null : (cost == null ? estimate : createOrder),
+                          icon: busy
+                              ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                              : Icon(cost == null ? Icons.calculate_outlined : Icons.local_taxi),
+                          label: Text(cost == null ? tx(widget.lang, 'estimate') : tx(widget.lang, 'book')),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget addressButton(BuildContext context, IconData icon, String label, VoidCallback onTap) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(icon),
+              const SizedBox(width: 10),
+              Expanded(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis)),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      );
+}
+
+class AddressSheet extends StatefulWidget {
+  const AddressSheet({super.key, required this.api, required this.lang, required this.title});
+  final ApiClient api;
+  final String lang;
+  final String title;
+
+  @override
+  State<AddressSheet> createState() => _AddressSheetState();
+}
+
+class _AddressSheetState extends State<AddressSheet> {
+  final c = TextEditingController();
+  Timer? timer;
+  List<dynamic> results = <dynamic>[];
+  bool busy = false;
+
+  void change(String value) {
+    timer?.cancel();
+    timer = Timer(const Duration(milliseconds: 350), () => search(value));
+  }
+
+  Future<void> search(String value) async {
+    final q = value.trim();
+    if (q.length < 2) {
+      if (mounted) setState(() => results = <dynamic>[]);
+      return;
+    }
+    setState(() => busy = true);
+    try {
+      final data = await widget.api.get('/api/addresses/search', query: <String, String>{'q': q});
+      if (mounted) setState(() => results = data as List);
+    } catch (_) {
+      if (mounted) setState(() => results = <dynamic>[]);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: MediaQuery.viewInsetsOf(context).bottom + 16),
+          child: SizedBox(
+            height: MediaQuery.sizeOf(context).height * .72,
+            child: Column(
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Expanded(child: Text(widget.title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700))),
+                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+                  ],
+                ),
+                TextField(
+                  controller: c,
+                  autofocus: true,
+                  onChanged: change,
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.search),
+                    labelText: tx(widget.lang, 'address'),
+                  ),
+                ),
+                if (busy) const LinearProgressIndicator(),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: results.length,
+                    itemBuilder: (_, i) {
+                      final item = Map<String, dynamic>.from(results[i] as Map);
+                      return ListTile(
+                        leading: const Icon(Icons.location_on_outlined),
+                        title: Text((item['label'] ?? '').toString()),
+                        subtitle: Text((item['source'] ?? '').toString()),
+                        onTap: () => Navigator.pop(context, Place.fromJson(item)),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class RideScreen extends StatefulWidget {
+  const RideScreen({super.key, required this.api, required this.lang, required this.orderId});
+  final ApiClient api;
+  final String lang;
+  final int? orderId;
+
+  @override
+  State<RideScreen> createState() => _RideScreenState();
+}
+
+class _RideScreenState extends State<RideScreen> {
+  Timer? timer;
+  Map<String, dynamic>? order;
+  LatLng? driver;
+  bool loading = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    refresh();
+    timer = Timer.periodic(const Duration(seconds: 4), (_) => refresh());
+  }
+
+  @override
+  void didUpdateWidget(covariant RideScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.orderId != widget.orderId) refresh();
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> refresh() async {
+    try {
+      var id = widget.orderId;
+      if (id == null) {
+        final current = await widget.api.get('/api/orders/current') as List;
+        if (current.isEmpty) {
+          if (mounted) setState(() {
+            order = null;
+            driver = null;
+            loading = false;
+          });
+          return;
+        }
+        id = (current.first['order_id'] as num).toInt();
+      }
+      final data = await widget.api.get('/api/orders/' + id.toString() + '/driver-location');
+      final state = Map<String, dynamic>.from(data['state'] as Map);
+      LatLng? d;
+      final loc = data['location'];
+      if (loc is Map && loc['lat'] != null && loc['lon'] != null) {
+        d = LatLng((loc['lat'] as num).toDouble(), (loc['lon'] as num).toDouble());
+      }
+      if (mounted) setState(() {
+        order = state;
+        driver = d;
+        loading = false;
+        error = null;
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        loading = false;
+        error = e.toString();
+      });
+    }
+  }
+
+  String stateLabel(String state) {
+    if (state == 'new_order') return tx(widget.lang, 'searching');
+    if (state == 'driver_assigned') return tx(widget.lang, 'assigned');
+    if (state == 'car_at_place') return tx(widget.lang, 'arrived');
+    if (state == 'client_inside') return tx(widget.lang, 'trip');
+    if (state == 'finished') return tx(widget.lang, 'finished');
+    if (state == 'aborted') return tx(widget.lang, 'aborted');
+    return state;
+  }
+
+  LatLng? point(dynamic lat, dynamic lon) {
+    final a = double.tryParse(lat?.toString() ?? '');
+    final b = double.tryParse(lon?.toString() ?? '');
+    return a == null || b == null ? null : LatLng(a, b);
+  }
+
+  Future<void> cancel() async {
+    final o = order;
+    if (o == null) return;
+    final id = (o['order_id'] as num).toInt();
+    try {
+      final p = await widget.api.get('/api/orders/' + id.toString() + '/cancel-penalty');
+      final sum = (p['cancel_order_penalty_sum'] as num?) ?? 0;
+      if (!mounted) return;
+      final yes = await showDialog<bool>(
+            context: context,
+            builder: (c) => AlertDialog(
+              title: Text(tx(widget.lang, 'cancel')),
+              content: Text(sum > 0 ? 'Штраф: ' + sum.toString() + ' UZS' : 'Подтвердить отмену заказа?'),
+              actions: <Widget>[
+                TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Нет')),
+                FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Да')),
+              ],
+            ),
+          ) ??
+          false;
+      if (yes) {
+        await widget.api.post('/api/orders/' + id.toString() + '/cancel', <String, dynamic>{});
+        await refresh();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (order == null) {
+      return Scaffold(appBar: AppBar(title: Text(tx(widget.lang, 'ride'))), body: Center(child: Text(tx(widget.lang, 'empty'))));
+    }
+    final o = order!;
+    final state = (o['state_kind'] ?? '').toString();
+    final from = point(o['source_lat'], o['source_lon']);
+    final to = point(o['destination_lat'], o['destination_lon']);
+    final center = driver ?? from ?? const LatLng(defaultLat, defaultLon);
+    final car = <String>[o['car_mark']?.toString() ?? '', o['car_model']?.toString() ?? ''].where((x) => x.isNotEmpty).join(' ');
+    final number = (o['car_number'] ?? '').toString();
+    return Scaffold(
+      appBar: AppBar(title: Text(stateLabel(state), style: const TextStyle(fontWeight: FontWeight.w800))),
+      body: Column(
+        children: <Widget>[
+          Expanded(
+            flex: 3,
+            child: FlutterMap(
+              options: MapOptions(initialCenter: center, initialZoom: 14),
+              children: <Widget>[
+                TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'uz.yangi.taxi'),
+                MarkerLayer(
+                  markers: <Marker>[
+                    if (from != null) Marker(point: from, width: 40, height: 40, child: const Icon(Icons.radio_button_checked, size: 30)),
+                    if (to != null) Marker(point: to, width: 40, height: 40, child: const Icon(Icons.location_on, size: 36)),
+                    if (driver != null)
+                      Marker(
+                        point: driver!,
+                        width: 48,
+                        height: 48,
+                        child: Container(
+                          decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, shape: BoxShape.circle),
+                          child: const Icon(Icons.local_taxi, color: Colors.white),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: <Widget>[
+                Text(stateLabel(state), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+                if (car.isNotEmpty || number.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text((car + ' • ' + number).trim(), style: Theme.of(context).textTheme.titleMedium),
+                ],
+                const SizedBox(height: 14),
+                Text('● ' + (o['source'] ?? '').toString()),
+                const SizedBox(height: 7),
+                Text('● ' + (o['destination'] ?? '').toString()),
+                if (o['total_cost'] != null) ...<Widget>[
+                  const Divider(height: 24),
+                  Text(tx(widget.lang, 'price') + ': ' + o['total_cost'].toString() + ' UZS'),
+                ],
+                if (error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!)),
+                const SizedBox(height: 12),
+                if (state != 'finished' && state != 'aborted' && state != 'client_inside')
+                  OutlinedButton.icon(onPressed: cancel, icon: const Icon(Icons.close), label: Text(tx(widget.lang, 'cancel'))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class HistoryScreen extends StatefulWidget {
+  const HistoryScreen({super.key, required this.api, required this.lang});
+  final ApiClient api;
+  final String lang;
+
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  List<dynamic> orders = <dynamic>[];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final data = await widget.api.get('/api/orders/history');
+      if (mounted) setState(() {
+        orders = data as List;
+        loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+          title: Text(tx(widget.lang, 'history'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh))],
+        ),
+        body: loading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: load,
+                child: orders.isEmpty
+                    ? ListView(children: <Widget>[const SizedBox(height: 180), Center(child: Text(tx(widget.lang, 'history')))])
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: orders.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, i) {
+                          final o = Map<String, dynamic>.from(orders[i] as Map);
+                          final state = (o['state_kind'] ?? '').toString();
+                          return Card(
+                            child: ListTile(
+                              leading: CircleAvatar(child: Icon(state == 'finished' ? Icons.check : Icons.close)),
+                              title: Text(
+                                (o['source'] ?? '').toString() + ' → ' + (o['destination'] ?? '').toString(),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text('#' + (o['order_id'] ?? '').toString() + ' • ' + state),
+                              trailing: o['total_cost'] == null ? null : Text(o['total_cost'].toString()),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+      );
+}
+
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({
+    super.key,
+    required this.api,
+    required this.lang,
+    required this.onLang,
+    required this.onBackend,
+    required this.onLogout,
+  });
+  final ApiClient api;
   final String lang;
   final ValueChanged<String> onLang;
+  final Future<void> Function(String) onBackend;
   final VoidCallback onLogout;
+
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(tr(lang, 'Профиль', 'Profil'))), body: ListView(padding: const EdgeInsets.all(16), children: [
-    const Card(child: ListTile(leading: CircleAvatar(radius: 28, child: Icon(Icons.person)), title: Text('Yangi Taxi Demo', style: TextStyle(fontWeight: FontWeight.w700)), subtitle: Text('+998 90 123 45 67'))),
-    Card(child: ListTile(title: Text(tr(lang, 'Язык приложения', 'Ilova tili')), trailing: SegmentedButton<String>(segments: const [ButtonSegment(value: 'ru', label: Text('RU')), ButtonSegment(value: 'uz', label: Text('UZ'))], selected: {lang}, onSelectionChanged: (v) => onLang(v.first)))),
-    const Card(child: ListTile(leading: Icon(Icons.savings_outlined), title: Text('Бонусы / Bonuslar'), trailing: Text('12 000'))),
-    const SizedBox(height: 18),
-    OutlinedButton.icon(onPressed: onLogout, icon: const Icon(Icons.logout), label: Text(tr(lang, 'Выйти', 'Chiqish'))),
-  ]));
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  Map<String, dynamic>? me;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final data = await widget.api.get('/api/me');
+      if (mounted) setState(() => me = Map<String, dynamic>.from(data as Map));
+    } catch (_) {}
+  }
+
+  String get phone {
+    if (me?['phones'] is List && (me!['phones'] as List).isNotEmpty) {
+      final x = (me!['phones'] as List).first;
+      if (x is Map) return (x['phone'] ?? '').toString();
+    }
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text(tx(widget.lang, 'profile'), style: const TextStyle(fontWeight: FontWeight.w800))),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: <Widget>[
+            Card(
+              child: ListTile(
+                leading: const CircleAvatar(radius: 28, child: Icon(Icons.person)),
+                title: Text((me?['name'] ?? 'Yangi Taxi').toString(), style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(phone),
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.language),
+                title: const Text('Язык / Til'),
+                trailing: SegmentedButton<String>(
+                  segments: const <ButtonSegment<String>>[
+                    ButtonSegment<String>(value: 'ru', label: Text('RU')),
+                    ButtonSegment<String>(value: 'uz', label: Text('UZ')),
+                  ],
+                  selected: <String>{widget.lang},
+                  onSelectionChanged: (x) => widget.onLang(x.first),
+                ),
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: Icon(widget.api.isDemo ? Icons.science_outlined : Icons.dns_outlined),
+                title: Text(tx(widget.lang, 'backend')),
+                subtitle: Text(widget.api.baseUrl),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => backendDialog(context, widget.api, widget.onBackend),
+              ),
+            ),
+            if (me?['bonus_balance'] != null)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.savings_outlined),
+                  title: const Text('Бонусы / Bonuslar'),
+                  trailing: Text(me!['bonus_balance'].toString()),
+                ),
+              ),
+            const SizedBox(height: 18),
+            OutlinedButton.icon(onPressed: widget.onLogout, icon: const Icon(Icons.logout), label: Text(tx(widget.lang, 'logout'))),
+          ],
+        ),
+      );
 }
