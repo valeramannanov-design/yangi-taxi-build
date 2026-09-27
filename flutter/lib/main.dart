@@ -5,10 +5,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:yandex_maps_mapkit_lite/init.dart' as yandex_init;
-import 'package:yandex_maps_mapkit_lite/mapkit.dart' as ym;
-import 'package:yandex_maps_mapkit_lite/mapkit_factory.dart' as ym_factory;
-import 'package:yandex_maps_mapkit_lite/yandex_map.dart' as ym_widget;
+import 'package:yandex_maps_mapkit/init.dart' as yandex_init;
+import 'package:yandex_maps_mapkit/mapkit.dart' as ym;
+import 'package:yandex_maps_mapkit/mapkit_factory.dart' as ym_factory;
+import 'package:yandex_maps_mapkit/search.dart' as ys;
+import 'package:yandex_maps_mapkit/yandex_map.dart' as ym_widget;
 
 const defaultLat = 41.3111;
 const defaultLon = 69.2797;
@@ -967,34 +968,92 @@ class AddressSheet extends StatefulWidget {
 class _AddressSheetState extends State<AddressSheet> {
   final c = TextEditingController();
   Timer? timer;
-  List<dynamic> results = <dynamic>[];
+  late final ys.SearchManager searchManager;
+  late final ys.SearchSuggestSession suggestSession;
+  List<Place> results = <Place>[];
   bool busy = false;
+  String? error;
+
+  static const tashkentWindow = ym.BoundingBox(
+    ym.Point(latitude: 40.95, longitude: 68.95),
+    ym.Point(latitude: 41.60, longitude: 69.75),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    searchManager = ys.SearchFactory.instance.createSearchManager(ys.SearchManagerType.Online);
+    suggestSession = searchManager.createSuggestSession();
+  }
 
   void change(String value) {
     timer?.cancel();
-    timer = Timer(const Duration(milliseconds: 350), () => search(value));
+    timer = Timer(const Duration(milliseconds: 280), () => search(value));
   }
 
   Future<void> search(String value) async {
     final q = value.trim();
     if (q.length < 2) {
-      if (mounted) setState(() => results = <dynamic>[]);
+      if (mounted) setState(() { results = <Place>[]; error = null; });
       return;
     }
-    setState(() => busy = true);
+    if (yandexMapKitApiKey.isEmpty) {
+      await _searchTaxiMaster(q);
+      return;
+    }
+    if (mounted) setState(() { busy = true; error = null; });
+    final completer = Completer<List<Place>>();
+    final listener = ys.SearchSuggestSessionSuggestListener(
+      onResponse: (response) {
+        final places = <Place>[];
+        for (final item in response.items.take(15)) {
+          final p = item.center;
+          if (p == null) continue;
+          final title = item.title.text.trim();
+          final subtitle = item.subtitle?.text.trim() ?? '';
+          final label = subtitle.isEmpty || subtitle == title ? title : '$title, $subtitle';
+          places.add(Place(label, p.latitude, p.longitude));
+        }
+        if (!completer.isCompleted) completer.complete(places);
+      },
+      onError: (e) {
+        if (!completer.isCompleted) completer.completeError(Exception('Yandex search error'));
+      },
+    );
     try {
-      final data = await widget.api.get('/api/addresses/search', query: <String, String>{'q': q});
-      if (mounted) setState(() => results = data as List);
+      suggestSession.suggest(
+        tashkentWindow,
+        ys.SuggestOptions(
+          suggestTypes: ys.SuggestType.Geo | ys.SuggestType.Biz,
+          userPosition: const ym.Point(latitude: defaultLat, longitude: defaultLon),
+          strictBounds: false,
+        ),
+        listener,
+        text: q,
+      );
+      final found = await completer.future.timeout(const Duration(seconds: 8));
+      if (mounted) setState(() => results = found);
     } catch (_) {
-      if (mounted) setState(() => results = <dynamic>[]);
+      await _searchTaxiMaster(q);
     } finally {
       if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _searchTaxiMaster(String q) async {
+    try {
+      final data = await widget.api.get('/api/addresses/search', query: <String, String>{'q': q});
+      final list = (data as List).map((x) => Place.fromJson(Map<String, dynamic>.from(x as Map))).toList();
+      if (mounted) setState(() { results = list; error = null; });
+    } catch (_) {
+      if (mounted) setState(() { results = <Place>[]; error = 'Адрес не найден'; });
     }
   }
 
   @override
   void dispose() {
     timer?.cancel();
+    suggestSession.reset();
     c.dispose();
     super.dispose();
   }
@@ -1021,20 +1080,22 @@ class _AddressSheetState extends State<AddressSheet> {
                     border: const OutlineInputBorder(),
                     prefixIcon: const Icon(Icons.search),
                     labelText: tx(widget.lang, 'address'),
+                    helperText: yandexMapKitApiKey.isNotEmpty ? 'Поиск Яндекс' : 'Поиск TaxiMaster',
                   ),
                 ),
                 if (busy) const LinearProgressIndicator(),
+                if (error != null) Padding(padding: const EdgeInsets.all(8), child: Text(error!)),
                 const SizedBox(height: 8),
                 Expanded(
                   child: ListView.builder(
                     itemCount: results.length,
                     itemBuilder: (_, i) {
-                      final item = Map<String, dynamic>.from(results[i] as Map);
+                      final item = results[i];
                       return ListTile(
                         leading: const Icon(Icons.location_on_outlined),
-                        title: Text((item['label'] ?? '').toString()),
-                        subtitle: Text((item['source'] ?? '').toString()),
-                        onTap: () => Navigator.pop(context, Place.fromJson(item)),
+                        title: Text(item.address),
+                        subtitle: const Text('Яндекс Карты'),
+                        onTap: () => Navigator.pop(context, item),
                       );
                     },
                   ),

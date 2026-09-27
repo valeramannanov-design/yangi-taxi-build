@@ -1,7 +1,7 @@
 name: yangi_taxi
 description: Yangi Taxi passenger app
 publish_to: none
-version: 0.3.0+3
+version: 0.4.0+4
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -11,7 +11,7 @@ dependencies:
     sdk: flutter
   http: ^1.3.0
   flutter_secure_storage: ^9.2.4
-  yandex_maps_mapkit_lite: ^4.45.0
+  yandex_maps_mapkit: ^4.45.0
 
 dev_dependencies:
   flutter_test:
