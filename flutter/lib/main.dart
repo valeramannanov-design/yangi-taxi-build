@@ -115,7 +115,7 @@ class _OrderPageState extends State<OrderPage> {
       const SizedBox(height: 12),
       TextField(controller: to, decoration: InputDecoration(labelText: tr(widget.lang, 'Куда', 'Qayerga'), prefixIcon: const Icon(Icons.location_on), border: const OutlineInputBorder())),
       const SizedBox(height: 16),
-      ...List.generate(3, (i) => Card(child: RadioListTile<int>(value: i, groupValue: tariff, onChanged: (v) => setState(() => tariff = v ?? 0), title: Text(names[i], style: const TextStyle(fontWeight: FontWeight.w700)), trailing: Text('${prices[i]} UZS')))),
+      ...List.generate(3, (i) => Card(child: RadioListTile<int>(value: i, groupValue: tariff, onChanged: (v) => setState(() => tariff = v ?? 0), title: Text(names[i], style: const TextStyle(fontWeight: FontWeight.w700)), secondary: Text('${prices[i]} UZS')))),
       const SizedBox(height: 10),
       FilledButton.icon(onPressed: widget.active ? null : () => widget.onOrder(Ride(from.text, to.text, prices[tariff], names[tariff])), icon: const Icon(Icons.local_taxi), label: Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(widget.active ? tr(widget.lang, 'Уже есть заказ', 'Faol buyurtma bor') : '${tr(widget.lang, 'Заказать', 'Buyurtma')} • ${prices[tariff]} UZS'))),
     ]));
