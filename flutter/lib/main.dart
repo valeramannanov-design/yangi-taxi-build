@@ -870,9 +870,8 @@ class _OrderScreenState extends State<OrderScreen> {
                             setState(() {
                               from = p;
                               cost = null;
-                              route = <LatLng>[];
+                              route = <ym.Point>[];
                             });
-                            map.move(p.point, 14);
                           }
                         },
                       ),
@@ -887,7 +886,7 @@ class _OrderScreenState extends State<OrderScreen> {
                             setState(() {
                               to = p;
                               cost = null;
-                              route = <LatLng>[];
+                              route = <ym.Point>[];
                             });
                           }
                         },
