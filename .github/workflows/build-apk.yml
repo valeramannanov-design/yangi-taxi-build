@@ -2,6 +2,10 @@ name: Build Yangi Taxi APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flutter/**'
+      - '.github/workflows/build-apk.yml'
   push:
     paths:
       - 'flutter/**'
