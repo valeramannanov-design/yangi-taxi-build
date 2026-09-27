@@ -3,15 +3,25 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:latlong2/latlong.dart';
+import 'package:yandex_maps_mapkit_lite/init.dart' as yandex_init;
+import 'package:yandex_maps_mapkit_lite/mapkit.dart' as ym;
+import 'package:yandex_maps_mapkit_lite/mapkit_factory.dart' as ym_factory;
+import 'package:yandex_maps_mapkit_lite/yandex_map.dart' as ym_widget;
 
 const defaultLat = 41.3111;
 const defaultLon = 69.2797;
 
-void main() => runApp(const YangiTaxiApp());
+const yandexMapKitApiKey = String.fromEnvironment('MAPKIT_API_KEY');
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (yandexMapKitApiKey.isNotEmpty) {
+    await yandex_init.initMapkit(apiKey: yandexMapKitApiKey);
+  }
+  runApp(const YangiTaxiApp());
+}
 
 const words = <String, Map<String, String>>{
   'ru': {
@@ -299,7 +309,7 @@ class Place {
   final String address;
   final double lat;
   final double lon;
-  LatLng get point => LatLng(lat, lon);
+  ym.Point get point => ym.Point(latitude: lat, longitude: lon);
   Map<String, dynamic> toJson() => <String, dynamic>{'address': address, 'lat': lat, 'lon': lon};
 
   factory Place.fromJson(Map<String, dynamic> j) => Place(
@@ -651,6 +661,104 @@ class _ShellState extends State<Shell> {
   }
 }
 
+class TaxiYandexMap extends StatefulWidget {
+  const TaxiYandexMap({
+    super.key,
+    required this.center,
+    this.route = const <ym.Point>[],
+    this.from,
+    this.to,
+    this.driver,
+    this.zoom = 14,
+  });
+  final ym.Point center;
+  final List<ym.Point> route;
+  final ym.Point? from;
+  final ym.Point? to;
+  final ym.Point? driver;
+  final double zoom;
+
+  @override
+  State<TaxiYandexMap> createState() => _TaxiYandexMapState();
+}
+
+class _TaxiYandexMapState extends State<TaxiYandexMap> {
+  ym.MapWindow? mapWindow;
+
+  @override
+  void initState() {
+    super.initState();
+    if (yandexMapKitApiKey.isNotEmpty) ym_factory.mapkit.onStart();
+  }
+
+  @override
+  void didUpdateWidget(covariant TaxiYandexMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (mapWindow != null) _render(focusRoute: false);
+  }
+
+  @override
+  void dispose() {
+    if (yandexMapKitApiKey.isNotEmpty) ym_factory.mapkit.onStop();
+    super.dispose();
+  }
+
+  void _render({bool focusRoute = true}) {
+    final window = mapWindow;
+    if (window == null) return;
+    final map = window.map;
+    map.mapObjects.clear();
+
+    void addTextPlacemark(ym.Point point, String text) {
+      map.mapObjects.addPlacemark()
+        ..geometry = point
+        ..setText(text);
+    }
+
+    if (widget.route.length > 1) {
+      final polyline = ym.Polyline(widget.route);
+      map.mapObjects.addPolylineWithGeometry(polyline)
+        ..strokeWidth = 5.0
+        ..setStrokeColor(const Color(0xFF238B45));
+      if (focusRoute) {
+        map.move(map.cameraPositionForGeometry(ym.Geometry.fromPolyline(polyline)));
+      }
+    }
+    if (widget.from != null) addTextPlacemark(widget.from!, '●');
+    if (widget.to != null) addTextPlacemark(widget.to!, '📍');
+    if (widget.driver != null) addTextPlacemark(widget.driver!, '🚕');
+
+    if (!focusRoute || widget.route.length < 2) {
+      map.move(ym.CameraPosition(widget.center, zoom: widget.zoom, azimuth: 0, tilt: 0));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (yandexMapKitApiKey.isEmpty) {
+      return Container(
+        color: const Color(0xFFEAF4EE),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(24),
+        child: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.map_outlined, size: 52),
+            SizedBox(height: 12),
+            Text('Яндекс Карты подключены. Для отображения карты нужен MapKit API-ключ.', textAlign: TextAlign.center),
+          ],
+        ),
+      );
+    }
+    return ym_widget.YandexMap(
+      onMapCreated: (window) {
+        mapWindow = window;
+        _render();
+      },
+    );
+  }
+}
+
 class OrderScreen extends StatefulWidget {
   const OrderScreen({super.key, required this.api, required this.lang, required this.onOrder});
   final ApiClient api;
@@ -662,11 +770,10 @@ class OrderScreen extends StatefulWidget {
 }
 
 class _OrderScreenState extends State<OrderScreen> {
-  final map = MapController();
   Place? from;
   Place? to;
   double? cost;
-  List<LatLng> route = <LatLng>[];
+  List<ym.Point> route = <ym.Point>[];
   bool busy = false;
   String? error;
 
@@ -687,12 +794,12 @@ class _OrderScreenState extends State<OrderScreen> {
         'source': from!.toJson(),
         'destination': to!.toJson(),
       });
-      final points = <LatLng>[];
+      final points = <ym.Point>[];
       final mapData = data['route'];
       if (mapData is Map && mapData['full_route_coords'] is List) {
         for (final dynamic x in mapData['full_route_coords'] as List) {
           if (x is Map && x['lat'] != null && x['lon'] != null) {
-            points.add(LatLng((x['lat'] as num).toDouble(), (x['lon'] as num).toDouble()));
+            points.add(ym.Point(latitude: (x['lat'] as num).toDouble(), longitude: (x['lon'] as num).toDouble()));
           }
         }
       }
@@ -701,9 +808,6 @@ class _OrderScreenState extends State<OrderScreen> {
           cost = (data['cost'] as num).toDouble();
           route = points;
         });
-        if (points.isNotEmpty) {
-          map.fitCamera(CameraFit.coordinates(coordinates: points, padding: const EdgeInsets.all(55)));
-        }
       }
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
@@ -733,29 +837,17 @@ class _OrderScreenState extends State<OrderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final center = from?.point ?? const LatLng(defaultLat, defaultLon);
+    final center = from?.point ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
     return Scaffold(
       appBar: AppBar(title: const Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w800))),
       body: Stack(
         children: <Widget>[
-          FlutterMap(
-            mapController: map,
-            options: MapOptions(initialCenter: center, initialZoom: 13),
-            children: <Widget>[
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'uz.yangi.taxi',
-              ),
-              if (route.isNotEmpty) PolylineLayer(polylines: <Polyline>[Polyline(points: route, strokeWidth: 5)]),
-              MarkerLayer(
-                markers: <Marker>[
-                  if (from != null)
-                    Marker(point: from!.point, width: 44, height: 44, child: const Icon(Icons.radio_button_checked, size: 34)),
-                  if (to != null)
-                    Marker(point: to!.point, width: 44, height: 44, child: const Icon(Icons.location_on, size: 40)),
-                ],
-              ),
-            ],
+          TaxiYandexMap(
+            center: center,
+            route: route,
+            from: from?.point,
+            to: to?.point,
+            zoom: 13,
           ),
           Align(
             alignment: Alignment.bottomCenter,
@@ -968,7 +1060,7 @@ class RideScreen extends StatefulWidget {
 class _RideScreenState extends State<RideScreen> {
   Timer? timer;
   Map<String, dynamic>? order;
-  LatLng? driver;
+  ym.Point? driver;
   bool loading = true;
   String? error;
 
@@ -1008,10 +1100,10 @@ class _RideScreenState extends State<RideScreen> {
       }
       final data = await widget.api.get('/api/orders/' + id.toString() + '/driver-location');
       final state = Map<String, dynamic>.from(data['state'] as Map);
-      LatLng? d;
+      ym.Point? d;
       final loc = data['location'];
       if (loc is Map && loc['lat'] != null && loc['lon'] != null) {
-        d = LatLng((loc['lat'] as num).toDouble(), (loc['lon'] as num).toDouble());
+        d = ym.Point(latitude: (loc['lat'] as num).toDouble(), longitude: (loc['lon'] as num).toDouble());
       }
       if (mounted) setState(() {
         order = state;
@@ -1037,10 +1129,10 @@ class _RideScreenState extends State<RideScreen> {
     return state;
   }
 
-  LatLng? point(dynamic lat, dynamic lon) {
+  ym.Point? point(dynamic lat, dynamic lon) {
     final a = double.tryParse(lat?.toString() ?? '');
     final b = double.tryParse(lon?.toString() ?? '');
-    return a == null || b == null ? null : LatLng(a, b);
+    return a == null || b == null ? null : ym.Point(latitude: a, longitude: b);
   }
 
   Future<void> cancel() async {
@@ -1082,7 +1174,7 @@ class _RideScreenState extends State<RideScreen> {
     final state = (o['state_kind'] ?? '').toString();
     final from = point(o['source_lat'], o['source_lon']);
     final to = point(o['destination_lat'], o['destination_lon']);
-    final center = driver ?? from ?? const LatLng(defaultLat, defaultLon);
+    final center = driver ?? from ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
     final car = <String>[o['car_mark']?.toString() ?? '', o['car_model']?.toString() ?? ''].where((x) => x.isNotEmpty).join(' ');
     final number = (o['car_number'] ?? '').toString();
     return Scaffold(
@@ -1091,27 +1183,12 @@ class _RideScreenState extends State<RideScreen> {
         children: <Widget>[
           Expanded(
             flex: 3,
-            child: FlutterMap(
-              options: MapOptions(initialCenter: center, initialZoom: 14),
-              children: <Widget>[
-                TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'uz.yangi.taxi'),
-                MarkerLayer(
-                  markers: <Marker>[
-                    if (from != null) Marker(point: from, width: 40, height: 40, child: const Icon(Icons.radio_button_checked, size: 30)),
-                    if (to != null) Marker(point: to, width: 40, height: 40, child: const Icon(Icons.location_on, size: 36)),
-                    if (driver != null)
-                      Marker(
-                        point: driver!,
-                        width: 48,
-                        height: 48,
-                        child: Container(
-                          decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, shape: BoxShape.circle),
-                          child: const Icon(Icons.local_taxi, color: Colors.white),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+            child: TaxiYandexMap(
+              center: center,
+              from: from,
+              to: to,
+              driver: driver,
+              zoom: 14,
             ),
           ),
           Expanded(
