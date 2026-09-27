@@ -394,6 +394,20 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
         colorScheme: scheme,
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF7F8F4),
+        cardTheme: const CardThemeData(
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(20))),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: scheme.surfaceContainerLowest,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+        ),
       ),
       home: loading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
@@ -778,10 +792,10 @@ class _OrderScreenState extends State<OrderScreen> {
   bool busy = false;
   String? error;
 
-  Future<Place?> selectAddress(String title) => showModalBottomSheet<Place>(
+  Future<Place?> selectAddress(String title, Place? initial) => showModalBottomSheet<Place>(
         context: context,
         isScrollControlled: true,
-        builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title),
+        builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
       );
 
   Future<void> estimate() async {
@@ -866,7 +880,7 @@ class _OrderScreenState extends State<OrderScreen> {
                         Icons.radio_button_checked,
                         from?.address ?? tx(widget.lang, 'from'),
                         () async {
-                          final p = await selectAddress(tx(widget.lang, 'from'));
+                          final p = await selectAddress(tx(widget.lang, 'from'), from);
                           if (p != null) {
                             setState(() {
                               from = p;
@@ -882,7 +896,7 @@ class _OrderScreenState extends State<OrderScreen> {
                         Icons.location_on,
                         to?.address ?? tx(widget.lang, 'to'),
                         () async {
-                          final p = await selectAddress(tx(widget.lang, 'to'));
+                          final p = await selectAddress(tx(widget.lang, 'to'), to);
                           if (p != null) {
                             setState(() {
                               to = p;
@@ -956,10 +970,11 @@ class _OrderScreenState extends State<OrderScreen> {
 }
 
 class AddressSheet extends StatefulWidget {
-  const AddressSheet({super.key, required this.api, required this.lang, required this.title});
+  const AddressSheet({super.key, required this.api, required this.lang, required this.title, this.initial});
   final ApiClient api;
   final String lang;
   final String title;
+  final Place? initial;
 
   @override
   State<AddressSheet> createState() => _AddressSheetState();
@@ -1050,6 +1065,20 @@ class _AddressSheetState extends State<AddressSheet> {
     }
   }
 
+  Future<void> pickOnMap() async {
+    FocusScope.of(context).unfocus();
+    final place = await Navigator.of(context).push<Place>(
+      MaterialPageRoute(
+        builder: (_) => MapPointPickerScreen(
+          title: widget.title,
+          lang: widget.lang,
+          initial: widget.initial,
+        ),
+      ),
+    );
+    if (place != null && mounted) Navigator.pop(context, place);
+  }
+
   @override
   void dispose() {
     timer?.cancel();
@@ -1083,6 +1112,15 @@ class _AddressSheetState extends State<AddressSheet> {
                     helperText: yandexMapKitApiKey.isNotEmpty ? 'Поиск Яндекс' : 'Поиск TaxiMaster',
                   ),
                 ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: pickOnMap,
+                    icon: const Icon(Icons.my_location),
+                    label: Text(widget.lang == 'uz' ? 'Xaritada ko‘rsatish' : 'Указать на карте'),
+                  ),
+                ),
                 if (busy) const LinearProgressIndicator(),
                 if (error != null) Padding(padding: const EdgeInsets.all(8), child: Text(error!)),
                 const SizedBox(height: 8),
@@ -1105,6 +1143,205 @@ class _AddressSheetState extends State<AddressSheet> {
           ),
         ),
       );
+}
+
+class MapPointPickerScreen extends StatefulWidget {
+  const MapPointPickerScreen({
+    super.key,
+    required this.title,
+    required this.lang,
+    this.initial,
+  });
+
+  final String title;
+  final String lang;
+  final Place? initial;
+
+  @override
+  State<MapPointPickerScreen> createState() => _MapPointPickerScreenState();
+}
+
+class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
+  ym.MapWindow? mapWindow;
+  late final ys.SearchManager searchManager;
+  ys.SearchSession? reverseSession;
+  bool resolving = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    searchManager = ys.SearchFactory.instance.createSearchManager(ys.SearchManagerType.Online);
+  }
+
+  @override
+  void dispose() {
+    reverseSession?.cancel();
+    super.dispose();
+  }
+
+  Future<Place> reverseGeocode(ym.Point point) async {
+    final completer = Completer<Place>();
+    final listener = ys.SearchSessionSearchListener(
+      onSearchResponse: (response) {
+        String label = '';
+        for (final item in response.collection.children) {
+          final object = item.asGeoObject();
+          if (object == null) continue;
+          final name = object.name?.trim() ?? '';
+          final description = object.descriptionText?.trim() ?? '';
+          label = description.isEmpty || description == name
+              ? name
+              : (name.isEmpty ? description : '$name, $description');
+          if (label.isNotEmpty) break;
+        }
+        if (label.isEmpty) {
+          label = '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
+        }
+        if (!completer.isCompleted) {
+          completer.complete(Place(label, point.latitude, point.longitude));
+        }
+      },
+      onSearchError: (_) {
+        if (!completer.isCompleted) {
+          completer.complete(
+            Place(
+              '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
+              point.latitude,
+              point.longitude,
+            ),
+          );
+        }
+      },
+    );
+
+    reverseSession = searchManager.submitPoint(
+      point,
+      const ys.SearchOptions(
+        searchTypes: ys.SearchType.Geo,
+        resultPageSize: 5,
+      ),
+      listener,
+      zoom: 17,
+    );
+    return completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () => Place(
+        '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
+        point.latitude,
+        point.longitude,
+      ),
+    );
+  }
+
+  Future<void> confirm() async {
+    final window = mapWindow;
+    if (window == null || resolving) return;
+    final point = window.map.cameraPosition.target;
+    setState(() {
+      resolving = true;
+      error = null;
+    });
+    try {
+      final place = await reverseGeocode(point);
+      if (mounted) Navigator.pop(context, place);
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => resolving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = widget.initial?.point ??
+        const ym.Point(latitude: defaultLat, longitude: defaultLon);
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: Stack(
+        children: <Widget>[
+          if (yandexMapKitApiKey.isEmpty)
+            const Center(child: Text('Для выбора точки нужен Yandex MapKit API-ключ.'))
+          else
+            ym_widget.YandexMap(
+              onMapCreated: (window) {
+                mapWindow = window;
+                window.map.move(
+                  ym.CameraPosition(initial, zoom: 16, azimuth: 0, tilt: 0),
+                );
+              },
+            ),
+          IgnorePointer(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 44),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      widget.title == tx(widget.lang, 'from')
+                          ? Icons.radio_button_checked
+                          : Icons.location_on,
+                      size: 48,
+                      color: const Color(0xFF238B45),
+                    ),
+                    Container(width: 3, height: 22, color: const Color(0xFF238B45)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 20,
+            child: SafeArea(
+              top: false,
+              child: Card(
+                elevation: 10,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(
+                        widget.lang == 'uz'
+                            ? 'Xaritani marker ostida kerakli nuqtaga suring'
+                            : 'Передвиньте карту так, чтобы стрелка была в нужной точке',
+                        textAlign: TextAlign.center,
+                      ),
+                      if (error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                        ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: resolving ? null : confirm,
+                          icon: resolving
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.check),
+                          label: Text(
+                            widget.lang == 'uz' ? 'Shu joyni tanlash' : 'Указать здесь',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class RideScreen extends StatefulWidget {
@@ -1195,6 +1432,91 @@ class _RideScreenState extends State<RideScreen> {
     return a == null || b == null ? null : ym.Point(latitude: a, longitude: b);
   }
 
+  Future<Map<String, String>?> cancellationSurvey(num penalty) async {
+    final reasons = widget.lang == 'uz'
+        ? <String>[
+            'Haydovchi juda uzoq',
+            'Juda uzoq kutdim',
+            'Manzilni xato ko‘rsatdim',
+            'Rejalarim o‘zgardi',
+            'Boshqa mashina topdim',
+            'Boshqa sabab',
+          ]
+        : <String>[
+            'Водитель слишком далеко',
+            'Слишком долго ждать',
+            'Ошибся адресом',
+            'Изменились планы',
+            'Нашёл другую машину',
+            'Другая причина',
+          ];
+    String selected = reasons.first;
+    final details = TextEditingController();
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(widget.lang == 'uz' ? 'Nega buyurtmani bekor qilyapsiz?' : 'Почему отменяете заказ?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                if (penalty > 0)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      (widget.lang == 'uz' ? 'Bekor qilish jarimasi: ' : 'Штраф за отмену: ') +
+                          penalty.toString() +
+                          ' UZS',
+                    ),
+                  ),
+                ...reasons.map(
+                  (reason) => RadioListTile<String>(
+                    value: reason,
+                    groupValue: selected,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(reason),
+                    onChanged: (value) => setDialogState(() => selected = value ?? selected),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: details,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: widget.lang == 'uz' ? 'Izoh (ixtiyoriy)' : 'Комментарий (необязательно)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(widget.lang == 'uz' ? 'Ortga' : 'Назад'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, <String, String>{
+                'reason': selected,
+                'details': details.text.trim(),
+              }),
+              child: Text(widget.lang == 'uz' ? 'Buyurtmani bekor qilish' : 'Отменить заказ'),
+            ),
+          ],
+        ),
+      ),
+    );
+    details.dispose();
+    return result;
+  }
+
   Future<void> cancel() async {
     final o = order;
     if (o == null) return;
@@ -1203,22 +1525,13 @@ class _RideScreenState extends State<RideScreen> {
       final p = await widget.api.get('/api/orders/' + id.toString() + '/cancel-penalty');
       final sum = (p['cancel_order_penalty_sum'] as num?) ?? 0;
       if (!mounted) return;
-      final yes = await showDialog<bool>(
-            context: context,
-            builder: (c) => AlertDialog(
-              title: Text(tx(widget.lang, 'cancel')),
-              content: Text(sum > 0 ? 'Штраф: ' + sum.toString() + ' UZS' : 'Подтвердить отмену заказа?'),
-              actions: <Widget>[
-                TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Нет')),
-                FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Да')),
-              ],
-            ),
-          ) ??
-          false;
-      if (yes) {
-        await widget.api.post('/api/orders/' + id.toString() + '/cancel', <String, dynamic>{});
-        await refresh();
-      }
+      final answer = await cancellationSurvey(sum);
+      if (answer == null) return;
+      await widget.api.post('/api/orders/' + id.toString() + '/cancel', <String, dynamic>{
+        'reason': answer['reason'] ?? '',
+        'details': answer['details'] ?? '',
+      });
+      await refresh();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
@@ -1273,12 +1586,108 @@ class _RideScreenState extends State<RideScreen> {
                 const SizedBox(height: 12),
                 if (state != 'finished' && state != 'aborted' && state != 'client_inside')
                   OutlinedButton.icon(onPressed: cancel, icon: const Icon(Icons.close), label: Text(tx(widget.lang, 'cancel'))),
+                if (state == 'finished')
+                  FilledButton.icon(
+                    onPressed: () => showDriverRatingDialog(
+                      context,
+                      widget.api,
+                      widget.lang,
+                      (o['order_id'] as num).toInt(),
+                      driverName: (o['driver_name'] ?? '').toString(),
+                    ),
+                    icon: const Icon(Icons.star_outline),
+                    label: Text(widget.lang == 'uz' ? 'Haydovchini baholash' : 'Оценить водителя'),
+                  ),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+Future<void> showDriverRatingDialog(
+  BuildContext context,
+  ApiClient api,
+  String lang,
+  int orderId, {
+  String driverName = '',
+}) async {
+  int rating = 5;
+  final comment = TextEditingController();
+  final submit = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        title: Text(lang == 'uz' ? 'Safarni baholang' : 'Оцените поездку'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            if (driverName.trim().isNotEmpty) ...<Widget>[
+              Text(driverName, style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+            ],
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List<Widget>.generate(
+                5,
+                (i) => IconButton(
+                  onPressed: () => setDialogState(() => rating = i + 1),
+                  iconSize: 36,
+                  icon: Icon(i < rating ? Icons.star : Icons.star_border),
+                  color: const Color(0xFFFFB300),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: comment,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: lang == 'uz' ? 'Izoh' : 'Комментарий',
+                hintText: lang == 'uz'
+                    ? 'Haydovchi va safar haqida fikringiz'
+                    : 'Что понравилось или можно улучшить',
+              ),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(lang == 'uz' ? 'Keyinroq' : 'Позже'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.send),
+            label: Text(lang == 'uz' ? 'Yuborish' : 'Отправить'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (submit != true) {
+    comment.dispose();
+    return;
+  }
+
+  try {
+    await api.post('/api/orders/' + orderId.toString() + '/feedback', <String, dynamic>{
+      'rating': rating,
+      'text': comment.text.trim(),
+    });
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(lang == 'uz' ? 'Bahoyingiz yuborildi' : 'Спасибо! Оценка отправлена')),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  } finally {
+    comment.dispose();
   }
 }
 
@@ -1332,16 +1741,43 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         itemBuilder: (_, i) {
                           final o = Map<String, dynamic>.from(orders[i] as Map);
                           final state = (o['state_kind'] ?? '').toString();
+                          final orderId = (o['order_id'] as num?)?.toInt() ?? 0;
                           return Card(
-                            child: ListTile(
-                              leading: CircleAvatar(child: Icon(state == 'finished' ? Icons.check : Icons.close)),
-                              title: Text(
-                                (o['source'] ?? '').toString() + ' → ' + (o['destination'] ?? '').toString(),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: Column(
+                                children: <Widget>[
+                                  ListTile(
+                                    leading: CircleAvatar(
+                                      child: Icon(state == 'finished' ? Icons.check : state == 'aborted' ? Icons.close : Icons.local_taxi),
+                                    ),
+                                    title: Text(
+                                      (o['source'] ?? '').toString() + ' → ' + (o['destination'] ?? '').toString(),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text('#' + orderId.toString() + ' • ' + state),
+                                    trailing: o['total_cost'] == null
+                                        ? null
+                                        : Text(o['total_cost'].toString() + ' UZS', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  ),
+                                  if (state == 'finished' && orderId > 0)
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton.icon(
+                                        onPressed: () => showDriverRatingDialog(
+                                          context,
+                                          widget.api,
+                                          widget.lang,
+                                          orderId,
+                                          driverName: (o['driver_name'] ?? '').toString(),
+                                        ),
+                                        icon: const Icon(Icons.star_outline),
+                                        label: Text(widget.lang == 'uz' ? 'Baholash' : 'Оценить'),
+                                      ),
+                                    ),
+                                ],
                               ),
-                              subtitle: Text('#' + (o['order_id'] ?? '').toString() + ' • ' + state),
-                              trailing: o['total_cost'] == null ? null : Text(o['total_cost'].toString()),
                             ),
                           );
                         },
@@ -1371,6 +1807,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? me;
+  List<dynamic> orders = <dynamic>[];
+  bool loading = true;
 
   @override
   void initState() {
@@ -1380,66 +1818,227 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> load() async {
     try {
-      final data = await widget.api.get('/api/me');
-      if (mounted) setState(() => me = Map<String, dynamic>.from(data as Map));
-    } catch (_) {}
+      final values = await Future.wait<dynamic>(<Future<dynamic>>[
+        widget.api.get('/api/me'),
+        widget.api.get('/api/orders/history'),
+      ]);
+      if (mounted) {
+        setState(() {
+          me = Map<String, dynamic>.from(values[0] as Map);
+          orders = values[1] as List;
+          loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => loading = false);
+    }
   }
 
   String get phone {
-    if (me?['phones'] is List && (me!['phones'] as List).isNotEmpty) {
-      final x = (me!['phones'] as List).first;
-      if (x is Map) return (x['phone'] ?? '').toString();
+    final phones = me?['phones'];
+    if (phones is List && phones.isNotEmpty) {
+      final first = phones.first;
+      if (first is Map) return (first['phone'] ?? '').toString();
+      return first.toString();
     }
     return '';
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(tx(widget.lang, 'profile'), style: const TextStyle(fontWeight: FontWeight.w800))),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: <Widget>[
-            Card(
-              child: ListTile(
-                leading: const CircleAvatar(radius: 28, child: Icon(Icons.person)),
-                title: Text((me?['name'] ?? 'Yangi Taxi').toString(), style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(phone),
-              ),
-            ),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.language),
-                title: const Text('Язык / Til'),
-                trailing: SegmentedButton<String>(
-                  segments: const <ButtonSegment<String>>[
-                    ButtonSegment<String>(value: 'ru', label: Text('RU')),
-                    ButtonSegment<String>(value: 'uz', label: Text('UZ')),
-                  ],
-                  selected: <String>{widget.lang},
-                  onSelectionChanged: (x) => widget.onLang(x.first),
-                ),
-              ),
-            ),
-            Card(
-              child: ListTile(
-                leading: Icon(widget.api.isDemo ? Icons.science_outlined : Icons.dns_outlined),
-                title: Text(tx(widget.lang, 'backend')),
-                subtitle: Text(widget.api.baseUrl),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => backendDialog(context, widget.api, widget.onBackend),
-              ),
-            ),
-            if (me?['bonus_balance'] != null)
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.savings_outlined),
-                  title: const Text('Бонусы / Bonuslar'),
-                  trailing: Text(me!['bonus_balance'].toString()),
-                ),
-              ),
-            const SizedBox(height: 18),
-            OutlinedButton.icon(onPressed: widget.onLogout, icon: const Icon(Icons.logout), label: Text(tx(widget.lang, 'logout'))),
-          ],
+  int get completed => orders.where((x) => x is Map && x['state_kind'] == 'finished').length;
+  int get cancelled => orders.where((x) => x is Map && x['state_kind'] == 'aborted').length;
+
+  double get totalSpend {
+    double sum = 0;
+    for (final x in orders) {
+      if (x is Map && x['state_kind'] == 'finished') {
+        sum += double.tryParse((x['total_cost'] ?? '0').toString()) ?? 0;
+      }
+    }
+    return sum;
+  }
+
+  Widget metric(BuildContext context, IconData icon, String value, String label) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            children: <Widget>[
+              Icon(icon),
+              const SizedBox(height: 6),
+              Text(value, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              Text(label, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
         ),
       );
+
+  Widget infoRow(IconData icon, String title, String value) => ListTile(
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(value.isEmpty ? '—' : value),
+        dense: true,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final rating = me?['rating']?.toString() ?? '—';
+    final email = (me?['email'] ?? '').toString();
+    final birthday = (me?['birthday'] ?? '').toString();
+    final address = (me?['address'] ?? '').toString();
+    final contract = (me?['number'] ?? '').toString();
+    final balance = (me?['balance'] ?? 0).toString();
+    final bonus = (me?['bonus_balance'] ?? 0).toString();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(tx(widget.lang, 'profile'), style: const TextStyle(fontWeight: FontWeight.w800)),
+        actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh))],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+              children: <Widget>[
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: <Color>[
+                        Theme.of(context).colorScheme.primaryContainer,
+                        Theme.of(context).colorScheme.secondaryContainer,
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      CircleAvatar(
+                        radius: 34,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        child: Text(
+                          ((me?['name'] ?? 'Y').toString().trim().isEmpty ? 'Y' : (me?['name'] ?? 'Y').toString().trim()[0]).toUpperCase(),
+                          style: const TextStyle(fontSize: 26, color: Colors.white, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              (me?['name'] ?? 'Yangi Taxi').toString(),
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(phone),
+                            if (contract.isNotEmpty) Text('№ ' + contract, style: Theme.of(context).textTheme.bodySmall),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        children: <Widget>[
+                          const Icon(Icons.star, color: Color(0xFFFFB300)),
+                          Text(rating, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    metric(context, Icons.check_circle_outline, completed.toString(), widget.lang == 'uz' ? 'Safarlar' : 'Поездки'),
+                    const SizedBox(width: 8),
+                    metric(context, Icons.close, cancelled.toString(), widget.lang == 'uz' ? 'Bekor' : 'Отмены'),
+                    const SizedBox(width: 8),
+                    metric(context, Icons.payments_outlined, totalSpend.toStringAsFixed(0), 'UZS'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  child: Column(
+                    children: <Widget>[
+                      infoRow(Icons.phone_outlined, widget.lang == 'uz' ? 'Telefon' : 'Телефон', phone),
+                      infoRow(Icons.email_outlined, 'E-mail', email),
+                      infoRow(Icons.cake_outlined, widget.lang == 'uz' ? 'Tug‘ilgan sana' : 'Дата рождения', birthday),
+                      infoRow(Icons.home_outlined, widget.lang == 'uz' ? 'Manzil' : 'Домашний адрес', address),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Card(
+                  child: Column(
+                    children: <Widget>[
+                      ListTile(
+                        leading: const Icon(Icons.account_balance_wallet_outlined),
+                        title: Text(widget.lang == 'uz' ? 'Asosiy balans' : 'Основной баланс'),
+                        trailing: Text(balance + ' UZS', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.savings_outlined),
+                        title: const Text('Бонусы / Bonuslar'),
+                        trailing: Text(bonus, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.credit_card),
+                        title: Text(widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты'),
+                        subtitle: Text(widget.lang == 'uz'
+                            ? 'Naqd pul • karta ulash uchun provayder kerak'
+                            : 'Наличные • для привязки карты нужен платёжный провайдер'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => showDialog<void>(
+                          context: context,
+                          builder: (c) => AlertDialog(
+                            title: Text(widget.lang == 'uz' ? 'To‘lov' : 'Оплата'),
+                            content: Text(widget.lang == 'uz'
+                                ? 'Bank kartasini xavfsiz ulash Payme, Click yoki boshqa provayder orqali tokenlash bilan ishlaydi. Karta raqami va CVV Yangi Taxi serverida saqlanmaydi.'
+                                : 'Безопасная привязка банковской карты будет работать через токенизацию Payme, Click или другого провайдера. Номер карты и CVV на сервере Yangi Taxi храниться не будут.'),
+                            actions: <Widget>[
+                              FilledButton(onPressed: () => Navigator.pop(c), child: const Text('OK')),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Card(
+                  child: Column(
+                    children: <Widget>[
+                      ListTile(
+                        leading: const Icon(Icons.language),
+                        title: const Text('Язык / Til'),
+                        trailing: SegmentedButton<String>(
+                          segments: const <ButtonSegment<String>>[
+                            ButtonSegment<String>(value: 'ru', label: Text('RU')),
+                            ButtonSegment<String>(value: 'uz', label: Text('UZ')),
+                          ],
+                          selected: <String>{widget.lang},
+                          onSelectionChanged: (x) => widget.onLang(x.first),
+                        ),
+                      ),
+                      ListTile(
+                        leading: Icon(widget.api.isDemo ? Icons.science_outlined : Icons.dns_outlined),
+                        title: Text(tx(widget.lang, 'backend')),
+                        subtitle: Text(widget.api.baseUrl),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => backendDialog(context, widget.api, widget.onBackend),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                OutlinedButton.icon(
+                  onPressed: widget.onLogout,
+                  icon: const Icon(Icons.logout),
+                  label: Text(tx(widget.lang, 'logout')),
+                ),
+              ],
+            ),
+    );
+  }
 }
