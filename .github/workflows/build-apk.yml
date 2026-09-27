@@ -37,10 +37,7 @@ jobs:
           s = s.replace('android:label="yangi_taxi"', 'android:label="Yangi Taxi"')
           if 'android:usesCleartextTraffic=' not in s:
               s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
-          perms = '''    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-'''
+          perms = '    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n'
           if 'ACCESS_FINE_LOCATION' not in s:
               s = s.replace('<application', perms + '    <application', 1)
           p.write_text(s)
