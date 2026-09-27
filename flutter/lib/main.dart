@@ -778,10 +778,10 @@ class _OrderScreenState extends State<OrderScreen> {
   bool busy = false;
   String? error;
 
-  Future<Place?> selectAddress(String title) => showModalBottomSheet<Place>(
+  Future<Place?> selectAddress(String title, Place? initial) => showModalBottomSheet<Place>(
         context: context,
         isScrollControlled: true,
-        builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title),
+        builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
       );
 
   Future<void> estimate() async {
@@ -866,7 +866,7 @@ class _OrderScreenState extends State<OrderScreen> {
                         Icons.radio_button_checked,
                         from?.address ?? tx(widget.lang, 'from'),
                         () async {
-                          final p = await selectAddress(tx(widget.lang, 'from'));
+                          final p = await selectAddress(tx(widget.lang, 'from'), from);
                           if (p != null) {
                             setState(() {
                               from = p;
@@ -882,7 +882,7 @@ class _OrderScreenState extends State<OrderScreen> {
                         Icons.location_on,
                         to?.address ?? tx(widget.lang, 'to'),
                         () async {
-                          final p = await selectAddress(tx(widget.lang, 'to'));
+                          final p = await selectAddress(tx(widget.lang, 'to'), to);
                           if (p != null) {
                             setState(() {
                               to = p;
@@ -956,10 +956,11 @@ class _OrderScreenState extends State<OrderScreen> {
 }
 
 class AddressSheet extends StatefulWidget {
-  const AddressSheet({super.key, required this.api, required this.lang, required this.title});
+  const AddressSheet({super.key, required this.api, required this.lang, required this.title, this.initial});
   final ApiClient api;
   final String lang;
   final String title;
+  final Place? initial;
 
   @override
   State<AddressSheet> createState() => _AddressSheetState();
@@ -1050,6 +1051,20 @@ class _AddressSheetState extends State<AddressSheet> {
     }
   }
 
+  Future<void> pickOnMap() async {
+    FocusScope.of(context).unfocus();
+    final place = await Navigator.of(context).push<Place>(
+      MaterialPageRoute(
+        builder: (_) => MapPointPickerScreen(
+          title: widget.title,
+          lang: widget.lang,
+          initial: widget.initial,
+        ),
+      ),
+    );
+    if (place != null && mounted) Navigator.pop(context, place);
+  }
+
   @override
   void dispose() {
     timer?.cancel();
@@ -1083,6 +1098,15 @@ class _AddressSheetState extends State<AddressSheet> {
                     helperText: yandexMapKitApiKey.isNotEmpty ? 'Поиск Яндекс' : 'Поиск TaxiMaster',
                   ),
                 ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: pickOnMap,
+                    icon: const Icon(Icons.my_location),
+                    label: Text(widget.lang == 'uz' ? 'Xaritada ko‘rsatish' : 'Указать на карте'),
+                  ),
+                ),
                 if (busy) const LinearProgressIndicator(),
                 if (error != null) Padding(padding: const EdgeInsets.all(8), child: Text(error!)),
                 const SizedBox(height: 8),
@@ -1105,6 +1129,205 @@ class _AddressSheetState extends State<AddressSheet> {
           ),
         ),
       );
+}
+
+class MapPointPickerScreen extends StatefulWidget {
+  const MapPointPickerScreen({
+    super.key,
+    required this.title,
+    required this.lang,
+    this.initial,
+  });
+
+  final String title;
+  final String lang;
+  final Place? initial;
+
+  @override
+  State<MapPointPickerScreen> createState() => _MapPointPickerScreenState();
+}
+
+class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
+  ym.MapWindow? mapWindow;
+  late final ys.SearchManager searchManager;
+  ys.SearchSession? reverseSession;
+  bool resolving = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    searchManager = ys.SearchFactory.instance.createSearchManager(ys.SearchManagerType.Online);
+  }
+
+  @override
+  void dispose() {
+    reverseSession?.cancel();
+    super.dispose();
+  }
+
+  Future<Place> reverseGeocode(ym.Point point) async {
+    final completer = Completer<Place>();
+    final listener = ys.SearchSessionSearchListener(
+      onSearchResponse: (response) {
+        String label = '';
+        for (final item in response.collection.children) {
+          final object = item.asGeoObject();
+          if (object == null) continue;
+          final name = object.name?.trim() ?? '';
+          final description = object.descriptionText?.trim() ?? '';
+          label = description.isEmpty || description == name
+              ? name
+              : (name.isEmpty ? description : '$name, $description');
+          if (label.isNotEmpty) break;
+        }
+        if (label.isEmpty) {
+          label = '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
+        }
+        if (!completer.isCompleted) {
+          completer.complete(Place(label, point.latitude, point.longitude));
+        }
+      },
+      onSearchError: (_) {
+        if (!completer.isCompleted) {
+          completer.complete(
+            Place(
+              '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
+              point.latitude,
+              point.longitude,
+            ),
+          );
+        }
+      },
+    );
+
+    reverseSession = searchManager.submitPoint(
+      point,
+      const ys.SearchOptions(
+        searchTypes: ys.SearchType.Geo,
+        resultPageSize: 5,
+      ),
+      listener,
+      zoom: 17,
+    );
+    return completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () => Place(
+        '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
+        point.latitude,
+        point.longitude,
+      ),
+    );
+  }
+
+  Future<void> confirm() async {
+    final window = mapWindow;
+    if (window == null || resolving) return;
+    final point = window.map.cameraPosition.target;
+    setState(() {
+      resolving = true;
+      error = null;
+    });
+    try {
+      final place = await reverseGeocode(point);
+      if (mounted) Navigator.pop(context, place);
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => resolving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = widget.initial?.point ??
+        const ym.Point(latitude: defaultLat, longitude: defaultLon);
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: Stack(
+        children: <Widget>[
+          if (yandexMapKitApiKey.isEmpty)
+            const Center(child: Text('Для выбора точки нужен Yandex MapKit API-ключ.'))
+          else
+            ym_widget.YandexMap(
+              onMapCreated: (window) {
+                mapWindow = window;
+                window.map.move(
+                  ym.CameraPosition(initial, zoom: 16, azimuth: 0, tilt: 0),
+                );
+              },
+            ),
+          IgnorePointer(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 44),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      widget.title == tx(widget.lang, 'from')
+                          ? Icons.radio_button_checked
+                          : Icons.location_on,
+                      size: 48,
+                      color: const Color(0xFF238B45),
+                    ),
+                    Container(width: 3, height: 22, color: const Color(0xFF238B45)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 20,
+            child: SafeArea(
+              top: false,
+              child: Card(
+                elevation: 10,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(
+                        widget.lang == 'uz'
+                            ? 'Xaritani marker ostida kerakli nuqtaga suring'
+                            : 'Передвиньте карту так, чтобы стрелка была в нужной точке',
+                        textAlign: TextAlign.center,
+                      ),
+                      if (error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                        ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: resolving ? null : confirm,
+                          icon: resolving
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.check),
+                          label: Text(
+                            widget.lang == 'uz' ? 'Shu joyni tanlash' : 'Указать здесь',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class RideScreen extends StatefulWidget {
