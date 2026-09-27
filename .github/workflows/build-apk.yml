@@ -1,4 +1,4 @@
-name: Build Yangi Taxi v0.2 APK
+name: Build Yangi Taxi v0.3 APK
 
 on:
   workflow_dispatch:
@@ -32,26 +32,45 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('flutter/android/app/src/main/AndroidManifest.xml')
-          s = p.read_text()
-          s = s.replace('android:label="yangi_taxi"', 'android:label="Yangi Taxi"')
-          if 'android:usesCleartextTraffic=' not in s:
-              s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
+
+          manifest = Path('flutter/android/app/src/main/AndroidManifest.xml')
+          text = manifest.read_text()
+          text = text.replace('android:label="yangi_taxi"', 'android:label="Yangi Taxi"')
+          if 'android:usesCleartextTraffic=' not in text:
+              text = text.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           perms = '    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n'
-          if 'ACCESS_FINE_LOCATION' not in s:
-              s = s.replace('<application', perms + '    <application', 1)
-          p.write_text(s)
+          if 'ACCESS_FINE_LOCATION' not in text:
+              text = text.replace('<application', perms + '    <application', 1)
+          manifest.write_text(text)
+
+          gradle_kts = Path('flutter/android/app/build.gradle.kts')
+          if gradle_kts.exists():
+              g = gradle_kts.read_text()
+              g = g.replace('minSdk = flutter.minSdkVersion', 'minSdk = 26')
+              if 'play-services-location:21.1.0' not in g:
+                  g += '\n\ndependencies {\n    implementation("com.google.android.gms:play-services-location:21.1.0")\n}\n'
+              gradle_kts.write_text(g)
+
+          gradle = Path('flutter/android/app/build.gradle')
+          if gradle.exists():
+              g = gradle.read_text()
+              g = g.replace('minSdkVersion flutter.minSdkVersion', 'minSdkVersion 26')
+              if 'play-services-location:21.1.0' not in g:
+                  g += '\n\ndependencies {\n    implementation "com.google.android.gms:play-services-location:21.1.0"\n}\n'
+              gradle.write_text(g)
           PY
       - name: Get packages
         working-directory: flutter
         run: flutter pub get
       - name: Build release APK
         working-directory: flutter
-        run: flutter build apk --release
+        env:
+          MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+        run: flutter build apk --release --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY"
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v0.2.apk
+        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v0.3-yandex.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-v0.2-apk
-          path: Yangi-Taxi-v0.2.apk
+          name: Yangi-Taxi-v0.3-yandex-apk
+          path: Yangi-Taxi-v0.3-yandex.apk
           if-no-files-found: error
