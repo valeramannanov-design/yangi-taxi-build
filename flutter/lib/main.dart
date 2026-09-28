@@ -1877,9 +1877,11 @@ class _OrderScreenState extends State<OrderScreen> {
     final accent = pickup ? const Color(0xFF1F8A4C) : const Color(0xFF111827);
     final mapLabel = widget.lang == 'uz' ? 'Xarita' : 'Карта';
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
+    return SizedBox(
+      height: 58,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
         Expanded(
           child: Material(
             color: const Color(0xFFF2F3F5),
@@ -1941,7 +1943,8 @@ class _OrderScreenState extends State<OrderScreen> {
             ),
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -2002,6 +2005,7 @@ class _OrderScreenState extends State<OrderScreen> {
       ),
     );
   }
+}
 
 class AddressSheet extends StatefulWidget {
   const AddressSheet({super.key, required this.api, required this.lang, required this.title, this.initial});
