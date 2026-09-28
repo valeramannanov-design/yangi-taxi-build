@@ -189,6 +189,15 @@ class ApiClient {
   Future<dynamic> _demoGet(String path, Map<String, String> query) async {
     await Future<void>.delayed(const Duration(milliseconds: 180));
     if (path == '/api/me') return demoMe;
+    if (path == '/api/crews/nearby') {
+      final lat = double.tryParse(query['lat'] ?? '') ?? defaultLat;
+      final lon = double.tryParse(query['lon'] ?? '') ?? defaultLon;
+      return <dynamic>[
+        <String, dynamic>{'crewId': 71, 'code': '071', 'lat': lat + 0.0021, 'lon': lon - 0.0018, 'distanceKm': 0.28, 'speed': 0, 'direction': 0},
+        <String, dynamic>{'crewId': 72, 'code': '072', 'lat': lat - 0.0030, 'lon': lon + 0.0026, 'distanceKm': 0.41, 'speed': 14, 'direction': 90},
+        <String, dynamic>{'crewId': 73, 'code': '073', 'lat': lat + 0.0042, 'lon': lon + 0.0032, 'distanceKm': 0.59, 'speed': 0, 'direction': 180},
+      ];
+    }
     if (path == '/api/addresses/search') {
       final q = (query['q'] ?? '').toLowerCase();
       if (q.isEmpty) return demoAddresses;
@@ -318,6 +327,38 @@ class Place {
         (j['label'] ?? '').toString(),
         (j['lat'] as num).toDouble(),
         (j['lon'] as num).toDouble(),
+      );
+}
+
+class NearbyCrew {
+  NearbyCrew({
+    required this.crewId,
+    required this.code,
+    required this.lat,
+    required this.lon,
+    required this.distanceKm,
+    required this.speed,
+    required this.direction,
+  });
+
+  final int crewId;
+  final String code;
+  final double lat;
+  final double lon;
+  final double distanceKm;
+  final double speed;
+  final double direction;
+
+  ym.Point get point => ym.Point(latitude: lat, longitude: lon);
+
+  factory NearbyCrew.fromJson(Map<String, dynamic> j) => NearbyCrew(
+        crewId: (j['crewId'] as num?)?.toInt() ?? 0,
+        code: (j['code'] ?? '').toString(),
+        lat: (j['lat'] as num).toDouble(),
+        lon: (j['lon'] as num).toDouble(),
+        distanceKm: (j['distanceKm'] as num?)?.toDouble() ?? 0,
+        speed: (j['speed'] as num?)?.toDouble() ?? 0,
+        direction: (j['direction'] as num?)?.toDouble() ?? -1,
       );
 }
 
@@ -685,6 +726,7 @@ class TaxiYandexMap extends StatefulWidget {
     this.from,
     this.to,
     this.driver,
+    this.nearbyCars = const <NearbyCrew>[],
     this.zoom = 14,
   });
   final ym.Point center;
@@ -692,6 +734,7 @@ class TaxiYandexMap extends StatefulWidget {
   final ym.Point? from;
   final ym.Point? to;
   final ym.Point? driver;
+  final List<NearbyCrew> nearbyCars;
   final double zoom;
 
   @override
@@ -742,6 +785,9 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
     }
     if (widget.from != null) addTextPlacemark(widget.from!, '●');
     if (widget.to != null) addTextPlacemark(widget.to!, '📍');
+    for (final car in widget.nearbyCars) {
+      addTextPlacemark(car.point, '🚕');
+    }
     if (widget.driver != null) addTextPlacemark(widget.driver!, '🚕');
 
     if (!focusRoute || widget.route.length < 2) {
@@ -795,6 +841,9 @@ class _OrderScreenState extends State<OrderScreen> {
   String? error;
   String? locationHint;
   ym.Point? currentLocation;
+  List<NearbyCrew> nearbyCars = <NearbyCrew>[];
+  Timer? nearbyCarsTimer;
+  bool loadingNearbyCars = false;
   late final ys.SearchManager locationSearchManager;
   ys.SearchSession? locationSearchSession;
 
@@ -805,10 +854,14 @@ class _OrderScreenState extends State<OrderScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       detectMyLocation(auto: true);
     });
+    nearbyCarsTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      loadNearbyCars();
+    });
   }
 
   @override
   void dispose() {
+    nearbyCarsTimer?.cancel();
     locationSearchSession?.cancel();
     super.dispose();
   }
@@ -818,6 +871,34 @@ class _OrderScreenState extends State<OrderScreen> {
         isScrollControlled: true,
         builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
       );
+
+  Future<void> loadNearbyCars() async {
+    if (loadingNearbyCars) return;
+    final center = from?.point ?? currentLocation;
+    if (center == null) return;
+
+    loadingNearbyCars = true;
+    try {
+      final data = await widget.api.get(
+        '/api/crews/nearby',
+        query: <String, String>{
+          'lat': center.latitude.toStringAsFixed(7),
+          'lon': center.longitude.toStringAsFixed(7),
+          'radius': '6',
+          'limit': '15',
+        },
+      );
+      final cars = (data as List)
+          .whereType<Map>()
+          .map((x) => NearbyCrew.fromJson(Map<String, dynamic>.from(x)))
+          .toList();
+      if (mounted) setState(() => nearbyCars = cars);
+    } catch (_) {
+      // Nearby cars are a convenience layer. Keep ordering usable if the endpoint is unavailable.
+    } finally {
+      loadingNearbyCars = false;
+    }
+  }
 
   Future<Place> reverseCurrentLocation(ym.Point point) async {
     final completer = Completer<Place>();
@@ -957,6 +1038,7 @@ class _OrderScreenState extends State<OrderScreen> {
               : null;
         });
       }
+      await loadNearbyCars();
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -1043,7 +1125,36 @@ class _OrderScreenState extends State<OrderScreen> {
             route: route,
             from: from?.point,
             to: to?.point,
+            nearbyCars: nearbyCars,
             zoom: 13,
+          ),
+          Positioned(
+            top: 12,
+            left: 12,
+            child: SafeArea(
+              bottom: false,
+              child: Material(
+                elevation: 2,
+                borderRadius: BorderRadius.circular(20),
+                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Icon(Icons.local_taxi, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        widget.lang == 'uz'
+                            ? 'Yaqinda: ${nearbyCars.length}'
+                            : 'Свободно рядом: ${nearbyCars.length}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
           Positioned(
             top: 12,
@@ -1086,6 +1197,7 @@ class _OrderScreenState extends State<OrderScreen> {
                               cost = null;
                               route = <ym.Point>[];
                             });
+                            loadNearbyCars();
                           }
                         },
                       ),
