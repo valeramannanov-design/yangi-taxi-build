@@ -1444,7 +1444,7 @@ class _OrderScreenState extends State<OrderScreen> {
     if (option == null || option['available'] != true) return;
     setState(() {
       selectedTariffKey = key;
-      cost = (option['cost'] as num?)?.toDouble();
+      cost = (option!['cost'] as num?)?.toDouble();
     });
   }
 
