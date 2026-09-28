@@ -841,6 +841,9 @@ class _OrderScreenState extends State<OrderScreen> {
   String? error;
   String? locationHint;
   ym.Point? currentLocation;
+  List<NearbyCrew> nearbyCars = <NearbyCrew>[];
+  Timer? nearbyCarsTimer;
+  bool loadingNearbyCars = false;
   late final ys.SearchManager locationSearchManager;
   ys.SearchSession? locationSearchSession;
 
