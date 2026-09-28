@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:yandex_maps_mapkit/init.dart' as yandex_init;
 import 'package:yandex_maps_mapkit/image.dart' as yi;
@@ -1066,8 +1067,6 @@ class _OrderScreenState extends State<OrderScreen> {
   bool loadingNearbyCars = false;
   String paymentMethod = 'cash';
   bool atmosEnabled = false;
-  double? serviceCommission;
-  double? driverNet;
   late final ys.SearchManager locationSearchManager;
   ys.SearchSession? locationSearchSession;
 
@@ -1332,7 +1331,6 @@ class _OrderScreenState extends State<OrderScreen> {
       final data = await widget.api.post('/api/orders/estimate', <String, dynamic>{
         'source': from!.toJson(),
         'destination': to!.toJson(),
-        'paymentMethod': paymentMethod,
       });
       final points = <ym.Point>[];
       final mapData = data['route'];
@@ -1347,14 +1345,6 @@ class _OrderScreenState extends State<OrderScreen> {
         setState(() {
           cost = (data['cost'] as num).toDouble();
           route = points;
-          final settlement = data['settlement'];
-          if (settlement is Map) {
-            serviceCommission = (settlement['serviceCommission'] as num?)?.toDouble();
-            driverNet = (settlement['driverNet'] as num?)?.toDouble();
-          } else {
-            serviceCommission = null;
-            driverNet = null;
-          }
         });
       }
     } catch (e) {
@@ -1362,6 +1352,115 @@ class _OrderScreenState extends State<OrderScreen> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Future<int?> checkAtmosPayment(String checkoutId) async {
+    final data = await widget.api.get('/api/payments/' + Uri.encodeComponent(checkoutId) + '/status');
+    if (data is! Map) return null;
+    final orderId = (data['orderId'] as num?)?.toInt();
+    if (orderId != null && orderId > 0) return orderId;
+
+    final status = (data['status'] ?? '').toString();
+    if (status == 'failed') {
+      throw ApiException(widget.lang == 'uz' ? 'To‘lov amalga oshmadi' : 'Оплата не прошла');
+    }
+    return null;
+  }
+
+  Future<int?> showAtmosPaymentDialog({
+    required String checkoutId,
+    required String paymentUrl,
+    required double amount,
+  }) async {
+    final uri = Uri.tryParse(paymentUrl);
+    if (uri == null) throw ApiException('ATMOS вернул некорректную ссылку оплаты');
+
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened) {
+      throw ApiException(widget.lang == 'uz'
+          ? 'ATMOS to‘lov sahifasini ochib bo‘lmadi'
+          : 'Не удалось открыть страницу оплаты ATMOS');
+    }
+    if (!mounted) return null;
+
+    bool checking = false;
+    String message = widget.lang == 'uz'
+        ? 'ATMOS sahifasida to‘lovni yakunlang, so‘ng tekshiring.'
+        : 'Завершите оплату на странице ATMOS, затем проверьте её статус.';
+
+    return showDialog<int>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          icon: const Icon(Icons.verified_user_outlined, size: 34),
+          title: Text(widget.lang == 'uz' ? 'ATMOS orqali to‘lov' : 'Оплата через ATMOS'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                amount.toStringAsFixed(0) + ' UZS',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 10),
+              Text(message, textAlign: TextAlign.center),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: checking ? null : () => Navigator.pop(dialogContext),
+              child: Text(widget.lang == 'uz' ? 'Keyinroq' : 'Позже'),
+            ),
+            TextButton.icon(
+              onPressed: checking
+                  ? null
+                  : () async {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    },
+              icon: const Icon(Icons.open_in_new),
+              label: Text(widget.lang == 'uz' ? 'ATMOSni ochish' : 'Открыть ATMOS'),
+            ),
+            FilledButton.icon(
+              onPressed: checking
+                  ? null
+                  : () async {
+                      setDialogState(() {
+                        checking = true;
+                        message = widget.lang == 'uz' ? 'To‘lov tekshirilmoqda…' : 'Проверяем оплату…';
+                      });
+                      try {
+                        final orderId = await checkAtmosPayment(checkoutId);
+                        if (!dialogContext.mounted) return;
+                        if (orderId != null) {
+                          Navigator.pop(dialogContext, orderId);
+                          return;
+                        }
+                        setDialogState(() {
+                          checking = false;
+                          message = widget.lang == 'uz'
+                              ? 'To‘lov hali tasdiqlanmadi. ATMOSda to‘lovni yakunlab, yana tekshiring.'
+                              : 'Оплата пока не подтверждена. Завершите её в ATMOS и проверьте ещё раз.';
+                        });
+                      } catch (e) {
+                        if (!dialogContext.mounted) return;
+                        setDialogState(() {
+                          checking = false;
+                          message = e.toString();
+                        });
+                      }
+                    },
+              icon: checking
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              label: Text(widget.lang == 'uz' ? 'To‘lovni tekshirish' : 'Проверить оплату'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> createOrder() async {
@@ -1374,12 +1473,38 @@ class _OrderScreenState extends State<OrderScreen> {
       final data = await widget.api.post('/api/orders', <String, dynamic>{
         'source': from!.toJson(),
         'destination': to!.toJson(),
+        'paymentMethod': paymentMethod,
       });
-      widget.onOrder((data['order_id'] as num).toInt());
+
+      if (data is Map && data['paymentRequired'] == true) {
+        final checkoutId = (data['checkoutId'] ?? '').toString();
+        final paymentUrl = (data['paymentUrl'] ?? '').toString();
+        final amount = (data['amount'] as num?)?.toDouble() ?? cost ?? 0;
+        if (checkoutId.isEmpty || paymentUrl.isEmpty) {
+          throw ApiException('ATMOS не вернул данные для оплаты');
+        }
+
+        if (mounted) setState(() => busy = false);
+        final orderId = await showAtmosPaymentDialog(
+          checkoutId: checkoutId,
+          paymentUrl: paymentUrl,
+          amount: amount,
+        );
+        if (orderId != null && mounted) {
+          widget.onOrder(orderId);
+        }
+        return;
+      }
+
+      final orderId = data is Map ? (data['order_id'] as num?)?.toInt() : null;
+      if (orderId == null || orderId <= 0) {
+        throw ApiException('TaxiMaster не вернул номер заказа');
+      }
+      widget.onOrder(orderId);
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted && busy) setState(() => busy = false);
     }
   }
 
@@ -1494,8 +1619,6 @@ class _OrderScreenState extends State<OrderScreen> {
                             setState(() {
                               from = p;
                               cost = null;
-                              serviceCommission = null;
-                              driverNet = null;
                               route = <ym.Point>[];
                             });
                             loadNearbyCars();
@@ -1513,8 +1636,6 @@ class _OrderScreenState extends State<OrderScreen> {
                             setState(() {
                               to = p;
                               cost = null;
-                              serviceCommission = null;
-                              driverNet = null;
                               route = <ym.Point>[];
                             });
                           }
@@ -2752,16 +2873,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         leading: const Icon(Icons.credit_card),
                         title: Text(widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты'),
                         subtitle: Text(widget.lang == 'uz'
-                            ? 'Naqd pul • karta ulash uchun provayder kerak'
-                            : 'Наличные • для привязки карты нужен платёжный провайдер'),
+                            ? 'Naqd pul • ATMOS orqali xavfsiz karta to‘lovi'
+                            : 'Наличные • безопасная оплата картой через ATMOS'),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => showDialog<void>(
                           context: context,
                           builder: (c) => AlertDialog(
-                            title: Text(widget.lang == 'uz' ? 'To‘lov' : 'Оплата'),
+                            title: Text(widget.lang == 'uz' ? 'ATMOS to‘lovi' : 'Оплата ATMOS'),
                             content: Text(widget.lang == 'uz'
-                                ? 'Bank kartasini xavfsiz ulash Payme, Click yoki boshqa provayder orqali tokenlash bilan ishlaydi. Karta raqami va CVV Yangi Taxi serverida saqlanmaydi.'
-                                : 'Безопасная привязка банковской карты будет работать через токенизацию Payme, Click или другого провайдера. Номер карты и CVV на сервере Yangi Taxi храниться не будут.'),
+                                ? 'Karta orqali to‘lov ATMOSning himoyalangan sahifasida amalga oshiriladi. Yangi Taxi karta raqami va CVVni saqlamaydi. Haydovchi bilan hisob-kitob TaxiMaster orqali yuritiladi.'
+                                : 'Оплата картой выполняется на защищённой странице ATMOS. Yangi Taxi не хранит номер карты и CVV. Расчёты с водителем выполняются через TaxiMaster.'),
                             actions: <Widget>[
                               FilledButton(onPressed: () => Navigator.pop(c), child: const Text('OK')),
                             ],
