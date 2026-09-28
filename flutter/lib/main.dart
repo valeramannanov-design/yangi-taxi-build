@@ -1096,6 +1096,49 @@ class _OrderScreenState extends State<OrderScreen> {
         builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
       );
 
+  Future<void> pickRoutePointOnMap({required bool pickup}) async {
+    final title = pickup ? tx(widget.lang, 'from') : tx(widget.lang, 'to');
+    final initial = pickup
+        ? (from ?? (currentLocation == null
+            ? null
+            : Place(
+                widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение',
+                currentLocation!.latitude,
+                currentLocation!.longitude,
+              )))
+        : (to ?? from ?? (currentLocation == null
+            ? null
+            : Place(
+                widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение',
+                currentLocation!.latitude,
+                currentLocation!.longitude,
+              )));
+
+    final place = await Navigator.of(context).push<Place>(
+      MaterialPageRoute(
+        builder: (_) => MapPointPickerScreen(
+          title: title,
+          lang: widget.lang,
+          initial: initial,
+        ),
+      ),
+    );
+    if (place == null || !mounted) return;
+
+    setState(() {
+      if (pickup) {
+        from = place;
+      } else {
+        to = place;
+      }
+      cost = null;
+      route = <ym.Point>[];
+      error = null;
+    });
+
+    if (pickup) await loadNearbyCars();
+  }
+
   Future<void> loadPaymentConfig() async {
     try {
       final data = await widget.api.get('/api/payments/config');
@@ -1527,95 +1570,136 @@ class _OrderScreenState extends State<OrderScreen> {
               zoom: destinationReady ? 13 : 15,
             ),
           ),
+
+          // Compact floating header. The map remains the main surface.
           Positioned(
-            top: 14,
-            left: 14,
+            top: 12,
+            left: 12,
+            right: 12,
             child: SafeArea(
               bottom: false,
-              child: Material(
-                color: Colors.white,
-                elevation: 4,
-                borderRadius: BorderRadius.circular(24),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Icon(Icons.local_taxi, size: 20, color: Color(0xFF1F8A4C)),
-                      SizedBox(width: 7),
-                      Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w800)),
-                    ],
+              child: Row(
+                children: <Widget>[
+                  Material(
+                    color: Colors.white,
+                    elevation: 6,
+                    shadowColor: const Color(0x22000000),
+                    borderRadius: BorderRadius.circular(22),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(22),
+                      onTap: () {},
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(Icons.local_taxi_rounded, size: 20, color: Color(0xFF1F8A4C)),
+                            SizedBox(width: 8),
+                            Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  const Spacer(),
+                  Material(
+                    color: Colors.white,
+                    elevation: 6,
+                    shadowColor: const Color(0x22000000),
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      onPressed: locating ? null : () => detectMyLocation(),
+                      tooltip: widget.lang == 'uz' ? 'Mening joylashuvim' : 'Моё местоположение',
+                      icon: locating
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.my_location_rounded),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          Positioned(
-            top: 14,
-            right: 14,
-            child: SafeArea(
-              bottom: false,
-              child: FloatingActionButton.small(
-                heroTag: 'my-location',
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF111827),
-                onPressed: locating ? null : () => detectMyLocation(),
-                tooltip: widget.lang == 'uz' ? 'Mening joylashuvim' : 'Моё местоположение',
-                child: locating
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.my_location),
-              ),
-            ),
-          ),
+
           Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(
               top: false,
-              minimum: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              minimum: const EdgeInsets.fromLTRB(8, 0, 8, 8),
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 720),
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28), bottom: Radius.circular(24)),
+                  borderRadius: BorderRadius.all(Radius.circular(28)),
                   boxShadow: <BoxShadow>[
-                    BoxShadow(color: Color(0x22000000), blurRadius: 24, offset: Offset(0, -5)),
+                    BoxShadow(
+                      color: Color(0x26000000),
+                      blurRadius: 28,
+                      offset: Offset(0, -8),
+                    ),
                   ],
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
                       Center(
                         child: Container(
-                          width: 42,
+                          width: 40,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFD6D9DE),
-                            borderRadius: BorderRadius.circular(100),
+                            color: const Color(0xFFD7D9DD),
+                            borderRadius: BorderRadius.circular(20),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда едем?',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
+                      const SizedBox(height: 11),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда едем?',
+                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.7,
+                                  ),
                             ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF2F3F5),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                const Icon(Icons.schedule_rounded, size: 16),
+                                const SizedBox(width: 5),
+                                Text(
+                                  widget.lang == 'uz' ? 'Hozir' : 'Сейчас',
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
-                      addressButton(
+
+                      // Both route rows have their own Map button directly next
+                      // to the address, matching the interaction the user expects.
+                      routeAddressRow(
                         context,
-                        Icons.radio_button_checked,
-                        from?.address ?? tx(widget.lang, 'from'),
-                        () async {
+                        pickup: true,
+                        label: from?.address ?? (widget.lang == 'uz' ? 'Qayerdan' : 'Откуда'),
+                        onAddressTap: () async {
                           final p = await selectAddress(tx(widget.lang, 'from'), from);
-                          if (p != null) {
+                          if (p != null && mounted) {
                             setState(() {
                               from = p;
                               cost = null;
@@ -1624,15 +1708,16 @@ class _OrderScreenState extends State<OrderScreen> {
                             loadNearbyCars();
                           }
                         },
+                        onMapTap: () => pickRoutePointOnMap(pickup: true),
                       ),
                       const SizedBox(height: 8),
-                      addressButton(
+                      routeAddressRow(
                         context,
-                        Icons.location_on,
-                        to?.address ?? tx(widget.lang, 'to'),
-                        () async {
+                        pickup: false,
+                        label: to?.address ?? (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
+                        onAddressTap: () async {
                           final p = await selectAddress(tx(widget.lang, 'to'), to);
-                          if (p != null) {
+                          if (p != null && mounted) {
                             setState(() {
                               to = p;
                               cost = null;
@@ -1640,32 +1725,41 @@ class _OrderScreenState extends State<OrderScreen> {
                             });
                           }
                         },
+                        onMapTap: () => pickRoutePointOnMap(pickup: false),
                       ),
+
                       if (cost != null) ...<Widget>[
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 12),
                         Container(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF5F6F7),
+                            color: const Color(0xFFF3F4F6),
                             borderRadius: BorderRadius.circular(18),
                           ),
                           child: Row(
                             children: <Widget>[
-                              const CircleAvatar(
-                                backgroundColor: Color(0xFFE5F4EA),
-                                child: Icon(Icons.local_taxi, color: Color(0xFF1F8A4C)),
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE4F3E9),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Icon(Icons.local_taxi_rounded, color: Color(0xFF1F8A4C)),
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 11),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: <Widget>[
-                                    Text(widget.lang == 'uz' ? 'Standart' : 'Стандарт',
-                                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                                    Text(
+                                      widget.lang == 'uz' ? 'Standart' : 'Стандарт',
+                                      style: const TextStyle(fontWeight: FontWeight.w900),
+                                    ),
                                     const SizedBox(height: 2),
                                     Text(
                                       widget.lang == 'uz' ? 'Yaqin mashina' : 'Ближайшая машина',
-                                      style: Theme.of(context).textTheme.bodySmall,
+                                      style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                                     ),
                                   ],
                                 ),
@@ -1677,19 +1771,14 @@ class _OrderScreenState extends State<OrderScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          widget.lang == 'uz' ? 'To‘lov usuli' : 'Способ оплаты',
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 9),
                         Row(
                           children: <Widget>[
                             Expanded(
                               child: _paymentChoice(
                                 context,
                                 value: 'cash',
-                                icon: Icons.payments_outlined,
+                                icon: Icons.payments_rounded,
                                 title: widget.lang == 'uz' ? 'Naqd' : 'Наличные',
                                 enabled: true,
                               ),
@@ -1699,17 +1788,18 @@ class _OrderScreenState extends State<OrderScreen> {
                               child: _paymentChoice(
                                 context,
                                 value: 'card',
-                                icon: Icons.credit_card,
+                                icon: Icons.credit_card_rounded,
                                 title: 'ATMOS',
                                 enabled: canUseCard,
                                 subtitle: canUseCard
-                                    ? (widget.lang == 'uz' ? 'ATMOS karta' : 'Карта ATMOS')
+                                    ? (widget.lang == 'uz' ? 'Karta' : 'Карта')
                                     : (widget.lang == 'uz' ? 'Ulanmoqda' : 'Подключается'),
                               ),
                             ),
                           ],
                         ),
                       ],
+
                       if (locationHint != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
@@ -1717,10 +1807,15 @@ class _OrderScreenState extends State<OrderScreen> {
                             onTap: openLocationSettings,
                             child: Row(
                               children: <Widget>[
-                                const Icon(Icons.location_searching, size: 18),
+                                const Icon(Icons.location_searching_rounded, size: 18),
                                 const SizedBox(width: 7),
-                                Expanded(child: Text(locationHint!)),
-                                const Icon(Icons.settings_outlined, size: 18),
+                                Expanded(
+                                  child: Text(
+                                    locationHint!,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                                const Icon(Icons.settings_outlined, size: 17),
                               ],
                             ),
                           ),
@@ -1728,9 +1823,13 @@ class _OrderScreenState extends State<OrderScreen> {
                       if (error != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
-                          child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                          child: Text(
+                            error!,
+                            style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                          ),
                         ),
-                      const SizedBox(height: 12),
+
+                      const SizedBox(height: 11),
                       SizedBox(
                         height: 54,
                         child: FilledButton(
@@ -1738,6 +1837,10 @@ class _OrderScreenState extends State<OrderScreen> {
                               ? null
                               : (cost == null ? estimate : createOrder),
                           style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF111827),
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: const Color(0xFFE5E7EB),
+                            disabledForegroundColor: const Color(0xFF9CA3AF),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
                           ),
                           child: busy
@@ -1745,16 +1848,11 @@ class _OrderScreenState extends State<OrderScreen> {
                                   dimension: 22,
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
-                              : Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: <Widget>[
-                                    Icon(cost == null ? Icons.route : Icons.local_taxi),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      cost == null ? tx(widget.lang, 'estimate') : tx(widget.lang, 'book'),
-                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                                    ),
-                                  ],
+                              : Text(
+                                  cost == null
+                                      ? (widget.lang == 'uz' ? 'Narxni bilish' : 'Узнать стоимость')
+                                      : (widget.lang == 'uz' ? 'Buyurtma berish' : 'Заказать'),
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
                                 ),
                         ),
                       ),
@@ -1766,6 +1864,84 @@ class _OrderScreenState extends State<OrderScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget routeAddressRow(
+    BuildContext context, {
+    required bool pickup,
+    required String label,
+    required VoidCallback onAddressTap,
+    required VoidCallback onMapTap,
+  }) {
+    final accent = pickup ? const Color(0xFF1F8A4C) : const Color(0xFF111827);
+    final mapLabel = widget.lang == 'uz' ? 'Xarita' : 'Карта';
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Expanded(
+          child: Material(
+            color: const Color(0xFFF2F3F5),
+            borderRadius: BorderRadius.circular(17),
+            child: InkWell(
+              onTap: onAddressTap,
+              borderRadius: BorderRadius.circular(17),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: pickup ? Colors.white : accent,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: accent, width: 3),
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: pickup || from != null || to != null ? FontWeight.w700 : FontWeight.w600,
+                          color: const Color(0xFF111827),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Material(
+          color: const Color(0xFFF2F3F5),
+          borderRadius: BorderRadius.circular(17),
+          child: InkWell(
+            onTap: onMapTap,
+            borderRadius: BorderRadius.circular(17),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 13),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  const Icon(Icons.map_outlined, size: 20),
+                  const SizedBox(height: 2),
+                  Text(
+                    mapLabel,
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1783,57 +1959,49 @@ class _OrderScreenState extends State<OrderScreen> {
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFE5F4EA) : const Color(0xFFF5F6F7),
+          color: selected ? const Color(0xFFE4F3E9) : const Color(0xFFF3F4F6),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: selected ? const Color(0xFF1F8A4C) : Colors.transparent,
-            width: 1.4,
+            width: 1.3,
           ),
         ),
         child: Row(
           children: <Widget>[
-            Icon(icon, size: 21, color: enabled ? const Color(0xFF111827) : const Color(0xFF9CA3AF)),
+            Icon(
+              icon,
+              size: 20,
+              color: enabled ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(title, style: TextStyle(fontWeight: FontWeight.w800, color: enabled ? null : const Color(0xFF9CA3AF))),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: enabled ? null : const Color(0xFF9CA3AF),
+                    ),
+                  ),
                   if (subtitle != null)
-                    Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF8B8F97))),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(fontSize: 10, color: Color(0xFF8B8F97)),
+                    ),
                 ],
               ),
             ),
-            if (selected) const Icon(Icons.check_circle, size: 18, color: Color(0xFF1F8A4C)),
+            if (selected)
+              const Icon(Icons.check_circle_rounded, size: 18, color: Color(0xFF1F8A4C)),
           ],
         ),
       ),
     );
   }
-
-  Widget addressButton(BuildContext context, IconData icon, String label, VoidCallback onTap) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5F6F7),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: <Widget>[
-              Icon(icon),
-              const SizedBox(width: 10),
-              Expanded(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis)),
-              const Icon(Icons.chevron_right),
-            ],
-          ),
-        ),
-      );
-}
 
 class AddressSheet extends StatefulWidget {
   const AddressSheet({super.key, required this.api, required this.lang, required this.title, this.initial});
@@ -2154,7 +2322,21 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
         const ym.Point(latitude: defaultLat, longitude: defaultLon);
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              widget.lang == 'uz' ? 'Xaritada belgilang' : 'Укажите на карте',
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+            ),
+            Text(
+              widget.title,
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12, color: Color(0xFF6B7280)),
+            ),
+          ],
+        ),
+      ),
       body: Stack(
         children: <Widget>[
           if (yandexMapKitApiKey.isEmpty)
@@ -2217,7 +2399,7 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
                                 )
                               : const Icon(Icons.check),
                           label: Text(
-                            widget.lang == 'uz' ? 'Shu joyni tanlash' : 'Указать здесь',
+                            widget.lang == 'uz' ? 'Shu nuqtani tanlash' : 'Выбрать эту точку',
                           ),
                         ),
                       ),
