@@ -1847,7 +1847,7 @@ class _OrderScreenState extends State<OrderScreen> {
   @override
   Widget build(BuildContext context) {
     final center = from?.point ?? currentLocation ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
-    final canUseCard = atmosEnabled;
+    final canUseCard = atmosEnabled && cardBindingAvailable;
     final destinationReady = to != null;
 
     return Scaffold(
