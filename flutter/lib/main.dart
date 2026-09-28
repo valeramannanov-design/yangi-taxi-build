@@ -3717,12 +3717,14 @@ class ProfileScreen extends StatefulWidget {
     required this.onLang,
     required this.onBackend,
     required this.onLogout,
+    this.onMenu,
   });
   final ApiClient api;
   final String lang;
   final ValueChanged<String> onLang;
   final Future<void> Function(String) onBackend;
   final VoidCallback onLogout;
+  final VoidCallback? onMenu;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
