@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:yandex_maps_mapkit/init.dart' as yandex_init;
 import 'package:yandex_maps_mapkit/mapkit.dart' as ym;
@@ -790,13 +791,193 @@ class _OrderScreenState extends State<OrderScreen> {
   double? cost;
   List<ym.Point> route = <ym.Point>[];
   bool busy = false;
+  bool locating = false;
   String? error;
+  String? locationHint;
+  ym.Point? currentLocation;
+  late final ys.SearchManager locationSearchManager;
+  ys.SearchSession? locationSearchSession;
+
+  @override
+  void initState() {
+    super.initState();
+    locationSearchManager = ys.SearchFactory.instance.createSearchManager(ys.SearchManagerType.Online);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      detectMyLocation(auto: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    locationSearchSession?.cancel();
+    super.dispose();
+  }
 
   Future<Place?> selectAddress(String title, Place? initial) => showModalBottomSheet<Place>(
         context: context,
         isScrollControlled: true,
         builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
       );
+
+  Future<Place> reverseCurrentLocation(ym.Point point) async {
+    final completer = Completer<Place>();
+    final listener = ys.SearchSessionSearchListener(
+      onSearchResponse: (response) {
+        String label = '';
+        for (final item in response.collection.children) {
+          final object = item.asGeoObject();
+          if (object == null) continue;
+          final name = object.name?.trim() ?? '';
+          final description = object.descriptionText?.trim() ?? '';
+          label = description.isEmpty || description == name
+              ? name
+              : (name.isEmpty ? description : '$name, $description');
+          if (label.isNotEmpty) break;
+        }
+        if (label.isEmpty) {
+          label = widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение';
+        }
+        if (!completer.isCompleted) {
+          completer.complete(Place(label, point.latitude, point.longitude));
+        }
+      },
+      onSearchError: (_) {
+        if (!completer.isCompleted) {
+          completer.complete(
+            Place(
+              widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение',
+              point.latitude,
+              point.longitude,
+            ),
+          );
+        }
+      },
+    );
+
+    locationSearchSession?.cancel();
+    locationSearchSession = locationSearchManager.submitPoint(
+      point,
+      const ys.SearchOptions(
+        searchTypes: ys.SearchType.Geo,
+        resultPageSize: 5,
+      ),
+      listener,
+      zoom: 17,
+    );
+
+    return completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () => Place(
+        widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение',
+        point.latitude,
+        point.longitude,
+      ),
+    );
+  }
+
+  Future<void> detectMyLocation({bool auto = false}) async {
+    if (locating) return;
+    if (mounted) {
+      setState(() {
+        locating = true;
+        locationHint = null;
+        if (!auto) error = null;
+      });
+    }
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          setState(() {
+            locationHint = widget.lang == 'uz'
+                ? 'Geolokatsiyani yoqing'
+                : 'Включите геолокацию на телефоне';
+          });
+        }
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
+          setState(() {
+            locationHint = widget.lang == 'uz'
+                ? 'Joylashuvga ruxsat berilmadi'
+                : 'Доступ к геолокации не разрешён';
+          });
+        }
+        return;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          setState(() {
+            locationHint = widget.lang == 'uz'
+                ? 'Joylashuv ruxsati sozlamalarda o‘chirilgan'
+                : 'Геолокация запрещена в настройках приложения';
+          });
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
+      final point = ym.Point(
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+
+      if (mounted) {
+        setState(() {
+          currentLocation = point;
+        });
+      }
+
+      final place = await reverseCurrentLocation(point);
+      if (!mounted) return;
+
+      if (!auto || from == null) {
+        setState(() {
+          from = place;
+          cost = null;
+          route = <ym.Point>[];
+          locationHint = position.accuracy > 100
+              ? (widget.lang == 'uz'
+                  ? 'Joylashuv aniqligi taxminan ${position.accuracy.toStringAsFixed(0)} m'
+                  : 'Точность геолокации около ${position.accuracy.toStringAsFixed(0)} м')
+              : null;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          locationHint = widget.lang == 'uz'
+              ? 'Joylashuvni aniqlab bo‘lmadi'
+              : 'Не удалось определить местоположение';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => locating = false);
+    }
+  }
+
+  Future<void> openLocationSettings() async {
+    final enabled = await Geolocator.isLocationServiceEnabled();
+    if (!enabled) {
+      await Geolocator.openLocationSettings();
+      return;
+    }
+    await Geolocator.openAppSettings();
+  }
 
   Future<void> estimate() async {
     if (from == null || to == null) return;
@@ -852,7 +1033,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final center = from?.point ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
+    final center = from?.point ?? currentLocation ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
     return Scaffold(
       appBar: AppBar(title: const Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w800))),
       body: Stack(
@@ -863,6 +1044,24 @@ class _OrderScreenState extends State<OrderScreen> {
             from: from?.point,
             to: to?.point,
             zoom: 13,
+          ),
+          Positioned(
+            top: 12,
+            right: 12,
+            child: SafeArea(
+              bottom: false,
+              child: FloatingActionButton.small(
+                heroTag: 'my-location',
+                onPressed: locating ? null : () => detectMyLocation(),
+                tooltip: widget.lang == 'uz' ? 'Mening joylashuvim' : 'Моё местоположение',
+                child: locating
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.my_location),
+              ),
+            ),
           ),
           Align(
             alignment: Alignment.bottomCenter,
@@ -906,6 +1105,21 @@ class _OrderScreenState extends State<OrderScreen> {
                           }
                         },
                       ),
+                      if (locationHint != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: InkWell(
+                            onTap: openLocationSettings,
+                            child: Row(
+                              children: <Widget>[
+                                const Icon(Icons.location_searching, size: 18),
+                                const SizedBox(width: 7),
+                                Expanded(child: Text(locationHint!)),
+                                const Icon(Icons.settings_outlined, size: 18),
+                              ],
+                            ),
+                          ),
+                        ),
                       if (error != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
