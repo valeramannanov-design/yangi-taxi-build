@@ -1702,7 +1702,9 @@ class _OrderScreenState extends State<OrderScreen> {
                                 icon: Icons.credit_card,
                                 title: 'ATMOS',
                                 enabled: canUseCard,
-                                subtitle: canUseCard ? null : (widget.lang == 'uz' ? 'Ulanmoqda' : 'Подключается'),
+                                subtitle: canUseCard
+                                    ? (widget.lang == 'uz' ? 'ATMOS karta' : 'Карта ATMOS')
+                                    : (widget.lang == 'uz' ? 'Ulanmoqda' : 'Подключается'),
                               ),
                             ),
                           ],
@@ -2881,8 +2883,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           builder: (c) => AlertDialog(
                             title: Text(widget.lang == 'uz' ? 'ATMOS to‘lovi' : 'Оплата ATMOS'),
                             content: Text(widget.lang == 'uz'
-                                ? 'Karta orqali to‘lov ATMOSning himoyalangan sahifasida amalga oshiriladi. Yangi Taxi karta raqami va CVVni saqlamaydi. Haydovchi bilan hisob-kitob TaxiMaster orqali yuritiladi.'
-                                : 'Оплата картой выполняется на защищённой странице ATMOS. Yangi Taxi не хранит номер карты и CVV. Расчёты с водителем выполняются через TaxiMaster.'),
+                                ? 'Karta orqali to‘lov ATMOSning himoyalangan sahifasida amalga oshiriladi. Yangi Taxi karta raqami va CVVni saqlamaydi. Safar tugagach to‘langan summa haydovchining TaxiMaster/TMDriver asosiy balansiga avtomatik tushadi; komissiya va pul yechish TaxiMaster qoidalarida qoladi.'
+                                : 'Оплата картой выполняется на защищённой странице ATMOS. Yangi Taxi не хранит номер карты и CVV. После завершения оплаченной поездки сумма автоматически зачисляется на основной баланс водителя в TaxiMaster/TMDriver; комиссия и вывод средств остаются по вашим правилам TaxiMaster.'),
                             actions: <Widget>[
                               FilledButton(onPressed: () => Navigator.pop(c), child: const Text('OK')),
                             ],
