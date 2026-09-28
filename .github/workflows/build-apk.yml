@@ -1,4 +1,4 @@
-name: Build Yangi Taxi v1.2 APK
+name: Build Yangi Taxi v1.3 APK
 
 on:
   workflow_dispatch:
@@ -68,9 +68,9 @@ jobs:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
         run: flutter build apk --release --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY"
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.2-driver-balance.apk
+        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.3-map-buttons.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-v1.2-driver-balance-apk
-          path: Yangi-Taxi-v1.2-driver-balance.apk
+          name: Yangi-Taxi-v1.3-map-buttons-apk
+          path: Yangi-Taxi-v1.3-map-buttons.apk
           if-no-files-found: error
