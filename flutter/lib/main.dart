@@ -459,14 +459,30 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = ColorScheme.fromSeed(seedColor: const Color(0xFF238B45));
+    final scheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF1F8A4C),
+      brightness: Brightness.light,
+      surface: Colors.white,
+    );
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Yangi Taxi',
       theme: ThemeData(
         colorScheme: scheme,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF7F8F4),
+        scaffoldBackgroundColor: const Color(0xFFF4F5F7),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: false,
+        ),
+        navigationBarTheme: const NavigationBarThemeData(
+          height: 68,
+          backgroundColor: Colors.white,
+          indicatorColor: Color(0xFFE5F4EA),
+          elevation: 8,
+        ),
         cardTheme: const CardThemeData(
           elevation: 0,
           margin: EdgeInsets.zero,
@@ -1048,6 +1064,10 @@ class _OrderScreenState extends State<OrderScreen> {
   List<NearbyCrew> nearbyCars = <NearbyCrew>[];
   Timer? nearbyCarsTimer;
   bool loadingNearbyCars = false;
+  String paymentMethod = 'cash';
+  bool atmosEnabled = false;
+  double? serviceCommission;
+  double? driverNet;
   late final ys.SearchManager locationSearchManager;
   ys.SearchSession? locationSearchSession;
 
@@ -1055,6 +1075,7 @@ class _OrderScreenState extends State<OrderScreen> {
   void initState() {
     super.initState();
     locationSearchManager = ys.SearchFactory.instance.createSearchManager(ys.SearchManagerType.Online);
+    loadPaymentConfig();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       detectMyLocation(auto: true);
     });
@@ -1075,6 +1096,18 @@ class _OrderScreenState extends State<OrderScreen> {
         isScrollControlled: true,
         builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
       );
+
+  Future<void> loadPaymentConfig() async {
+    try {
+      final data = await widget.api.get('/api/payments/config');
+      if (!mounted || data is! Map) return;
+      setState(() {
+        atmosEnabled = data['atmosEnabled'] == true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => atmosEnabled = false);
+    }
+  }
 
   Future<void> loadNearbyCars() async {
     if (loadingNearbyCars) return;
@@ -1299,6 +1332,7 @@ class _OrderScreenState extends State<OrderScreen> {
       final data = await widget.api.post('/api/orders/estimate', <String, dynamic>{
         'source': from!.toJson(),
         'destination': to!.toJson(),
+        'paymentMethod': paymentMethod,
       });
       final points = <ym.Point>[];
       final mapData = data['route'];
@@ -1313,6 +1347,14 @@ class _OrderScreenState extends State<OrderScreen> {
         setState(() {
           cost = (data['cost'] as num).toDouble();
           route = points;
+          final settlement = data['settlement'];
+          if (settlement is Map) {
+            serviceCommission = (settlement['serviceCommission'] as num?)?.toDouble();
+            driverNet = (settlement['driverNet'] as num?)?.toDouble();
+          } else {
+            serviceCommission = null;
+            driverNet = null;
+          }
         });
       }
     } catch (e) {
@@ -1344,25 +1386,54 @@ class _OrderScreenState extends State<OrderScreen> {
   @override
   Widget build(BuildContext context) {
     final center = from?.point ?? currentLocation ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
+    final canUseCard = atmosEnabled;
+    final destinationReady = to != null;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w800))),
       body: Stack(
         children: <Widget>[
-          TaxiYandexMap(
-            center: center,
-            route: route,
-            from: from?.point,
-            to: to?.point,
-            nearbyCars: nearbyCars,
-            zoom: 13,
+          Positioned.fill(
+            child: TaxiYandexMap(
+              center: center,
+              route: route,
+              from: from?.point,
+              to: to?.point,
+              nearbyCars: nearbyCars,
+              zoom: destinationReady ? 13 : 15,
+            ),
           ),
           Positioned(
-            top: 12,
-            right: 12,
+            top: 14,
+            left: 14,
+            child: SafeArea(
+              bottom: false,
+              child: Material(
+                color: Colors.white,
+                elevation: 4,
+                borderRadius: BorderRadius.circular(24),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(Icons.local_taxi, size: 20, color: Color(0xFF1F8A4C)),
+                      SizedBox(width: 7),
+                      Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w800)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 14,
+            right: 14,
             child: SafeArea(
               bottom: false,
               child: FloatingActionButton.small(
                 heroTag: 'my-location',
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF111827),
                 onPressed: locating ? null : () => detectMyLocation(),
                 tooltip: widget.lang == 'uz' ? 'Mening joylashuvim' : 'Моё местоположение',
                 child: locating
@@ -1377,14 +1448,42 @@ class _OrderScreenState extends State<OrderScreen> {
           Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(
-              minimum: const EdgeInsets.all(12),
-              child: Card(
-                elevation: 8,
+              top: false,
+              minimum: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 720),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28), bottom: Radius.circular(24)),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(color: Color(0x22000000), blurRadius: 24, offset: Offset(0, -5)),
+                  ],
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
+                      Center(
+                        child: Container(
+                          width: 42,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD6D9DE),
+                            borderRadius: BorderRadius.circular(100),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда едем?',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
                       addressButton(
                         context,
                         Icons.radio_button_checked,
@@ -1395,6 +1494,8 @@ class _OrderScreenState extends State<OrderScreen> {
                             setState(() {
                               from = p;
                               cost = null;
+                              serviceCommission = null;
+                              driverNet = null;
                               route = <ym.Point>[];
                             });
                             loadNearbyCars();
@@ -1412,11 +1513,80 @@ class _OrderScreenState extends State<OrderScreen> {
                             setState(() {
                               to = p;
                               cost = null;
+                              serviceCommission = null;
+                              driverNet = null;
                               route = <ym.Point>[];
                             });
                           }
                         },
                       ),
+                      if (cost != null) ...<Widget>[
+                        const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5F6F7),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Row(
+                            children: <Widget>[
+                              const CircleAvatar(
+                                backgroundColor: Color(0xFFE5F4EA),
+                                child: Icon(Icons.local_taxi, color: Color(0xFF1F8A4C)),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(widget.lang == 'uz' ? 'Standart' : 'Стандарт',
+                                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      widget.lang == 'uz' ? 'Yaqin mashina' : 'Ближайшая машина',
+                                      style: Theme.of(context).textTheme.bodySmall,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                cost!.toStringAsFixed(0) + ' UZS',
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          widget.lang == 'uz' ? 'To‘lov usuli' : 'Способ оплаты',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _paymentChoice(
+                                context,
+                                value: 'cash',
+                                icon: Icons.payments_outlined,
+                                title: widget.lang == 'uz' ? 'Naqd' : 'Наличные',
+                                enabled: true,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _paymentChoice(
+                                context,
+                                value: 'card',
+                                icon: Icons.credit_card,
+                                title: 'ATMOS',
+                                enabled: canUseCard,
+                                subtitle: canUseCard ? null : (widget.lang == 'uz' ? 'Ulanmoqda' : 'Подключается'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       if (locationHint != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
@@ -1437,29 +1607,32 @@ class _OrderScreenState extends State<OrderScreen> {
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                         ),
-                      if (cost != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: <Widget>[
-                              Text(tx(widget.lang, 'price')),
-                              Text(
-                                cost!.toStringAsFixed(0) + ' UZS',
-                                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                              ),
-                            ],
-                          ),
-                        ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: busy || from == null || to == null ? null : (cost == null ? estimate : createOrder),
-                          icon: busy
-                              ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                              : Icon(cost == null ? Icons.calculate_outlined : Icons.local_taxi),
-                          label: Text(cost == null ? tx(widget.lang, 'estimate') : tx(widget.lang, 'book')),
+                        height: 54,
+                        child: FilledButton(
+                          onPressed: busy || from == null || to == null
+                              ? null
+                              : (cost == null ? estimate : createOrder),
+                          style: FilledButton.styleFrom(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+                          ),
+                          child: busy
+                              ? const SizedBox.square(
+                                  dimension: 22,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: <Widget>[
+                                    Icon(cost == null ? Icons.route : Icons.local_taxi),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      cost == null ? tx(widget.lang, 'estimate') : tx(widget.lang, 'book'),
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                                    ),
+                                  ],
+                                ),
                         ),
                       ),
                     ],
@@ -1473,15 +1646,59 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
+  Widget _paymentChoice(
+    BuildContext context, {
+    required String value,
+    required IconData icon,
+    required String title,
+    required bool enabled,
+    String? subtitle,
+  }) {
+    final selected = paymentMethod == value;
+    return InkWell(
+      onTap: enabled ? () => setState(() => paymentMethod = value) : null,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFE5F4EA) : const Color(0xFFF5F6F7),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? const Color(0xFF1F8A4C) : Colors.transparent,
+            width: 1.4,
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(icon, size: 21, color: enabled ? const Color(0xFF111827) : const Color(0xFF9CA3AF)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(title, style: TextStyle(fontWeight: FontWeight.w800, color: enabled ? null : const Color(0xFF9CA3AF))),
+                  if (subtitle != null)
+                    Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF8B8F97))),
+                ],
+              ),
+            ),
+            if (selected) const Icon(Icons.check_circle, size: 18, color: Color(0xFF1F8A4C)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget addressButton(BuildContext context, IconData icon, String label, VoidCallback onTap) => InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
           decoration: BoxDecoration(
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-            borderRadius: BorderRadius.circular(12),
+            color: const Color(0xFFF5F6F7),
+            borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
             children: <Widget>[
