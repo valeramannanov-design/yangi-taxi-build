@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:yandex_maps_mapkit/init.dart' as yandex_init;
+import 'package:yandex_maps_mapkit/image.dart' as yi;
 import 'package:yandex_maps_mapkit/mapkit.dart' as ym;
 import 'package:yandex_maps_mapkit/mapkit_factory.dart' as ym_factory;
 import 'package:yandex_maps_mapkit/search.dart' as ys;
@@ -244,6 +245,20 @@ class ApiClient {
 
   Future<dynamic> _demoPost(String path, Map<String, dynamic> body) async {
     await Future<void>.delayed(const Duration(milliseconds: 220));
+    if (path == '/api/auth/register/request-code') {
+      return <String, dynamic>{
+        'expiresIn': 300,
+        'resendAfter': 60,
+        'debugCode': '123456',
+      };
+    }
+    if (path == '/api/auth/register/verify-code') {
+      if ((body['code'] ?? '').toString() != '123456') {
+        throw ApiException('Неверный SMS-код');
+      }
+      token = 'demo-session';
+      return <String, dynamic>{'token': token, 'client': demoMe};
+    }
     if (path == '/api/auth/login' || path == '/api/auth/register') {
       token = 'demo-session';
       return <String, dynamic>{'token': token, 'client': demoMe};
@@ -414,9 +429,25 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     if (mounted) setState(() {});
   }
 
+  Future<void> prepareLocationPermission() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        await Geolocator.getLastKnownPosition();
+      }
+    } catch (_) {
+      // Location must never block login. Order screen will retry.
+    }
+  }
+
   Future<void> saveToken(String value) async {
     api.token = value;
     await storage.write(key: 'session', value: value);
+    await prepareLocationPermission();
     if (mounted) setState(() => loggedIn = true);
   }
 
@@ -521,32 +552,117 @@ class _LoginScreenState extends State<LoginScreen> {
   final phone = TextEditingController(text: '+998901234567');
   final pass = TextEditingController(text: '123456');
   final name = TextEditingController();
+  final smsCode = TextEditingController();
+
   bool register = false;
+  bool smsSent = false;
   bool busy = false;
   String? error;
+  String? info;
 
-  Future<void> submit() async {
+  @override
+  void dispose() {
+    phone.dispose();
+    pass.dispose();
+    name.dispose();
+    smsCode.dispose();
+    super.dispose();
+  }
+
+  void toggleMode() {
+    setState(() {
+      register = !register;
+      smsSent = false;
+      smsCode.clear();
+      error = null;
+      info = null;
+    });
+  }
+
+  Future<void> requestSms() async {
+    if (phone.text.trim().isEmpty || name.text.trim().isEmpty || pass.text.length < 6) {
+      setState(() => error = widget.lang == 'uz'
+          ? 'Ism, telefon va kamida 6 belgili parolni kiriting'
+          : 'Введите имя, телефон и пароль минимум из 6 символов');
+      return;
+    }
+
+    setState(() {
+      busy = true;
+      error = null;
+      info = null;
+    });
+
+    try {
+      final data = await widget.api.post('/api/auth/register/request-code', <String, dynamic>{
+        'phone': phone.text.trim(),
+      });
+      if (!mounted) return;
+      setState(() {
+        smsSent = true;
+        info = widget.lang == 'uz'
+            ? 'SMS-kod ${phone.text.trim()} raqamiga yuborildi'
+            : 'SMS-код отправлен на ${phone.text.trim()}';
+        if (widget.api.isDemo && data['debugCode'] != null) {
+          smsCode.text = data['debugCode'].toString();
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> verifySmsAndRegister() async {
+    if (smsCode.text.trim().length < 4) {
+      setState(() => error = widget.lang == 'uz' ? 'SMS-kodni kiriting' : 'Введите код из SMS');
+      return;
+    }
+
     setState(() {
       busy = true;
       error = null;
     });
+
     try {
-      final data = register
-          ? await widget.api.post('/api/auth/register', <String, dynamic>{
-              'name': name.text.trim(),
-              'phone': phone.text.trim(),
-              'password': pass.text,
-            })
-          : await widget.api.post('/api/auth/login', <String, dynamic>{
-              'phone': phone.text.trim(),
-              'password': pass.text,
-            });
+      final data = await widget.api.post('/api/auth/register/verify-code', <String, dynamic>{
+        'name': name.text.trim(),
+        'phone': phone.text.trim(),
+        'password': pass.text,
+        'code': smsCode.text.trim(),
+      });
       await widget.onToken(data['token'].toString());
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Future<void> login() async {
+    setState(() {
+      busy = true;
+      error = null;
+      info = null;
+    });
+    try {
+      final data = await widget.api.post('/api/auth/login', <String, dynamic>{
+        'phone': phone.text.trim(),
+        'password': pass.text,
+      });
+      await widget.onToken(data['token'].toString());
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> submit() async {
+    if (!register) return login();
+    if (!smsSent) return requestSms();
+    return verifySmsAndRegister();
   }
 
   @override
@@ -595,18 +711,23 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 10),
                         Row(
                           children: <Widget>[
-                            Chip(
-                              avatar: Icon(widget.api.isDemo ? Icons.science_outlined : Icons.cloud_done_outlined, size: 18),
-                              label: Text(widget.api.isDemo ? tx(widget.lang, 'demo') : widget.api.baseUrl),
+                            Expanded(
+                              child: Chip(
+                                avatar: Icon(widget.api.isDemo ? Icons.science_outlined : Icons.cloud_done_outlined, size: 18),
+                                label: Text(
+                                  widget.api.isDemo ? tx(widget.lang, 'demo') : widget.api.baseUrl,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ),
-                            const Spacer(),
+                            const SizedBox(width: 8),
                             SegmentedButton<String>(
                               segments: const <ButtonSegment<String>>[
                                 ButtonSegment<String>(value: 'ru', label: Text('RU')),
                                 ButtonSegment<String>(value: 'uz', label: Text('UZ')),
                               ],
                               selected: <String>{widget.lang},
-                              onSelectionChanged: (x) => widget.onLang(x.first),
+                              onSelectionChanged: busy ? null : (x) => widget.onLang(x.first),
                             ),
                           ],
                         ),
@@ -614,22 +735,59 @@ class _LoginScreenState extends State<LoginScreen> {
                         if (register) ...<Widget>[
                           TextField(
                             controller: name,
-                            decoration: InputDecoration(border: const OutlineInputBorder(), labelText: tx(widget.lang, 'name')),
+                            enabled: !smsSent && !busy,
+                            decoration: InputDecoration(labelText: tx(widget.lang, 'name')),
                           ),
                           const SizedBox(height: 12),
                         ],
                         TextField(
                           controller: phone,
+                          enabled: !smsSent && !busy,
                           keyboardType: TextInputType.phone,
-                          decoration: InputDecoration(border: const OutlineInputBorder(), labelText: tx(widget.lang, 'phone')),
+                          decoration: InputDecoration(labelText: tx(widget.lang, 'phone')),
                         ),
                         const SizedBox(height: 12),
                         TextField(
                           controller: pass,
+                          enabled: !smsSent && !busy,
                           obscureText: true,
                           onSubmitted: (_) => submit(),
-                          decoration: InputDecoration(border: const OutlineInputBorder(), labelText: tx(widget.lang, 'password')),
+                          decoration: InputDecoration(labelText: tx(widget.lang, 'password')),
                         ),
+                        if (register && smsSent) ...<Widget>[
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: smsCode,
+                            autofocus: true,
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            onSubmitted: (_) => submit(),
+                            decoration: InputDecoration(
+                              counterText: '',
+                              labelText: widget.lang == 'uz' ? 'SMS-kod' : 'Код из SMS',
+                              prefixIcon: const Icon(Icons.sms_outlined),
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton(
+                              onPressed: busy ? null : () {
+                                setState(() {
+                                  smsSent = false;
+                                  smsCode.clear();
+                                  info = null;
+                                });
+                                requestSms();
+                              },
+                              child: Text(widget.lang == 'uz' ? 'Kodni qayta yuborish' : 'Отправить код ещё раз'),
+                            ),
+                          ),
+                        ],
+                        if (info != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Text(info!, style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+                          ),
                         if (error != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 10),
@@ -640,11 +798,21 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: busy ? null : submit,
                           icon: busy
                               ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.login),
-                          label: Text(register ? tx(widget.lang, 'register') : tx(widget.lang, 'login')),
+                              : Icon(
+                                  register
+                                      ? (smsSent ? Icons.verified_user_outlined : Icons.sms_outlined)
+                                      : Icons.login,
+                                ),
+                          label: Text(
+                            !register
+                                ? tx(widget.lang, 'login')
+                                : (smsSent
+                                    ? (widget.lang == 'uz' ? 'SMS-kodni tasdiqlash' : 'Подтвердить SMS')
+                                    : (widget.lang == 'uz' ? 'SMS-kod olish' : 'Получить SMS-код')),
+                          ),
                         ),
                         TextButton(
-                          onPressed: busy ? null : () => setState(() => register = !register),
+                          onPressed: busy ? null : toggleMode,
                           child: Text(register ? tx(widget.lang, 'login') : tx(widget.lang, 'register')),
                         ),
                       ],
@@ -743,10 +911,14 @@ class TaxiYandexMap extends StatefulWidget {
 
 class _TaxiYandexMapState extends State<TaxiYandexMap> {
   ym.MapWindow? mapWindow;
+  late final yi.ImageProvider carIcon;
+  late final yi.ImageProvider pinIcon;
 
   @override
   void initState() {
     super.initState();
+    carIcon = yi.ImageProvider.fromImageProvider(const AssetImage('assets/car.png'));
+    pinIcon = yi.ImageProvider.fromImageProvider(const AssetImage('assets/pin.png'));
     if (yandexMapKitApiKey.isNotEmpty) ym_factory.mapkit.onStart();
   }
 
@@ -784,11 +956,43 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
       }
     }
     if (widget.from != null) addTextPlacemark(widget.from!, '●');
-    if (widget.to != null) addTextPlacemark(widget.to!, '📍');
-    for (final car in widget.nearbyCars) {
-      addTextPlacemark(car.point, '🚕');
+    if (widget.to != null) {
+      map.mapObjects.addPlacemark()
+        ..geometry = widget.to!
+        ..setIconWithStyle(
+          pinIcon,
+          const ym.IconStyle(
+            anchor: math.Point<double>(0.5, 1.0),
+            scale: 0.55,
+            zIndex: 20,
+          ),
+        );
     }
-    if (widget.driver != null) addTextPlacemark(widget.driver!, '🚕');
+    for (final car in widget.nearbyCars) {
+      final placemark = map.mapObjects.addPlacemark()
+        ..geometry = car.point
+        ..direction = car.direction >= 0 ? car.direction : 0;
+      placemark.setIconWithStyle(
+        carIcon,
+        const ym.IconStyle(
+          anchor: math.Point<double>(0.5, 0.5),
+          scale: 0.42,
+          zIndex: 15,
+        ),
+      );
+    }
+    if (widget.driver != null) {
+      map.mapObjects.addPlacemark()
+        ..geometry = widget.driver!
+        ..setIconWithStyle(
+          carIcon,
+          const ym.IconStyle(
+            anchor: math.Point<double>(0.5, 0.5),
+            scale: 0.50,
+            zIndex: 30,
+          ),
+        );
+    }
 
     if (!focusRoute || widget.route.length < 2) {
       map.move(ym.CameraPosition(widget.center, zoom: widget.zoom, azimuth: 0, tilt: 0));
@@ -884,7 +1088,7 @@ class _OrderScreenState extends State<OrderScreen> {
         query: <String, String>{
           'lat': center.latitude.toStringAsFixed(7),
           'lon': center.longitude.toStringAsFixed(7),
-          'radius': '6',
+          'radius': '15',
           'limit': '15',
         },
       );
@@ -956,6 +1160,23 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
+  Future<void> applyQuickLocation(Position position) async {
+    final point = ym.Point(latitude: position.latitude, longitude: position.longitude);
+    if (mounted) setState(() => currentLocation = point);
+    try {
+      final place = await reverseCurrentLocation(point);
+      if (!mounted) return;
+      if (from == null) {
+        setState(() {
+          from = place;
+          cost = null;
+          route = <ym.Point>[];
+        });
+      }
+      await loadNearbyCars();
+    } catch (_) {}
+  }
+
   Future<void> detectMyLocation({bool auto = false}) async {
     if (locating) return;
     if (mounted) {
@@ -1004,6 +1225,13 @@ class _OrderScreenState extends State<OrderScreen> {
           });
         }
         return;
+      }
+
+      if (auto) {
+        final lastPosition = await Geolocator.getLastKnownPosition();
+        if (lastPosition != null) {
+          await applyQuickLocation(lastPosition);
+        }
       }
 
       final position = await Geolocator.getCurrentPosition(
@@ -1602,20 +1830,13 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
             ),
           IgnorePointer(
             child: Center(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 44),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Icon(
-                      widget.title == tx(widget.lang, 'from')
-                          ? Icons.radio_button_checked
-                          : Icons.location_on,
-                      size: 48,
-                      color: const Color(0xFF238B45),
-                    ),
-                    Container(width: 3, height: 22, color: const Color(0xFF238B45)),
-                  ],
+              child: Transform.translate(
+                offset: const Offset(0, -34),
+                child: Image.asset(
+                  'assets/pin.png',
+                  width: 68,
+                  height: 68,
+                  filterQuality: FilterQuality.high,
                 ),
               ),
             ),
@@ -1635,8 +1856,8 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
                     children: <Widget>[
                       Text(
                         widget.lang == 'uz'
-                            ? 'Xaritani marker ostida kerakli nuqtaga suring'
-                            : 'Передвиньте карту так, чтобы стрелка была в нужной точке',
+                            ? 'Xaritani belgi ostida kerakli nuqtaga suring'
+                            : 'Передвиньте карту так, чтобы булавка была в нужной точке',
                         textAlign: TextAlign.center,
                       ),
                       if (error != null)
