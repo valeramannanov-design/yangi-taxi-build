@@ -344,6 +344,90 @@ class ApiClient {
       token = 'demo-session';
       return <String, dynamic>{'token': token, 'client': demoMe};
     }
+    if (path == '/api/orders/estimate-options') {
+      final a = Map<String, dynamic>.from(body['source'] as Map);
+      final b = Map<String, dynamic>.from(body['destination'] as Map);
+      final aLat = (a['lat'] as num).toDouble();
+      final aLon = (a['lon'] as num).toDouble();
+      final bLat = (b['lat'] as num).toDouble();
+      final bLon = (b['lon'] as num).toDouble();
+      final dist = math.sqrt(math.pow(aLat - bLat, 2) + math.pow(aLon - bLon, 2));
+      final baseCost = 12000 + dist * 560000;
+
+      Map<String, dynamic> option({
+        required String key,
+        required String nameRu,
+        required String nameUz,
+        required int tariffId,
+        required int crewGroupId,
+        required double multiplier,
+      }) =>
+          <String, dynamic>{
+            'key': key,
+            'nameRu': nameRu,
+            'nameUz': nameUz,
+            'tariffId': tariffId,
+            'crewGroupId': crewGroupId,
+            'available': true,
+            'cost': (baseCost * multiplier).roundToDouble(),
+          };
+
+      return <String, dynamic>{
+        'options': <Map<String, dynamic>>[
+          option(
+            key: 'start',
+            nameRu: 'Старт',
+            nameUz: 'Start',
+            tariffId: 1,
+            crewGroupId: 11,
+            multiplier: 1.00,
+          ),
+          option(
+            key: 'comfort',
+            nameRu: 'Комфорт',
+            nameUz: 'Komfort',
+            tariffId: 2,
+            crewGroupId: 12,
+            multiplier: 1.20,
+          ),
+          option(
+            key: 'business',
+            nameRu: 'Бизнес',
+            nameUz: 'Biznes',
+            tariffId: 3,
+            crewGroupId: 13,
+            multiplier: 1.55,
+          ),
+          option(
+            key: 'delivery',
+            nameRu: 'Доставка',
+            nameUz: 'Yetkazib berish',
+            tariffId: 4,
+            crewGroupId: 14,
+            multiplier: 1.10,
+          ),
+          option(
+            key: 'cargo',
+            nameRu: 'Грузовой',
+            nameUz: 'Yuk tashish',
+            tariffId: 5,
+            crewGroupId: 15,
+            multiplier: 1.80,
+          ),
+        ],
+        'route': <String, dynamic>{
+          'full_route_coords': <dynamic>[
+            <String, dynamic>{'lat': aLat, 'lon': aLon},
+            <String, dynamic>{
+              'lat': (aLat + bLat) / 2 + 0.003,
+              'lon': (aLon + bLon) / 2 - 0.002,
+            },
+            <String, dynamic>{'lat': bLat, 'lon': bLon},
+          ],
+        },
+      };
+    }
+
     if (path == '/api/orders/estimate') {
       final a = Map<String, dynamic>.from(body['source'] as Map);
       final b = Map<String, dynamic>.from(body['destination'] as Map);
