@@ -1130,34 +1130,6 @@ class _OrderScreenState extends State<OrderScreen> {
           ),
           Positioned(
             top: 12,
-            left: 12,
-            child: SafeArea(
-              bottom: false,
-              child: Material(
-                elevation: 2,
-                borderRadius: BorderRadius.circular(20),
-                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const Icon(Icons.local_taxi, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        widget.lang == 'uz'
-                            ? 'Yaqinda: ${nearbyCars.length}'
-                            : 'Свободно рядом: ${nearbyCars.length}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 12,
             right: 12,
             child: SafeArea(
               bottom: false,
@@ -1338,30 +1310,46 @@ class _AddressSheetState extends State<AddressSheet> {
       if (mounted) setState(() { results = <Place>[]; error = null; });
       return;
     }
-    if (yandexMapKitApiKey.isEmpty) {
-      await _searchTaxiMaster(q);
-      return;
-    }
+
     if (mounted) setState(() { busy = true; error = null; });
-    final completer = Completer<List<Place>>();
-    final listener = ys.SearchSuggestSessionSuggestListener(
-      onResponse: (response) {
-        final places = <Place>[];
-        for (final item in response.items.take(15)) {
-          final p = item.center;
-          if (p == null) continue;
-          final title = item.title.text.trim();
-          final subtitle = item.subtitle?.text.trim() ?? '';
-          final label = subtitle.isEmpty || subtitle == title ? title : '$title, $subtitle';
-          places.add(Place(label, p.latitude, p.longitude));
-        }
-        if (!completer.isCompleted) completer.complete(places);
-      },
-      onError: (e) {
-        if (!completer.isCompleted) completer.completeError(Exception('Yandex search error'));
-      },
-    );
+
     try {
+      // Prefer TaxiMaster search. Backend can ask TaxiMaster to search its own
+      // database and Yandex, so selected addresses can follow TaxiMaster's
+      // normal online-address workflow.
+      final tmResults = await _searchTaxiMaster(q);
+      if (tmResults.isNotEmpty) {
+        if (mounted) setState(() => results = tmResults);
+        return;
+      }
+
+      if (yandexMapKitApiKey.isEmpty) {
+        if (mounted) setState(() {
+          results = <Place>[];
+          error = 'Адрес не найден';
+        });
+        return;
+      }
+
+      final completer = Completer<List<Place>>();
+      final listener = ys.SearchSuggestSessionSuggestListener(
+        onResponse: (response) {
+          final places = <Place>[];
+          for (final item in response.items.take(15)) {
+            final p = item.center;
+            if (p == null) continue;
+            final title = item.title.text.trim();
+            final subtitle = item.subtitle?.text.trim() ?? '';
+            final label = subtitle.isEmpty || subtitle == title ? title : '$title, $subtitle';
+            places.add(Place(label, p.latitude, p.longitude));
+          }
+          if (!completer.isCompleted) completer.complete(places);
+        },
+        onError: (_) {
+          if (!completer.isCompleted) completer.complete(<Place>[]);
+        },
+      );
+
       suggestSession.suggest(
         tashkentWindow,
         ys.SuggestOptions(
@@ -1372,22 +1360,36 @@ class _AddressSheetState extends State<AddressSheet> {
         listener,
         text: q,
       );
-      final found = await completer.future.timeout(const Duration(seconds: 8));
-      if (mounted) setState(() => results = found);
+
+      final found = await completer.future.timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => <Place>[],
+      );
+      if (mounted) {
+        setState(() {
+          results = found;
+          error = found.isEmpty ? 'Адрес не найден' : null;
+        });
+      }
     } catch (_) {
-      await _searchTaxiMaster(q);
+      if (mounted) setState(() {
+        results = <Place>[];
+        error = 'Адрес не найден';
+      });
     } finally {
       if (mounted) setState(() => busy = false);
     }
   }
 
-  Future<void> _searchTaxiMaster(String q) async {
+  Future<List<Place>> _searchTaxiMaster(String q) async {
     try {
       final data = await widget.api.get('/api/addresses/search', query: <String, String>{'q': q});
-      final list = (data as List).map((x) => Place.fromJson(Map<String, dynamic>.from(x as Map))).toList();
-      if (mounted) setState(() { results = list; error = null; });
+      return (data as List)
+          .map((x) => Place.fromJson(Map<String, dynamic>.from(x as Map)))
+          .where((p) => p.lat.abs() > 0.000001 || p.lon.abs() > 0.000001)
+          .toList();
     } catch (_) {
-      if (mounted) setState(() { results = <Place>[]; error = 'Адрес не найден'; });
+      return <Place>[];
     }
   }
 
@@ -1458,7 +1460,7 @@ class _AddressSheetState extends State<AddressSheet> {
                       return ListTile(
                         leading: const Icon(Icons.location_on_outlined),
                         title: Text(item.address),
-                        subtitle: const Text('Яндекс Карты'),
+                        subtitle: const Text('TaxiMaster / Яндекс'),
                         onTap: () => Navigator.pop(context, item),
                       );
                     },
