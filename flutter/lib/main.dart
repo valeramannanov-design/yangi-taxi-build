@@ -1264,6 +1264,8 @@ class _OrderScreenState extends State<OrderScreen> {
   bool estimating = false;
   Timer? estimateTimer;
   int estimateGeneration = 0;
+  List<Map<String, dynamic>> tariffOptions = <Map<String, dynamic>>[];
+  String selectedTariffKey = 'start';
   String paymentMethod = 'cash';
   bool atmosEnabled = false;
   bool cardBindingAvailable = false;
@@ -1404,6 +1406,48 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
+  Map<String, dynamic>? get selectedTariff {
+    for (final option in tariffOptions) {
+      if ((option['key'] ?? '').toString() == selectedTariffKey && option['available'] == true) {
+        return option;
+      }
+    }
+    for (final option in tariffOptions) {
+      if (option['available'] == true) return option;
+    }
+    return null;
+  }
+
+  IconData tariffIcon(String key) {
+    switch (key) {
+      case 'comfort':
+        return Icons.airline_seat_recline_extra_rounded;
+      case 'business':
+        return Icons.business_center_rounded;
+      case 'delivery':
+        return Icons.inventory_2_rounded;
+      case 'cargo':
+        return Icons.local_shipping_rounded;
+      default:
+        return Icons.local_taxi_rounded;
+    }
+  }
+
+  void selectTariff(String key) {
+    Map<String, dynamic>? option;
+    for (final item in tariffOptions) {
+      if ((item['key'] ?? '').toString() == key) {
+        option = item;
+        break;
+      }
+    }
+    if (option == null || option['available'] != true) return;
+    setState(() {
+      selectedTariffKey = key;
+      cost = (option!['cost'] as num?)?.toDouble();
+    });
+  }
+
   void scheduleEstimate({Duration delay = const Duration(milliseconds: 250)}) {
     estimateTimer?.cancel();
     if (from == null || to == null) {
@@ -1411,6 +1455,7 @@ class _OrderScreenState extends State<OrderScreen> {
         setState(() {
           estimating = false;
           cost = null;
+          tariffOptions = <Map<String, dynamic>>[];
           route = <ym.Point>[];
         });
       }
@@ -1653,32 +1698,67 @@ class _OrderScreenState extends State<OrderScreen> {
         error = null;
       });
     }
+
     try {
-      final data = await widget.api.post('/api/orders/estimate', <String, dynamic>{
+      final data = await widget.api.post('/api/orders/estimate-options', <String, dynamic>{
         'source': source.toJson(),
         'destination': destination.toJson(),
       });
       if (currentGeneration != estimateGeneration || !mounted) return;
-      final points = <ym.Point>[];
+
       final mapData = data['route'];
+      final points = <ym.Point>[];
       if (mapData is Map && mapData['full_route_coords'] is List) {
         for (final dynamic x in mapData['full_route_coords'] as List) {
           if (x is Map && x['lat'] != null && x['lon'] != null) {
-            points.add(ym.Point(
-              latitude: (x['lat'] as num).toDouble(),
-              longitude: (x['lon'] as num).toDouble(),
-            ));
+            points.add(
+              ym.Point(
+                latitude: (x['lat'] as num).toDouble(),
+                longitude: (x['lon'] as num).toDouble(),
+              ),
+            );
           }
         }
       }
+
+      final rawOptions = data['options'];
+      final options = rawOptions is List
+          ? rawOptions
+              .whereType<Map>()
+              .map((x) => Map<String, dynamic>.from(x))
+              .toList()
+          : <Map<String, dynamic>>[];
+
+      Map<String, dynamic>? active;
+      for (final item in options) {
+        if ((item['key'] ?? '').toString() == selectedTariffKey && item['available'] == true) {
+          active = item;
+          break;
+        }
+      }
+      active ??= options.cast<Map<String, dynamic>?>().firstWhere(
+            (item) => item?['available'] == true,
+            orElse: () => null,
+          );
+
       setState(() {
-        cost = (data['cost'] as num).toDouble();
+        tariffOptions = options;
         route = points;
+        if (active != null) {
+          selectedTariffKey = (active!['key'] ?? 'start').toString();
+          cost = (active!['cost'] as num?)?.toDouble();
+        } else {
+          cost = null;
+          error = widget.lang == 'uz'
+              ? 'TaxiMasterda ilova uchun mavjud tariflar sozlanmagan'
+              : 'В TaxiMaster не настроены доступные тарифы и группы экипажей';
+        }
       });
     } catch (e) {
       if (currentGeneration == estimateGeneration && mounted) {
         setState(() {
           cost = null;
+          tariffOptions = <Map<String, dynamic>>[];
           error = e.toString();
         });
       }
@@ -1808,6 +1888,7 @@ class _OrderScreenState extends State<OrderScreen> {
       final data = await widget.api.post('/api/orders', <String, dynamic>{
         'source': from!.toJson(),
         'destination': to!.toJson(),
+        'tariffKey': selectedTariffKey,
         'paymentMethod': paymentMethod,
         if (paymentMethod == 'card' && selectedCardId > 0) 'cardId': selectedCardId,
       });
@@ -2046,47 +2127,79 @@ class _OrderScreenState extends State<OrderScreen> {
                           ),
                         ),
                       ],
-                      if (cost != null && !estimating) ...<Widget>[
+                      if (tariffOptions.isNotEmpty && !estimating) ...<Widget>[
                         const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF3F4F6),
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Row(
-                            children: <Widget>[
-                              Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE4F3E9),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: const Icon(Icons.local_taxi_rounded, color: Color(0xFF1F8A4C)),
-                              ),
-                              const SizedBox(width: 11),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      widget.lang == 'uz' ? 'Standart' : 'Стандарт',
-                                      style: const TextStyle(fontWeight: FontWeight.w900),
+                        SizedBox(
+                          height: 112,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: tariffOptions.length,
+                            separatorBuilder: (_, __) => const SizedBox(width: 8),
+                            itemBuilder: (context, index) {
+                              final option = tariffOptions[index];
+                              final key = (option['key'] ?? '').toString();
+                              final available = option['available'] == true;
+                              final selected = available && key == selectedTariffKey;
+                              final price = (option['cost'] as num?)?.toDouble();
+                              final title = widget.lang == 'uz'
+                                  ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
+                                  : (option['nameRu'] ?? key).toString();
+
+                              return SizedBox(
+                                width: 112,
+                                child: Material(
+                                  color: selected
+                                      ? const Color(0xFF111827)
+                                      : (available ? const Color(0xFFF3F4F6) : const Color(0xFFF7F7F8)),
+                                  borderRadius: BorderRadius.circular(19),
+                                  child: InkWell(
+                                    onTap: available ? () => selectTariff(key) : null,
+                                    borderRadius: BorderRadius.circular(19),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Icon(
+                                            tariffIcon(key),
+                                            size: 25,
+                                            color: selected
+                                                ? Colors.white
+                                                : (available ? const Color(0xFF111827) : const Color(0xFFB7BBC2)),
+                                          ),
+                                          const Spacer(),
+                                          Text(
+                                            title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w900,
+                                              color: selected
+                                                  ? Colors.white
+                                                  : (available ? const Color(0xFF111827) : const Color(0xFF9CA3AF)),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            available && price != null
+                                                ? price.toStringAsFixed(0) + ' UZS'
+                                                : (widget.lang == 'uz' ? 'Mavjud emas' : 'Недоступен'),
+                                            maxLines: 1,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: selected
+                                                  ? Colors.white70
+                                                  : (available ? const Color(0xFF6B7280) : const Color(0xFFB7BBC2)),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      widget.lang == 'uz' ? 'Yaqin mashina' : 'Ближайшая машина',
-                                      style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                cost!.toStringAsFixed(0) + ' UZS',
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-                              ),
-                            ],
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 9),
