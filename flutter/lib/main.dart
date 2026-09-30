@@ -216,13 +216,25 @@ class ApiClient {
           'missing': <String>[],
         },
         <String, dynamic>{
+          'key': 'together',
+          'nameRu': 'Вместе',
+          'nameUz': 'Birga',
+          'icon': 'groups',
+          'tariffId': 2,
+          'tariffName': 'Вместе',
+          'crewGroupId': 12,
+          'crewGroupName': 'Вместе',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
           'key': 'comfort',
           'nameRu': 'Комфорт',
           'nameUz': 'Komfort',
           'icon': 'airline_seat_recline_extra',
-          'tariffId': 2,
+          'tariffId': 3,
           'tariffName': 'Комфорт',
-          'crewGroupId': 12,
+          'crewGroupId': 13,
           'crewGroupName': 'Комфорт',
           'available': true,
           'missing': <String>[],
@@ -232,9 +244,9 @@ class ApiClient {
           'nameRu': 'Бизнес',
           'nameUz': 'Biznes',
           'icon': 'business_center',
-          'tariffId': 3,
+          'tariffId': 4,
           'tariffName': 'Бизнес',
-          'crewGroupId': 13,
+          'crewGroupId': 14,
           'crewGroupName': 'Бизнес',
           'available': true,
           'missing': <String>[],
@@ -244,9 +256,9 @@ class ApiClient {
           'nameRu': 'Доставка',
           'nameUz': 'Yetkazish',
           'icon': 'inventory_2',
-          'tariffId': 4,
+          'tariffId': 5,
           'tariffName': 'Доставка',
-          'crewGroupId': 14,
+          'crewGroupId': 15,
           'crewGroupName': 'Доставка',
           'available': true,
           'missing': <String>[],
@@ -256,9 +268,9 @@ class ApiClient {
           'nameRu': 'Грузовой',
           'nameUz': 'Yuk',
           'icon': 'local_shipping',
-          'tariffId': 5,
+          'tariffId': 6,
           'tariffName': 'Грузовой',
-          'crewGroupId': 15,
+          'crewGroupId': 16,
           'crewGroupName': 'Грузовой',
           'available': true,
           'missing': <String>[],
@@ -446,36 +458,50 @@ class ApiClient {
             crewGroupId: 11,
             multiplier: 1.00,
           ),
+          <String, dynamic>{
+            ...option(
+              key: 'together',
+              nameRu: 'Вместе',
+              nameUz: 'Birga',
+              tariffId: 2,
+              crewGroupId: 12,
+              multiplier: 0.82,
+            ),
+            'savingVsStart': (baseCost * 0.18).roundToDouble(),
+            'savingPercentVsStart': 18,
+            'priceBadgeRu': 'На 18% дешевле Старт',
+            'priceBadgeUz': 'Startdan 18% arzon',
+          },
           option(
             key: 'comfort',
             nameRu: 'Комфорт',
             nameUz: 'Komfort',
-            tariffId: 2,
-            crewGroupId: 12,
+            tariffId: 3,
+            crewGroupId: 13,
             multiplier: 1.20,
           ),
           option(
             key: 'business',
             nameRu: 'Бизнес',
             nameUz: 'Biznes',
-            tariffId: 3,
-            crewGroupId: 13,
+            tariffId: 4,
+            crewGroupId: 14,
             multiplier: 1.55,
           ),
           option(
             key: 'delivery',
             nameRu: 'Доставка',
             nameUz: 'Yetkazib berish',
-            tariffId: 4,
-            crewGroupId: 14,
+            tariffId: 5,
+            crewGroupId: 15,
             multiplier: 1.10,
           ),
           option(
             key: 'cargo',
             nameRu: 'Грузовой',
             nameUz: 'Yuk tashish',
-            tariffId: 5,
-            crewGroupId: 15,
+            tariffId: 6,
+            crewGroupId: 16,
             multiplier: 1.80,
           ),
         ],
@@ -514,24 +540,30 @@ class ApiClient {
     }
     if (path == '/api/orders') {
       final a = Map<String, dynamic>.from(body['source'] as Map);
-      final b = Map<String, dynamic>.from(body['destination'] as Map);
+      final b = body['destination'] is Map
+          ? Map<String, dynamic>.from(body['destination'] as Map)
+          : Map<String, dynamic>.from(a);
+      final hasDestination = body['destination'] is Map;
       final key = (body['tariffKey'] ?? 'start').toString();
       const tariffIds = <String, int>{
         'start': 1,
-        'comfort': 2,
-        'business': 3,
-        'delivery': 4,
-        'cargo': 5,
+        'together': 2,
+        'comfort': 3,
+        'business': 4,
+        'delivery': 5,
+        'cargo': 6,
       };
       const groupIds = <String, int>{
         'start': 11,
-        'comfort': 12,
-        'business': 13,
-        'delivery': 14,
-        'cargo': 15,
+        'together': 12,
+        'comfort': 13,
+        'business': 14,
+        'delivery': 15,
+        'cargo': 16,
       };
       const multipliers = <String, double>{
         'start': 1.00,
+        'together': 0.82,
         'comfort': 1.20,
         'business': 1.55,
         'delivery': 1.10,
@@ -554,7 +586,7 @@ class ApiClient {
         'crew_group_id': groupIds[key] ?? 11,
         'state_kind': 'new_order',
         'source': a['address'],
-        'destination': b['address'],
+        'destination': hasDestination ? b['address'] : '',
         'source_lat': a['lat'],
         'source_lon': a['lon'],
         'destination_lat': b['lat'],
@@ -1485,7 +1517,26 @@ class _OrderScreenState extends State<OrderScreen> {
         builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
       );
 
+  Future<void> ensurePickupFromCurrentLocation() async {
+    if (from != null) return;
+    if (currentLocation == null) {
+      await detectMyLocation(auto: false);
+      if (from != null) return;
+    }
+    final point = currentLocation;
+    if (point == null) return;
+    final place = await reverseCurrentLocation(point);
+    if (!mounted) return;
+    setState(() {
+      from = place;
+      cost = null;
+      route = <ym.Point>[];
+    });
+    await loadNearbyCars();
+  }
+
   Future<void> pickRoutePointOnMap({required bool pickup}) async {
+    if (!pickup) await ensurePickupFromCurrentLocation();
     final title = pickup ? tx(widget.lang, 'from') : tx(widget.lang, 'to');
     final initial = pickup
         ? (from ?? (currentLocation == null
@@ -1638,6 +1689,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
   IconData tariffIcon(String key) {
     switch (key) {
+      case 'together':
+        return Icons.groups_rounded;
       case 'comfort':
         return Icons.airline_seat_recline_extra_rounded;
       case 'business':
@@ -2097,7 +2150,8 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> createOrder() async {
-    if (from == null || to == null) return;
+    final deliveryWithoutDestination = selectedTariffKey == 'delivery' && to == null;
+    if (from == null || (to == null && !deliveryWithoutDestination)) return;
     setState(() {
       busy = true;
       error = null;
@@ -2105,7 +2159,7 @@ class _OrderScreenState extends State<OrderScreen> {
     try {
       final data = await widget.api.post('/api/orders', <String, dynamic>{
         'source': from!.toJson(),
-        'destination': to!.toJson(),
+        if (to != null) 'destination': to!.toJson(),
         'tariffKey': selectedTariffKey,
         'paymentMethod': paymentMethod,
         if (paymentMethod == 'card' && selectedCardId > 0) 'cardId': selectedCardId,
@@ -2148,6 +2202,8 @@ class _OrderScreenState extends State<OrderScreen> {
     final center = from?.point ?? currentLocation ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
     final canUseCard = atmosEnabled && cardBindingAvailable;
     final destinationReady = to != null;
+    final destinationOptional = selectedTariffKey == 'delivery';
+    final routeReadyForOrder = from != null && (destinationReady || destinationOptional);
 
     return Scaffold(
       body: Stack(
@@ -2307,8 +2363,13 @@ class _OrderScreenState extends State<OrderScreen> {
                       routeAddressRow(
                         context,
                         pickup: false,
-                        label: to?.address ?? (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
+                        label: to?.address ??
+                            (selectedTariffKey == 'delivery'
+                                ? (widget.lang == 'uz' ? 'Qayerga (ixtiyoriy)' : 'Куда (необязательно)')
+                                : (widget.lang == 'uz' ? 'Qayerga' : 'Куда')),
                         onAddressTap: () async {
+                          await ensurePickupFromCurrentLocation();
+                          if (!mounted) return;
                           final p = await selectAddress(tx(widget.lang, 'to'), to);
                           if (p != null && mounted) {
                             setState(() {
@@ -2319,7 +2380,11 @@ class _OrderScreenState extends State<OrderScreen> {
                             scheduleEstimate();
                           }
                         },
-                        onMapTap: () => pickRoutePointOnMap(pickup: false),
+                        onMapTap: () async {
+                          await ensurePickupFromCurrentLocation();
+                          if (!mounted) return;
+                          await pickRoutePointOnMap(pickup: false);
+                        },
                       ),
 
                       if (estimating && from != null && to != null) ...<Widget>[
@@ -2348,7 +2413,7 @@ class _OrderScreenState extends State<OrderScreen> {
                       if (visibleTariffs.isNotEmpty && !estimating) ...<Widget>[
                         const SizedBox(height: 12),
                         SizedBox(
-                          height: 112,
+                          height: 138,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: visibleTariffs.length,
@@ -2362,9 +2427,14 @@ class _OrderScreenState extends State<OrderScreen> {
                               final title = widget.lang == 'uz'
                                   ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
                                   : (option['nameRu'] ?? key).toString();
+                              final saving = (option['savingVsStart'] as num?)?.toDouble() ?? 0;
+                              final savingPercent = (option['savingPercentVsStart'] as num?)?.toInt() ?? 0;
+                              final badge = widget.lang == 'uz'
+                                  ? (option['priceBadgeUz'] ?? '').toString()
+                                  : (option['priceBadgeRu'] ?? '').toString();
 
                               return SizedBox(
-                                width: 112,
+                                width: 132,
                                 child: Material(
                                   color: selected
                                       ? const Color(0xFF111827)
@@ -2413,6 +2483,30 @@ class _OrderScreenState extends State<OrderScreen> {
                                                   : (available ? const Color(0xFF6B7280) : const Color(0xFFB7BBC2)),
                                             ),
                                           ),
+                                          if (key == 'together' && savingPercent > 0) ...<Widget>[
+                                            const SizedBox(height: 5),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: selected ? Colors.white12 : const Color(0xFFDDF7E8),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                badge.isNotEmpty
+                                                    ? badge
+                                                    : (widget.lang == 'uz'
+                                                        ? '−$savingPercent% • ${saving.toStringAsFixed(0)} UZS tejash'
+                                                        : '−$savingPercent% • экономия ${saving.toStringAsFixed(0)} UZS'),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: selected ? Colors.white : const Color(0xFF137A3D),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ],
                                       ),
                                     ),
@@ -2422,6 +2516,40 @@ class _OrderScreenState extends State<OrderScreen> {
                             },
                           ),
                         ),
+                        if (selectedTariffKey == 'together' && selectedTariff != null) ...<Widget>[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0FDF4),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                const Icon(Icons.groups_rounded, size: 20, color: Color(0xFF15803D)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    (() {
+                                      final x = selectedTariff!;
+                                      final pct = (x['savingPercentVsStart'] as num?)?.toInt() ?? 0;
+                                      final sum = (x['savingVsStart'] as num?)?.toDouble() ?? 0;
+                                      if (pct <= 0) {
+                                        return widget.lang == 'uz'
+                                            ? 'Birga — alohida ekipaj guruhi bilan birgalikdagi safar.'
+                                            : 'Вместе — совместная поездка с отдельной группой экипажей.';
+                                      }
+                                      return widget.lang == 'uz'
+                                          ? 'Startdan $pct% arzon • ${sum.toStringAsFixed(0)} UZS tejash'
+                                          : 'На $pct% дешевле Старт • экономия ${sum.toStringAsFixed(0)} UZS';
+                                    })(),
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 9),
                         Row(
                           children: <Widget>[
@@ -2493,13 +2621,15 @@ class _OrderScreenState extends State<OrderScreen> {
                       SizedBox(
                         height: 54,
                         child: FilledButton(
-                          onPressed: busy || estimating || from == null || to == null
+                          onPressed: busy || estimating || !routeReadyForOrder
                               ? null
-                              : (cost == null
-                                  ? () {
-                                      scheduleEstimate(delay: Duration.zero);
-                                    }
-                                  : createOrder),
+                              : (destinationOptional && !destinationReady
+                                  ? createOrder
+                                  : (cost == null
+                                      ? () {
+                                          scheduleEstimate(delay: Duration.zero);
+                                        }
+                                      : createOrder)),
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFF111827),
                             foregroundColor: Colors.white,
@@ -2515,11 +2645,13 @@ class _OrderScreenState extends State<OrderScreen> {
                               : Text(
                                   estimating
                                       ? (widget.lang == 'uz' ? 'Narx hisoblanmoqda…' : 'Считаем стоимость…')
-                                      : cost == null
-                                          ? (widget.lang == 'uz' ? 'Qayta hisoblash' : 'Повторить расчёт')
-                                          : (widget.lang == 'uz'
-                                              ? 'Buyurtma berish • ' + cost!.toStringAsFixed(0) + ' UZS'
-                                              : 'Заказать • ' + cost!.toStringAsFixed(0) + ' UZS'),
+                                      : (destinationOptional && !destinationReady)
+                                          ? (widget.lang == 'uz' ? 'Yetkazib berishni buyurtma qilish' : 'Заказать доставку')
+                                          : cost == null
+                                              ? (widget.lang == 'uz' ? 'Qayta hisoblash' : 'Повторить расчёт')
+                                              : (widget.lang == 'uz'
+                                                  ? 'Buyurtma berish • ' + cost!.toStringAsFixed(0) + ' UZS'
+                                                  : 'Заказать • ' + cost!.toStringAsFixed(0) + ' UZS'),
                                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
                                 ),
                         ),
