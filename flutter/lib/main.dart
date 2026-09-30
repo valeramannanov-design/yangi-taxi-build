@@ -201,6 +201,82 @@ class ApiClient {
   Future<dynamic> _demoGet(String path, Map<String, String> query) async {
     await Future<void>.delayed(const Duration(milliseconds: 180));
     if (path == '/api/me') return demoMe;
+    if (path == '/api/tariffs') {
+      return <Map<String, dynamic>>[
+        <String, dynamic>{
+          'key': 'start',
+          'nameRu': 'Старт',
+          'nameUz': 'Start',
+          'icon': 'local_taxi',
+          'tariffId': 1,
+          'tariffName': 'Старт',
+          'crewGroupId': 11,
+          'crewGroupName': 'Старт',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'together',
+          'nameRu': 'Вместе',
+          'nameUz': 'Birga',
+          'icon': 'groups',
+          'tariffId': 2,
+          'tariffName': 'Вместе',
+          'crewGroupId': 12,
+          'crewGroupName': 'Вместе',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'comfort',
+          'nameRu': 'Комфорт',
+          'nameUz': 'Komfort',
+          'icon': 'airline_seat_recline_extra',
+          'tariffId': 3,
+          'tariffName': 'Комфорт',
+          'crewGroupId': 13,
+          'crewGroupName': 'Комфорт',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'business',
+          'nameRu': 'Бизнес',
+          'nameUz': 'Biznes',
+          'icon': 'business_center',
+          'tariffId': 4,
+          'tariffName': 'Бизнес',
+          'crewGroupId': 14,
+          'crewGroupName': 'Бизнес',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'delivery',
+          'nameRu': 'Доставка',
+          'nameUz': 'Yetkazish',
+          'icon': 'inventory_2',
+          'tariffId': 5,
+          'tariffName': 'Доставка',
+          'crewGroupId': 15,
+          'crewGroupName': 'Доставка',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'cargo',
+          'nameRu': 'Грузовой',
+          'nameUz': 'Yuk',
+          'icon': 'local_shipping',
+          'tariffId': 6,
+          'tariffName': 'Грузовой',
+          'crewGroupId': 16,
+          'crewGroupName': 'Грузовой',
+          'available': true,
+          'missing': <String>[],
+        },
+      ];
+    }
     if (path == '/api/payments/config') {
       return <String, dynamic>{
         'atmosEnabled': true,
@@ -344,6 +420,104 @@ class ApiClient {
       token = 'demo-session';
       return <String, dynamic>{'token': token, 'client': demoMe};
     }
+    if (path == '/api/orders/estimate-options') {
+      final a = Map<String, dynamic>.from(body['source'] as Map);
+      final b = Map<String, dynamic>.from(body['destination'] as Map);
+      final aLat = (a['lat'] as num).toDouble();
+      final aLon = (a['lon'] as num).toDouble();
+      final bLat = (b['lat'] as num).toDouble();
+      final bLon = (b['lon'] as num).toDouble();
+      final dist = math.sqrt(math.pow(aLat - bLat, 2) + math.pow(aLon - bLon, 2));
+      final baseCost = 12000 + dist * 560000;
+
+      Map<String, dynamic> option({
+        required String key,
+        required String nameRu,
+        required String nameUz,
+        required int tariffId,
+        required int crewGroupId,
+        required double multiplier,
+      }) =>
+          <String, dynamic>{
+            'key': key,
+            'nameRu': nameRu,
+            'nameUz': nameUz,
+            'tariffId': tariffId,
+            'crewGroupId': crewGroupId,
+            'available': true,
+            'cost': (baseCost * multiplier).roundToDouble(),
+          };
+
+      return <String, dynamic>{
+        'options': <Map<String, dynamic>>[
+          option(
+            key: 'start',
+            nameRu: 'Старт',
+            nameUz: 'Start',
+            tariffId: 1,
+            crewGroupId: 11,
+            multiplier: 1.00,
+          ),
+          <String, dynamic>{
+            ...option(
+              key: 'together',
+              nameRu: 'Вместе',
+              nameUz: 'Birga',
+              tariffId: 2,
+              crewGroupId: 12,
+              multiplier: 0.82,
+            ),
+            'savingVsStart': (baseCost * 0.18).roundToDouble(),
+            'savingPercentVsStart': 18,
+            'priceBadgeRu': 'На 18% дешевле Старт',
+            'priceBadgeUz': 'Startdan 18% arzon',
+          },
+          option(
+            key: 'comfort',
+            nameRu: 'Комфорт',
+            nameUz: 'Komfort',
+            tariffId: 3,
+            crewGroupId: 13,
+            multiplier: 1.20,
+          ),
+          option(
+            key: 'business',
+            nameRu: 'Бизнес',
+            nameUz: 'Biznes',
+            tariffId: 4,
+            crewGroupId: 14,
+            multiplier: 1.55,
+          ),
+          option(
+            key: 'delivery',
+            nameRu: 'Доставка',
+            nameUz: 'Yetkazib berish',
+            tariffId: 5,
+            crewGroupId: 15,
+            multiplier: 1.10,
+          ),
+          option(
+            key: 'cargo',
+            nameRu: 'Грузовой',
+            nameUz: 'Yuk tashish',
+            tariffId: 6,
+            crewGroupId: 16,
+            multiplier: 1.80,
+          ),
+        ],
+        'route': <String, dynamic>{
+          'full_route_coords': <dynamic>[
+            <String, dynamic>{'lat': aLat, 'lon': aLon},
+            <String, dynamic>{
+              'lat': (aLat + bLat) / 2 + 0.003,
+              'lon': (aLon + bLon) / 2 - 0.002,
+            },
+            <String, dynamic>{'lat': bLat, 'lon': bLon},
+          ],
+        },
+      };
+    }
+
     if (path == '/api/orders/estimate') {
       final a = Map<String, dynamic>.from(body['source'] as Map);
       final b = Map<String, dynamic>.from(body['destination'] as Map);
@@ -366,14 +540,53 @@ class ApiClient {
     }
     if (path == '/api/orders') {
       final a = Map<String, dynamic>.from(body['source'] as Map);
-      final b = Map<String, dynamic>.from(body['destination'] as Map);
+      final b = body['destination'] is Map
+          ? Map<String, dynamic>.from(body['destination'] as Map)
+          : Map<String, dynamic>.from(a);
+      final hasDestination = body['destination'] is Map;
+      final key = (body['tariffKey'] ?? 'start').toString();
+      const tariffIds = <String, int>{
+        'start': 1,
+        'together': 2,
+        'comfort': 3,
+        'business': 4,
+        'delivery': 5,
+        'cargo': 6,
+      };
+      const groupIds = <String, int>{
+        'start': 11,
+        'together': 12,
+        'comfort': 13,
+        'business': 14,
+        'delivery': 15,
+        'cargo': 16,
+      };
+      const multipliers = <String, double>{
+        'start': 1.00,
+        'together': 0.82,
+        'comfort': 1.20,
+        'business': 1.55,
+        'delivery': 1.10,
+        'cargo': 1.80,
+      };
+      final aLat = (a['lat'] as num).toDouble();
+      final aLon = (a['lon'] as num).toDouble();
+      final bLat = (b['lat'] as num).toDouble();
+      final bLon = (b['lon'] as num).toDouble();
+      final dist = math.sqrt(math.pow(aLat - bLat, 2) + math.pow(aLon - bLon, 2));
+      final baseCost = 12000 + dist * 560000;
+      final finalCost = (baseCost * (multipliers[key] ?? 1.0)).roundToDouble();
+
       final id = 30000 + DateTime.now().millisecondsSinceEpoch.remainder(9000);
       _demoStarted = DateTime.now();
       _demoOrder = <String, dynamic>{
         'order_id': id,
+        'tariff_key': key,
+        'tariff_id': tariffIds[key] ?? 1,
+        'crew_group_id': groupIds[key] ?? 11,
         'state_kind': 'new_order',
         'source': a['address'],
-        'destination': b['address'],
+        'destination': hasDestination ? b['address'] : '',
         'source_lat': a['lat'],
         'source_lon': a['lon'],
         'destination_lat': b['lat'],
@@ -381,7 +594,7 @@ class ApiClient {
         'car_mark': 'Chevrolet',
         'car_model': 'Cobalt',
         'car_number': '01 Y 001 TX',
-        'total_cost': 28000,
+        'total_cost': finalCost,
       };
       return <String, dynamic>{'order_id': id};
     }
@@ -1264,6 +1477,7 @@ class _OrderScreenState extends State<OrderScreen> {
   bool estimating = false;
   Timer? estimateTimer;
   int estimateGeneration = 0;
+  List<Map<String, dynamic>> tariffCatalog = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> tariffOptions = <Map<String, dynamic>>[];
   String selectedTariffKey = 'start';
   String paymentMethod = 'cash';
@@ -1280,6 +1494,7 @@ class _OrderScreenState extends State<OrderScreen> {
     locationSearchManager = ys.SearchFactory.instance.createSearchManager(ys.SearchManagerType.Online);
     loadPaymentConfig();
     loadCards();
+    loadTariffCatalog();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       detectMyLocation(auto: true);
     });
@@ -1302,7 +1517,26 @@ class _OrderScreenState extends State<OrderScreen> {
         builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
       );
 
+  Future<void> ensurePickupFromCurrentLocation() async {
+    if (from != null) return;
+    if (currentLocation == null) {
+      await detectMyLocation(auto: false);
+      if (from != null) return;
+    }
+    final point = currentLocation;
+    if (point == null) return;
+    final place = await reverseCurrentLocation(point);
+    if (!mounted) return;
+    setState(() {
+      from = place;
+      cost = null;
+      route = <ym.Point>[];
+    });
+    await loadNearbyCars();
+  }
+
   Future<void> pickRoutePointOnMap({required bool pickup}) async {
+    if (!pickup) await ensurePickupFromCurrentLocation();
     final title = pickup ? tx(widget.lang, 'from') : tx(widget.lang, 'to');
     final initial = pickup
         ? (from ?? (currentLocation == null
@@ -1387,6 +1621,41 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
+  Future<void> loadTariffCatalog() async {
+    try {
+      final data = await widget.api.get('/api/tariffs');
+      if (!mounted || data is! List) return;
+      final loaded = data
+          .whereType<Map>()
+          .map((x) => Map<String, dynamic>.from(x))
+          .toList();
+      if (loaded.isEmpty) return;
+
+      String nextKey = selectedTariffKey;
+      final currentAvailable = loaded.any(
+        (x) => (x['key'] ?? '').toString() == selectedTariffKey && x['available'] == true,
+      );
+      if (!currentAvailable) {
+        for (final item in loaded) {
+          if (item['available'] == true) {
+            nextKey = (item['key'] ?? 'start').toString();
+            break;
+          }
+        }
+      }
+
+      setState(() {
+        tariffCatalog = loaded;
+        selectedTariffKey = nextKey;
+      });
+    } catch (_) {
+      // Older backends may not expose /api/tariffs. Route estimates still work.
+    }
+  }
+
+  List<Map<String, dynamic>> get visibleTariffs =>
+      tariffOptions.isNotEmpty ? tariffOptions : tariffCatalog;
+
   Map<String, dynamic>? get selectedCard {
     for (final card in cards) {
       if ((card['cardId'] as num?)?.toInt() == selectedCardId) return card;
@@ -1407,12 +1676,12 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Map<String, dynamic>? get selectedTariff {
-    for (final option in tariffOptions) {
+    for (final option in visibleTariffs) {
       if ((option['key'] ?? '').toString() == selectedTariffKey && option['available'] == true) {
         return option;
       }
     }
-    for (final option in tariffOptions) {
+    for (final option in visibleTariffs) {
       if (option['available'] == true) return option;
     }
     return null;
@@ -1420,6 +1689,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
   IconData tariffIcon(String key) {
     switch (key) {
+      case 'together':
+        return Icons.groups_rounded;
       case 'comfort':
         return Icons.airline_seat_recline_extra_rounded;
       case 'business':
@@ -1435,7 +1706,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   void selectTariff(String key) {
     Map<String, dynamic>? option;
-    for (final item in tariffOptions) {
+    for (final item in visibleTariffs) {
       if ((item['key'] ?? '').toString() == key) {
         option = item;
         break;
@@ -1879,7 +2150,8 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> createOrder() async {
-    if (from == null || to == null) return;
+    final deliveryWithoutDestination = selectedTariffKey == 'delivery' && to == null;
+    if (from == null || (to == null && !deliveryWithoutDestination)) return;
     setState(() {
       busy = true;
       error = null;
@@ -1887,7 +2159,7 @@ class _OrderScreenState extends State<OrderScreen> {
     try {
       final data = await widget.api.post('/api/orders', <String, dynamic>{
         'source': from!.toJson(),
-        'destination': to!.toJson(),
+        if (to != null) 'destination': to!.toJson(),
         'tariffKey': selectedTariffKey,
         'paymentMethod': paymentMethod,
         if (paymentMethod == 'card' && selectedCardId > 0) 'cardId': selectedCardId,
@@ -1930,6 +2202,8 @@ class _OrderScreenState extends State<OrderScreen> {
     final center = from?.point ?? currentLocation ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
     final canUseCard = atmosEnabled && cardBindingAvailable;
     final destinationReady = to != null;
+    final destinationOptional = selectedTariffKey == 'delivery';
+    final routeReadyForOrder = from != null && (destinationReady || destinationOptional);
 
     return Scaffold(
       body: Stack(
@@ -2089,8 +2363,13 @@ class _OrderScreenState extends State<OrderScreen> {
                       routeAddressRow(
                         context,
                         pickup: false,
-                        label: to?.address ?? (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
+                        label: to?.address ??
+                            (selectedTariffKey == 'delivery'
+                                ? (widget.lang == 'uz' ? 'Qayerga (ixtiyoriy)' : 'Куда (необязательно)')
+                                : (widget.lang == 'uz' ? 'Qayerga' : 'Куда')),
                         onAddressTap: () async {
+                          await ensurePickupFromCurrentLocation();
+                          if (!mounted) return;
                           final p = await selectAddress(tx(widget.lang, 'to'), to);
                           if (p != null && mounted) {
                             setState(() {
@@ -2101,7 +2380,11 @@ class _OrderScreenState extends State<OrderScreen> {
                             scheduleEstimate();
                           }
                         },
-                        onMapTap: () => pickRoutePointOnMap(pickup: false),
+                        onMapTap: () async {
+                          await ensurePickupFromCurrentLocation();
+                          if (!mounted) return;
+                          await pickRoutePointOnMap(pickup: false);
+                        },
                       ),
 
                       if (estimating && from != null && to != null) ...<Widget>[
@@ -2127,16 +2410,16 @@ class _OrderScreenState extends State<OrderScreen> {
                           ),
                         ),
                       ],
-                      if (tariffOptions.isNotEmpty && !estimating) ...<Widget>[
+                      if (visibleTariffs.isNotEmpty && !estimating) ...<Widget>[
                         const SizedBox(height: 12),
                         SizedBox(
-                          height: 112,
+                          height: 138,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
-                            itemCount: tariffOptions.length,
+                            itemCount: visibleTariffs.length,
                             separatorBuilder: (_, __) => const SizedBox(width: 8),
                             itemBuilder: (context, index) {
-                              final option = tariffOptions[index];
+                              final option = visibleTariffs[index];
                               final key = (option['key'] ?? '').toString();
                               final available = option['available'] == true;
                               final selected = available && key == selectedTariffKey;
@@ -2144,9 +2427,14 @@ class _OrderScreenState extends State<OrderScreen> {
                               final title = widget.lang == 'uz'
                                   ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
                                   : (option['nameRu'] ?? key).toString();
+                              final saving = (option['savingVsStart'] as num?)?.toDouble() ?? 0;
+                              final savingPercent = (option['savingPercentVsStart'] as num?)?.toInt() ?? 0;
+                              final badge = widget.lang == 'uz'
+                                  ? (option['priceBadgeUz'] ?? '').toString()
+                                  : (option['priceBadgeRu'] ?? '').toString();
 
                               return SizedBox(
-                                width: 112,
+                                width: 132,
                                 child: Material(
                                   color: selected
                                       ? const Color(0xFF111827)
@@ -2183,7 +2471,9 @@ class _OrderScreenState extends State<OrderScreen> {
                                           Text(
                                             available && price != null
                                                 ? price.toStringAsFixed(0) + ' UZS'
-                                                : (widget.lang == 'uz' ? 'Mavjud emas' : 'Недоступен'),
+                                                : available
+                                                    ? (widget.lang == 'uz' ? 'Yo‘nalishni tanlang' : 'Выберите маршрут')
+                                                    : (widget.lang == 'uz' ? 'Mavjud emas' : 'Недоступен'),
                                             maxLines: 1,
                                             style: TextStyle(
                                               fontSize: 11,
@@ -2193,6 +2483,30 @@ class _OrderScreenState extends State<OrderScreen> {
                                                   : (available ? const Color(0xFF6B7280) : const Color(0xFFB7BBC2)),
                                             ),
                                           ),
+                                          if (key == 'together' && savingPercent > 0) ...<Widget>[
+                                            const SizedBox(height: 5),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: selected ? Colors.white12 : const Color(0xFFDDF7E8),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                badge.isNotEmpty
+                                                    ? badge
+                                                    : (widget.lang == 'uz'
+                                                        ? '−$savingPercent% • ${saving.toStringAsFixed(0)} UZS tejash'
+                                                        : '−$savingPercent% • экономия ${saving.toStringAsFixed(0)} UZS'),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: selected ? Colors.white : const Color(0xFF137A3D),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ],
                                       ),
                                     ),
@@ -2202,6 +2516,40 @@ class _OrderScreenState extends State<OrderScreen> {
                             },
                           ),
                         ),
+                        if (selectedTariffKey == 'together' && selectedTariff != null) ...<Widget>[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0FDF4),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                const Icon(Icons.groups_rounded, size: 20, color: Color(0xFF15803D)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    (() {
+                                      final x = selectedTariff!;
+                                      final pct = (x['savingPercentVsStart'] as num?)?.toInt() ?? 0;
+                                      final sum = (x['savingVsStart'] as num?)?.toDouble() ?? 0;
+                                      if (pct <= 0) {
+                                        return widget.lang == 'uz'
+                                            ? 'Birga — alohida ekipaj guruhi bilan birgalikdagi safar.'
+                                            : 'Вместе — совместная поездка с отдельной группой экипажей.';
+                                      }
+                                      return widget.lang == 'uz'
+                                          ? 'Startdan $pct% arzon • ${sum.toStringAsFixed(0)} UZS tejash'
+                                          : 'На $pct% дешевле Старт • экономия ${sum.toStringAsFixed(0)} UZS';
+                                    })(),
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 9),
                         Row(
                           children: <Widget>[
@@ -2273,13 +2621,15 @@ class _OrderScreenState extends State<OrderScreen> {
                       SizedBox(
                         height: 54,
                         child: FilledButton(
-                          onPressed: busy || estimating || from == null || to == null
+                          onPressed: busy || estimating || !routeReadyForOrder
                               ? null
-                              : (cost == null
-                                  ? () {
-                                      scheduleEstimate(delay: Duration.zero);
-                                    }
-                                  : createOrder),
+                              : (destinationOptional && !destinationReady
+                                  ? createOrder
+                                  : (cost == null
+                                      ? () {
+                                          scheduleEstimate(delay: Duration.zero);
+                                        }
+                                      : createOrder)),
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFF111827),
                             foregroundColor: Colors.white,
@@ -2295,11 +2645,13 @@ class _OrderScreenState extends State<OrderScreen> {
                               : Text(
                                   estimating
                                       ? (widget.lang == 'uz' ? 'Narx hisoblanmoqda…' : 'Считаем стоимость…')
-                                      : cost == null
-                                          ? (widget.lang == 'uz' ? 'Qayta hisoblash' : 'Повторить расчёт')
-                                          : (widget.lang == 'uz'
-                                              ? 'Buyurtma berish • ' + cost!.toStringAsFixed(0) + ' UZS'
-                                              : 'Заказать • ' + cost!.toStringAsFixed(0) + ' UZS'),
+                                      : (destinationOptional && !destinationReady)
+                                          ? (widget.lang == 'uz' ? 'Yetkazib berishni buyurtma qilish' : 'Заказать доставку')
+                                          : cost == null
+                                              ? (widget.lang == 'uz' ? 'Qayta hisoblash' : 'Повторить расчёт')
+                                              : (widget.lang == 'uz'
+                                                  ? 'Buyurtma berish • ' + cost!.toStringAsFixed(0) + ' UZS'
+                                                  : 'Заказать • ' + cost!.toStringAsFixed(0) + ' UZS'),
                                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
                                 ),
                         ),
