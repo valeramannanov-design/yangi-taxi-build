@@ -2782,23 +2782,14 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
-  String? tariffAsset(String key) {
-    switch (key) {
-      case 'start':
-      case 'together':
-        return 'assets/tariff_start.webp';
-      case 'comfort':
-        return 'assets/tariff_comfort.webp';
-      case 'business':
-        return 'assets/tariff_business_v2.webp';
-      case 'delivery':
-        return 'assets/tariff_delivery.webp';
-      case 'cargo':
-        return 'assets/tariff_cargo.webp';
-      default:
-        return null;
-    }
-  }
+  String tariffAsset(String key) => switch (key) {
+        'together' => 'assets/map_car_together.webp',
+        'comfort' => 'assets/map_car_comfort.webp',
+        'business' => 'assets/map_car_business.webp',
+        'delivery' => 'assets/map_car_delivery.webp',
+        'cargo' => 'assets/map_car_cargo.webp',
+        _ => 'assets/map_car_start.webp',
+      };
 
   int tariffPassengers(String key) {
     switch (key) {
@@ -3281,10 +3272,11 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   bool _routeLooksLikeRoadGeometry(List<ym.Point> points) {
-    if (points.length < 4) return false;
+    if (points.length < 6) return false;
     final direct = _distanceBetween(points.first, points.last);
     final along = _polylineDistance(points);
-    return direct < 0.05 || along >= direct * 1.001;
+    if (direct < 0.08) return true;
+    return along >= direct * 1.008;
   }
 
   void _logLiveRoute(Place source, Place destination, List<ym.Point> points, String sourceName) {
@@ -3365,20 +3357,20 @@ class _OrderScreenState extends State<OrderScreen> {
       if (currentGeneration != estimateGeneration || !mounted) return;
 
       final mapData = data['route'];
-      var points = _normalizeRoutePoints(mapData, source, destination);
-      _logLiveRoute(source, destination, points, 'TaxiMaster');
+      final taxiMasterPoints = _normalizeRoutePoints(mapData, source, destination);
+      _logLiveRoute(source, destination, taxiMasterPoints, 'TaxiMaster');
 
-      if (!widget.api.isDemo && !_routeLooksLikeRoadGeometry(points)) {
-        final roadPoints = await _buildYandexDrivingRoute(source, destination);
-        if (currentGeneration != estimateGeneration || !mounted) return;
-        if (_routeLooksLikeRoadGeometry(roadPoints)) {
-          points = roadPoints;
-          _logLiveRoute(source, destination, points, 'YandexDrivingRouter');
-        } else {
-          // LIVE must never draw an invented or straight-line route.
-          points = <ym.Point>[];
-          _logLiveRoute(source, destination, points, 'unavailable');
-        }
+      var points = <ym.Point>[];
+      final roadPoints = await _buildYandexDrivingRoute(source, destination);
+      if (currentGeneration != estimateGeneration || !mounted) return;
+      if (roadPoints.length > 1) {
+        points = roadPoints;
+        _logLiveRoute(source, destination, points, 'YandexDrivingRouter');
+      } else if (_routeLooksLikeRoadGeometry(taxiMasterPoints)) {
+        points = taxiMasterPoints;
+        _logLiveRoute(source, destination, points, 'TaxiMasterFallback');
+      } else {
+        _logLiveRoute(source, destination, points, 'unavailable');
       }
 
       final rawOptions = data['options'];
@@ -3891,14 +3883,14 @@ class _OrderScreenState extends State<OrderScreen> {
                             )
                           else
                             SizedBox(
-                              height: 148,
+                              height: 166,
                               child: ListView.separated(
-                                padding: const EdgeInsets.symmetric(horizontal: 2),
+                                padding: const EdgeInsets.fromLTRB(4, 0, 14, 0),
                                 clipBehavior: Clip.hardEdge,
                                 physics: const BouncingScrollPhysics(),
                                 scrollDirection: Axis.horizontal,
                                 itemCount: tariffs.length,
-                                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                separatorBuilder: (_, __) => const SizedBox(width: 10),
                                 itemBuilder: (context, index) {
                                   final option = tariffs[index];
                                   final key = (option['key'] ?? '').toString();
@@ -3908,115 +3900,132 @@ class _OrderScreenState extends State<OrderScreen> {
                                   final title = widget.lang == 'uz'
                                       ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
                                       : (option['nameRu'] ?? key).toString();
-                                  final asset = tariffAsset(key);
 
                                   return SizedBox(
-                                    width: 116,
-                                    child: Material(
-                                      color: isSelected
-                                          ? yangiLime.withValues(alpha: 0.11)
-                                          : Theme.of(context).colorScheme.surface,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(18),
-                                        side: BorderSide(
-                                          color: isSelected
-                                              ? yangiGreen
-                                              : Theme.of(context).colorScheme.outlineVariant,
-                                          width: isSelected ? 1.7 : 0.8,
+                                    width: 126,
+                                    child: Opacity(
+                                      opacity: available ? 1 : 0.58,
+                                      child: Material(
+                                        color: isSelected
+                                            ? yangiLime.withValues(alpha: 0.10)
+                                            : Theme.of(context).colorScheme.surface,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(20),
+                                          side: BorderSide(
+                                            color: isSelected
+                                                ? yangiGreen
+                                                : Theme.of(context).colorScheme.outlineVariant,
+                                            width: isSelected ? 2 : 1,
+                                          ),
                                         ),
-                                      ),
-                                      child: InkWell(
-                                        onTap: available ? () => selectTariff(key) : null,
-                                        borderRadius: BorderRadius.circular(18),
-                                        child: Padding(
-                                          padding: const EdgeInsets.fromLTRB(8, 7, 8, 9),
-                                          child: Column(
-                                            children: <Widget>[
-                                              SizedBox(
-                                                height: 59,
-                                                width: 112,
-                                                child: asset != null
-                                                    ? Stack(
-                                                        alignment: Alignment.center,
-                                                        children: <Widget>[
-                                                          Image.asset(
-                                                            asset,
-                                                            fit: BoxFit.contain,
-                                                            filterQuality: FilterQuality.high,
-                                                            errorBuilder: (_, __, ___) => _TariffVehicleArt(
-                                                              kind: key,
-                                                              selected: isSelected,
-                                                              available: available,
+                                        child: InkWell(
+                                          onTap: available ? () => selectTariff(key) : null,
+                                          borderRadius: BorderRadius.circular(20),
+                                          child: Padding(
+                                            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                                            child: Column(
+                                              children: <Widget>[
+                                                SizedBox(
+                                                  height: 70,
+                                                  width: 80,
+                                                  child: Stack(
+                                                    alignment: Alignment.center,
+                                                    children: <Widget>[
+                                                      Image.asset(
+                                                        tariffAsset(key),
+                                                        fit: BoxFit.contain,
+                                                        filterQuality: FilterQuality.high,
+                                                        errorBuilder: (_, __, ___) => Icon(
+                                                          tariffIcon(key),
+                                                          size: 48,
+                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                                      if (key == 'together')
+                                                        Positioned(
+                                                          right: 0,
+                                                          top: 0,
+                                                          child: Container(
+                                                            width: 25,
+                                                            height: 25,
+                                                            decoration: BoxDecoration(
+                                                              color: yangiLime,
+                                                              borderRadius: BorderRadius.circular(8),
+                                                            ),
+                                                            child: const Icon(
+                                                              Icons.people_alt_rounded,
+                                                              size: 14,
+                                                              color: yangiGraphite,
                                                             ),
                                                           ),
-                                                          if (key == 'together')
-                                                            Positioned(
-                                                              right: 2,
-                                                              top: 2,
-                                                              child: Container(
-                                                                width: 23,
-                                                                height: 23,
-                                                                decoration: BoxDecoration(
-                                                                  color: yangiLime,
-                                                                  borderRadius: BorderRadius.circular(8),
-                                                                ),
-                                                                child: const Icon(
-                                                                  Icons.people_alt_rounded,
-                                                                  size: 14,
-                                                                  color: yangiGraphite,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                        ],
-                                                      )
-                                                    : _TariffVehicleArt(
-                                                        kind: key,
-                                                        selected: isSelected,
-                                                        available: available,
-                                                      ),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                title,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                children: <Widget>[
-                                                  const Icon(Icons.person_rounded, size: 15, color: Color(0xFF8B8F97)),
-                                                  const SizedBox(width: 2),
-                                                  Text(
-                                                    tariffPassengers(key).toString(),
-                                                    style: const TextStyle(fontSize: 11, color: Color(0xFF8B8F97)),
+                                                        ),
+                                                    ],
                                                   ),
-                                                  const SizedBox(width: 9),
-                                                  const Icon(Icons.luggage_rounded, size: 14, color: Color(0xFF8B8F97)),
-                                                  const SizedBox(width: 2),
-                                                  Text(
-                                                    tariffBaggage(key).toString(),
-                                                    style: const TextStyle(fontSize: 11, color: Color(0xFF8B8F97)),
-                                                  ),
-                                                ],
-                                              ),
-                                              const Spacer(),
-                                              Text(
-                                                available && price != null
-                                                    ? '~ ${price.toStringAsFixed(0)} so‘m'
-                                                    : (widget.lang == 'uz' ? 'Mavjud emas' : 'Недоступен'),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w900,
-                                                  color: available
-                                                      ? Theme.of(context).colorScheme.onSurface
-                                                      : const Color(0xFF9CA3AF),
                                                 ),
-                                              ),
-                                            ],
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  title,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w900,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 5),
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: <Widget>[
+                                                    const Icon(
+                                                      Icons.person_rounded,
+                                                      size: 14,
+                                                      color: Color(0xFF8B8F97),
+                                                    ),
+                                                    const SizedBox(width: 2),
+                                                    Text(
+                                                      tariffPassengers(key).toString(),
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                        color: Color(0xFF8B8F97),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    const Icon(
+                                                      Icons.luggage_rounded,
+                                                      size: 13,
+                                                      color: Color(0xFF8B8F97),
+                                                    ),
+                                                    const SizedBox(width: 2),
+                                                    Text(
+                                                      tariffBaggage(key).toString(),
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                        color: Color(0xFF8B8F97),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const Spacer(),
+                                                Text(
+                                                  available && price != null
+                                                      ? '~ ${price.toStringAsFixed(0)} so‘m'
+                                                      : (widget.lang == 'uz'
+                                                          ? 'Mavjud emas'
+                                                          : 'Недоступен'),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  textAlign: TextAlign.center,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: available
+                                                        ? Theme.of(context).colorScheme.onSurface
+                                                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -5239,10 +5248,21 @@ class _RideScreenState extends State<RideScreen> {
   bool loading = true;
   String? error;
   int? feedbackPromptedOrderId;
+  List<ym.Point> roadRoute = <ym.Point>[];
+  yd.DrivingRouter? drivingRouter;
+  yd.DrivingSession? drivingSession;
+  bool routeRequestInFlight = false;
+  ym.Point? lastRouteStart;
+  ym.Point? lastRouteEnd;
 
   @override
   void initState() {
     super.initState();
+    if (yandexMapKitApiKey.isNotEmpty) {
+      drivingRouter = yd.DirectionsFactory.instance.createDrivingRouter(
+        yd.DrivingRouterType.Combined,
+      );
+    }
     refresh();
     timer = Timer.periodic(const Duration(seconds: 4), (_) => refresh());
   }
@@ -5256,7 +5276,124 @@ class _RideScreenState extends State<RideScreen> {
   @override
   void dispose() {
     timer?.cancel();
+    drivingSession?.cancel();
     super.dispose();
+  }
+
+  double _routeDistanceKm(ym.Point a, ym.Point b) {
+    const earthKm = 6371.0;
+    final lat1 = a.latitude * math.pi / 180;
+    final lat2 = b.latitude * math.pi / 180;
+    final dLat = (b.latitude - a.latitude) * math.pi / 180;
+    final dLon = (b.longitude - a.longitude) * math.pi / 180;
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1) * math.cos(lat2) *
+            math.sin(dLon / 2) * math.sin(dLon / 2);
+    return 2 * earthKm * math.asin(math.sqrt(h.clamp(0.0, 1.0)));
+  }
+
+  bool _sameRoadEndpoints(ym.Point start, ym.Point end) {
+    final lastStart = lastRouteStart;
+    final lastEnd = lastRouteEnd;
+    if (lastStart == null || lastEnd == null) return false;
+    return _routeDistanceKm(lastStart, start) < 0.08 &&
+        _routeDistanceKm(lastEnd, end) < 0.03;
+  }
+
+  Future<List<ym.Point>> _requestRoadRoute(
+    ym.Point start,
+    ym.Point end,
+  ) async {
+    final router = drivingRouter;
+    if (router == null) return <ym.Point>[];
+    final completer = Completer<List<ym.Point>>();
+    drivingSession?.cancel();
+    final listener = yd.DrivingSessionRouteListener(
+      onDrivingRoutes: (routes) {
+        if (completer.isCompleted) return;
+        completer.complete(
+          routes.isEmpty ? <ym.Point>[] : routes.first.geometry.points,
+        );
+      },
+      onDrivingRoutesError: (_) {
+        if (!completer.isCompleted) completer.complete(<ym.Point>[]);
+      },
+    );
+    drivingSession = router.requestRoutes(
+      const yd.DrivingOptions(routesCount: 1),
+      const yd.DrivingVehicleOptions(),
+      listener,
+      points: <ym.RequestPoint>[
+        ym.RequestPoint(
+          start,
+          ym.RequestPointType.Waypoint,
+          null,
+          null,
+          null,
+        ),
+        ym.RequestPoint(
+          end,
+          ym.RequestPointType.Waypoint,
+          null,
+          null,
+          null,
+        ),
+      ],
+    );
+    return completer.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        drivingSession?.cancel();
+        return <ym.Point>[];
+      },
+    );
+  }
+
+  Future<void> _refreshRoadRoute(
+    Map<String, dynamic> state,
+    ym.Point? driverPoint,
+  ) async {
+    if (routeRequestInFlight || !mounted) return;
+    final stateKind = (state['state_kind'] ?? '').toString();
+    final pickup = point(state['source_lat'], state['source_lon']);
+    final destination = point(
+      state['destination_lat'],
+      state['destination_lon'],
+    );
+
+    ym.Point? start;
+    ym.Point? end;
+    if (stateKind == 'driver_assigned' || stateKind == 'car_at_place') {
+      start = driverPoint;
+      end = pickup;
+    } else if (stateKind == 'client_inside') {
+      start = driverPoint ?? pickup;
+      end = destination;
+    } else if (stateKind == 'new_order') {
+      start = pickup;
+      end = destination;
+    }
+
+    if (start == null || end == null) {
+      if (roadRoute.isNotEmpty && mounted) {
+        setState(() => roadRoute = <ym.Point>[]);
+      }
+      return;
+    }
+    if (roadRoute.length > 1 && _sameRoadEndpoints(start, end)) return;
+
+    routeRequestInFlight = true;
+    try {
+      final points = await _requestRoadRoute(start, end);
+      if (!mounted) return;
+      setState(() {
+        roadRoute = points.length > 1 ? points : <ym.Point>[];
+        lastRouteStart = start;
+        lastRouteEnd = end;
+      });
+    } finally {
+      routeRequestInFlight = false;
+    }
   }
 
   Future<void> refresh() async {
@@ -5293,6 +5430,7 @@ class _RideScreenState extends State<RideScreen> {
           loading = false;
           error = null;
         });
+        unawaited(_refreshRoadRoute(state, d));
         if (shouldAskRating) {
           final driverName = (state['driver_name'] ?? '').toString();
           WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -5503,13 +5641,6 @@ class _RideScreenState extends State<RideScreen> {
     final finished = state == 'finished';
     final aborted = state == 'aborted';
 
-    final routePoints = <ym.Point>[
-      if (activeRide && from != null) from,
-      if (!activeRide && driver != null) driver!,
-      if (!activeRide && from != null) from,
-      if (activeRide && to != null) to,
-    ];
-
     String tariffTitle(String key) {
       if (widget.lang == 'uz') {
         return switch (key) {
@@ -5598,7 +5729,7 @@ class _RideScreenState extends State<RideScreen> {
               from: from,
               to: to,
               driver: driver,
-              route: routePoints,
+              route: roadRoute,
               vehicleKind: tariffKey,
               zoom: activeRide ? 13 : 14,
             ),
@@ -6895,7 +7026,7 @@ class SettingsScreen extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.info_outline_rounded),
                     title: Text(lang == 'uz' ? 'Ilova haqida' : 'О приложении'),
-                    subtitle: const Text('Yangi Taxi 1.8.1'),
+                    subtitle: const Text('Yangi Taxi 1.8.2'),
                   ),
                 ],
               ),
