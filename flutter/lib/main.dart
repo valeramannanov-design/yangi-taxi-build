@@ -6187,12 +6187,8 @@ class _CardsScreenState extends State<CardsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tile = theme.colorScheme.surfaceContainerHigh;
-    final border = theme.colorScheme.outlineVariant;
-    return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surface,
         appBar: AppBar(
           leading: widget.onMenu == null
               ? null
@@ -6216,7 +6212,7 @@ class _CardsScreenState extends State<CardsScreen> {
                   const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
-                      color: tile,
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: Column(
@@ -6233,9 +6229,9 @@ class _CardsScreenState extends State<CardsScreen> {
                                   width: 44,
                                   height: 32,
                                   decoration: BoxDecoration(
-                                    color: theme.colorScheme.surfaceContainerLowest,
+                                    color: Theme.of(context).colorScheme.surfaceContainerLowest,
                                     borderRadius: BorderRadius.circular(7),
-                                    border: Border.all(color: border),
+                                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                                   ),
                                   child: const Icon(Icons.credit_card_rounded, size: 22),
                                 ),
@@ -6290,7 +6286,7 @@ class _CardsScreenState extends State<CardsScreen> {
                   const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
-                      color: tile,
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: ListTile(
