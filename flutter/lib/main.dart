@@ -1810,125 +1810,82 @@ class _MapCarMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = switch (kind) {
+      'business' => const Color(0xFF22252A),
+      'delivery' => const Color(0xFFFFD900),
+      'cargo' => const Color(0xFF43484F),
+      'together' => yangiLime,
+      _ => yangiLime,
+    };
+
     return SizedBox(
-      width: driver ? 40 : 34,
-      height: driver ? 58 : 50,
-      child: CustomPaint(
-        painter: _TopCarPainter(kind: kind, driver: driver),
-      ),
-    );
-  }
-}
-
-class _TopCarPainter extends CustomPainter {
-  const _TopCarPainter({required this.kind, required this.driver});
-  final String kind;
-  final bool driver;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final body = Paint()
-      ..color = kind == 'business'
-          ? const Color(0xFF17191C)
-          : const Color(0xFFF7F8F8);
-    final dark = Paint()..color = const Color(0xFF20252A);
-    final glass = Paint()..color = const Color(0xFF2A3138);
-    final lime = Paint()..color = yangiLime;
-    final outline = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8;
-
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(size.width / 2, size.height * 0.54),
-        width: size.width * 0.90,
-        height: size.height * 0.80,
-      ),
-      Paint()..color = const Color(0x22000000),
-    );
-
-    final carRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        size.width * 0.18,
-        size.height * 0.05,
-        size.width * 0.64,
-        size.height * 0.88,
-      ),
-      Radius.circular(size.width * 0.22),
-    );
-    canvas.drawRRect(carRect, body);
-    canvas.drawRRect(carRect, outline);
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.25,
-          size.height * 0.25,
-          size.width * 0.50,
-          size.height * 0.29,
-        ),
-        Radius.circular(size.width * 0.12),
-      ),
-      glass,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.29,
-          size.height * 0.60,
-          size.width * 0.42,
-          size.height * 0.17,
-        ),
-        Radius.circular(size.width * 0.08),
-      ),
-      dark,
-    );
-
-    if (kind != 'business') {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            size.width * 0.19,
-            size.height * 0.07,
-            size.width * 0.62,
-            size.height * 0.09,
+      width: driver ? 48 : 40,
+      height: driver ? 54 : 46,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Positioned(
+            bottom: 2,
+            child: Container(
+              width: driver ? 34 : 29,
+              height: driver ? 13 : 11,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.20),
+                borderRadius: BorderRadius.circular(50),
+              ),
+            ),
           ),
-          Radius.circular(size.width * 0.09),
-        ),
-        lime,
-      );
-    }
-
-    if (kind == 'delivery') {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          size.width * 0.43,
-          size.height * 0.10,
-          size.width * 0.28,
-          size.height * 0.22,
-        ),
-        lime,
-      );
-    }
-
-    if (kind == 'together') {
-      canvas.drawCircle(Offset(size.width * 0.43, size.height * 0.16), 2.1, lime);
-      canvas.drawCircle(Offset(size.width * 0.57, size.height * 0.16), 2.1, lime);
-    }
-
-    if (driver) {
-      canvas.drawCircle(
-        Offset(size.width * 0.79, size.height * 0.10),
-        size.width * 0.08,
-        lime,
-      );
-    }
+          Image.asset(
+            'assets/map_car.webp',
+            width: driver ? 46 : 38,
+            height: driver ? 50 : 43,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+            errorBuilder: (_, __, ___) => Container(
+              width: driver ? 40 : 34,
+              height: driver ? 48 : 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: accent, width: 3),
+              ),
+              child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite),
+            ),
+          ),
+          if (kind == 'business')
+            Positioned(
+              top: 1,
+              child: Container(
+                width: 18,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: accent,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+          if (driver)
+            Positioned(
+              right: -1,
+              top: 0,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: yangiLime,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(color: Color(0x33000000), blurRadius: 4),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
-
-  @override
-  bool shouldRepaint(covariant _TopCarPainter oldDelegate) =>
-      oldDelegate.kind != kind || oldDelegate.driver != driver;
 }
 
 class _TariffVehicleArt extends StatelessWidget {
@@ -2325,8 +2282,9 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
         _carProvider(widget.vehicleKind),
         const ym.IconStyle(
           anchor: math.Point<double>(0.5, 0.5),
-          scale: 0.82,
+          scale: 0.92,
           zIndex: 15,
+          rotationType: ym.RotationType.Rotate,
         ),
       );
     }
@@ -2338,8 +2296,9 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
           _carProvider(widget.vehicleKind, driver: true),
           const ym.IconStyle(
             anchor: math.Point<double>(0.5, 0.5),
-            scale: 0.92,
+            scale: 1.00,
             zIndex: 30,
+            rotationType: ym.RotationType.Rotate,
           ),
         );
     }
@@ -2594,6 +2553,66 @@ class _OrderScreenState extends State<OrderScreen> {
 
   List<Map<String, dynamic>> get visibleTariffs =>
       tariffOptions.isNotEmpty ? tariffOptions : tariffCatalog;
+
+  List<Map<String, dynamic>> _validateEstimatedTariffs(dynamic rawOptions) {
+    if (rawOptions is! List) return <Map<String, dynamic>>[];
+
+    const order = <String>[
+      'start',
+      'together',
+      'comfort',
+      'business',
+      'delivery',
+      'cargo',
+    ];
+    final byKey = <String, Map<String, dynamic>>{};
+
+    for (final raw in rawOptions.whereType<Map>()) {
+      final item = Map<String, dynamic>.from(raw);
+      final key = (item['key'] ?? '').toString().trim().toLowerCase();
+      if (!order.contains(key)) continue;
+
+      final price = _routeNumber(item['cost']);
+      final tariffId = item['tariffId'] is num
+          ? (item['tariffId'] as num).toInt()
+          : int.tryParse((item['tariffId'] ?? '').toString());
+      final crewGroupId = item['crewGroupId'] is num
+          ? (item['crewGroupId'] as num).toInt()
+          : int.tryParse((item['crewGroupId'] ?? '').toString());
+
+      final mappingValid =
+          (tariffId == null || tariffId > 0) &&
+          (crewGroupId == null || crewGroupId > 0);
+      final validPrice = price != null && price.isFinite && price > 0;
+
+      item['key'] = key;
+      item['available'] =
+          item['available'] == true && mappingValid && validPrice;
+      if (price != null && price.isFinite) item['cost'] = price;
+
+      byKey[key] = item;
+    }
+
+    final result = <Map<String, dynamic>>[
+      for (final key in order)
+        if (byKey[key] != null) byKey[key]!,
+    ];
+
+    Map<String, dynamic>? start;
+    Map<String, dynamic>? together;
+    for (final item in result) {
+      if (item['key'] == 'start') start = item;
+      if (item['key'] == 'together') together = item;
+    }
+    final startCost = _routeNumber(start?['cost']);
+    final togetherCost = _routeNumber(together?['cost']);
+    if (startCost != null && startCost > 0 && togetherCost != null && togetherCost > 0) {
+      final saving = ((startCost - togetherCost) / startCost * 100).clamp(-999.0, 999.0);
+      together!['effectiveSavingPercentVsStart'] = saving;
+    }
+
+    return result;
+  }
 
   Map<String, dynamic>? get selectedCard {
     for (final card in cards) {
@@ -3160,12 +3179,7 @@ class _OrderScreenState extends State<OrderScreen> {
       final points = _normalizeRoutePoints(mapData, source, destination);
 
       final rawOptions = data['options'];
-      final options = rawOptions is List
-          ? rawOptions
-              .whereType<Map>()
-              .map((x) => Map<String, dynamic>.from(x))
-              .toList()
-          : <Map<String, dynamic>>[];
+      final options = _validateEstimatedTariffs(rawOptions);
 
       Map<String, dynamic>? active;
       for (final item in options) {
@@ -6432,7 +6446,11 @@ class _CardsScreenState extends State<CardsScreen> {
                       widget.lang == 'uz' ? 'Naqd' : 'Наличные',
                       style: TextStyle(color: scheme.onSurface, fontSize: 17, fontWeight: FontWeight.w900),
                     ),
-                    trailing: const Icon(Icons.check_circle_rounded, color: yangiLime, size: 31),
+                    subtitle: Text(
+                      widget.lang == 'uz' ? 'Barcha safarlarda mavjud' : 'Доступно для всех поездок',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                    trailing: Icon(Icons.payments_outlined, color: scheme.onSurfaceVariant),
                   ),
                 ),
                 const SizedBox(height: 18),
