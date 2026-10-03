@@ -4139,10 +4139,16 @@ class _OrderScreenState extends State<OrderScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFFF3F3F3),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      barrierColor: Colors.black.withValues(alpha: 0.48),
       showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
+        builder: (context, setSheetState) {
+          final theme = Theme.of(context);
+          final surface = theme.colorScheme.surface;
+          final tile = theme.colorScheme.surfaceContainerHigh;
+          final border = theme.colorScheme.outlineVariant;
+          return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
             child: Column(
@@ -4163,8 +4169,9 @@ class _OrderScreenState extends State<OrderScreen> {
                 const SizedBox(height: 9),
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: tile,
                     borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: border.withValues(alpha: 0.55)),
                   ),
                   child: Column(
                     children: <Widget>[
@@ -4183,7 +4190,7 @@ class _OrderScreenState extends State<OrderScreen> {
                               subtitle: Text(widget.lang == 'uz' ? 'ATMOS karta' : 'Карта ATMOS'),
                               trailing: Icon(
                                 selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                                color: selected ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
+                                color: selected ? yangiLime : theme.colorScheme.outline,
                                 size: 30,
                               ),
                               onTap: () {
@@ -4231,8 +4238,9 @@ class _OrderScreenState extends State<OrderScreen> {
                 const SizedBox(height: 9),
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: tile,
                     borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: border.withValues(alpha: 0.55)),
                   ),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -4243,7 +4251,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     ),
                     trailing: Icon(
                       draftMethod == 'cash' ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                      color: draftMethod == 'cash' ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
+                      color: draftMethod == 'cash' ? yangiLime : theme.colorScheme.outline,
                       size: 30,
                     ),
                     onTap: () => setSheetState(() => draftMethod = 'cash'),
@@ -4261,8 +4269,8 @@ class _OrderScreenState extends State<OrderScreen> {
                       Navigator.pop(sheetContext);
                     },
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD900),
-                      foregroundColor: Colors.black,
+                      backgroundColor: yangiLime,
+                      foregroundColor: yangiGraphite,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                     ),
@@ -4275,7 +4283,8 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
           ),
-        ),
+        );
+        },
       ),
     );
   }
@@ -6198,8 +6207,12 @@ class _CardsScreenState extends State<CardsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFFF3F3F3),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tile = theme.colorScheme.surfaceContainerHigh;
+    final border = theme.colorScheme.outlineVariant;
+    return Scaffold(
+        backgroundColor: theme.colorScheme.surface,
         appBar: AppBar(
           leading: widget.onMenu == null
               ? null
@@ -6223,7 +6236,7 @@ class _CardsScreenState extends State<CardsScreen> {
                   const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: tile,
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: Column(
@@ -6240,9 +6253,9 @@ class _CardsScreenState extends State<CardsScreen> {
                                   width: 44,
                                   height: 32,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFF3F4F6),
+                                    color: theme.colorScheme.surfaceContainerLowest,
                                     borderRadius: BorderRadius.circular(7),
-                                    border: Border.all(color: const Color(0xFFD1D5DB)),
+                                    border: Border.all(color: border),
                                   ),
                                   child: const Icon(Icons.credit_card_rounded, size: 22),
                                 ),
@@ -6253,7 +6266,7 @@ class _CardsScreenState extends State<CardsScreen> {
                                       : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта'),
                                 ),
                                 trailing: isDefault
-                                    ? const Icon(Icons.check_circle_rounded, color: Color(0xFFFFD900), size: 29)
+                                    ? const Icon(Icons.check_circle_rounded, color: yangiLime, size: 29)
                                     : IconButton(
                                         icon: const Icon(Icons.radio_button_unchecked_rounded),
                                         onPressed: () => makeDefault(id),
@@ -6297,7 +6310,7 @@ class _CardsScreenState extends State<CardsScreen> {
                   const SizedBox(height: 10),
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: tile,
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: ListTile(
@@ -6307,7 +6320,7 @@ class _CardsScreenState extends State<CardsScreen> {
                         widget.lang == 'uz' ? 'Naqd' : 'Наличные',
                         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                       ),
-                      trailing: const Icon(Icons.check_circle_rounded, color: Color(0xFFFFD900), size: 31),
+                      trailing: const Icon(Icons.check_circle_rounded, color: yangiLime, size: 31),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -6322,8 +6335,8 @@ class _CardsScreenState extends State<CardsScreen> {
                         }
                       },
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFD900),
-                        foregroundColor: Colors.black,
+                        backgroundColor: yangiLime,
+                        foregroundColor: yangiGraphite,
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                       ),
@@ -6344,6 +6357,7 @@ class _CardsScreenState extends State<CardsScreen> {
                 ],
               ),
       );
+  }
 
 }
 
