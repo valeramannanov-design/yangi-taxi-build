@@ -201,6 +201,82 @@ class ApiClient {
   Future<dynamic> _demoGet(String path, Map<String, String> query) async {
     await Future<void>.delayed(const Duration(milliseconds: 180));
     if (path == '/api/me') return demoMe;
+    if (path == '/api/tariffs') {
+      return <Map<String, dynamic>>[
+        <String, dynamic>{
+          'key': 'start',
+          'nameRu': 'Старт',
+          'nameUz': 'Start',
+          'icon': 'local_taxi',
+          'tariffId': 1,
+          'tariffName': 'Старт',
+          'crewGroupId': 11,
+          'crewGroupName': 'Старт',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'together',
+          'nameRu': 'Вместе',
+          'nameUz': 'Birga',
+          'icon': 'groups',
+          'tariffId': 2,
+          'tariffName': 'Вместе',
+          'crewGroupId': 12,
+          'crewGroupName': 'Вместе',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'comfort',
+          'nameRu': 'Комфорт',
+          'nameUz': 'Komfort',
+          'icon': 'airline_seat_recline_extra',
+          'tariffId': 3,
+          'tariffName': 'Комфорт',
+          'crewGroupId': 13,
+          'crewGroupName': 'Комфорт',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'business',
+          'nameRu': 'Бизнес',
+          'nameUz': 'Biznes',
+          'icon': 'business_center',
+          'tariffId': 4,
+          'tariffName': 'Бизнес',
+          'crewGroupId': 14,
+          'crewGroupName': 'Бизнес',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'delivery',
+          'nameRu': 'Доставка',
+          'nameUz': 'Yetkazish',
+          'icon': 'inventory_2',
+          'tariffId': 5,
+          'tariffName': 'Доставка',
+          'crewGroupId': 15,
+          'crewGroupName': 'Доставка',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'cargo',
+          'nameRu': 'Грузовой',
+          'nameUz': 'Yuk',
+          'icon': 'local_shipping',
+          'tariffId': 6,
+          'tariffName': 'Грузовой',
+          'crewGroupId': 16,
+          'crewGroupName': 'Грузовой',
+          'available': true,
+          'missing': <String>[],
+        },
+      ];
+    }
     if (path == '/api/payments/config') {
       return <String, dynamic>{
         'atmosEnabled': true,
@@ -344,6 +420,104 @@ class ApiClient {
       token = 'demo-session';
       return <String, dynamic>{'token': token, 'client': demoMe};
     }
+    if (path == '/api/orders/estimate-options') {
+      final a = Map<String, dynamic>.from(body['source'] as Map);
+      final b = Map<String, dynamic>.from(body['destination'] as Map);
+      final aLat = (a['lat'] as num).toDouble();
+      final aLon = (a['lon'] as num).toDouble();
+      final bLat = (b['lat'] as num).toDouble();
+      final bLon = (b['lon'] as num).toDouble();
+      final dist = math.sqrt(math.pow(aLat - bLat, 2) + math.pow(aLon - bLon, 2));
+      final baseCost = 12000 + dist * 560000;
+
+      Map<String, dynamic> option({
+        required String key,
+        required String nameRu,
+        required String nameUz,
+        required int tariffId,
+        required int crewGroupId,
+        required double multiplier,
+      }) =>
+          <String, dynamic>{
+            'key': key,
+            'nameRu': nameRu,
+            'nameUz': nameUz,
+            'tariffId': tariffId,
+            'crewGroupId': crewGroupId,
+            'available': true,
+            'cost': (baseCost * multiplier).roundToDouble(),
+          };
+
+      return <String, dynamic>{
+        'options': <Map<String, dynamic>>[
+          option(
+            key: 'start',
+            nameRu: 'Старт',
+            nameUz: 'Start',
+            tariffId: 1,
+            crewGroupId: 11,
+            multiplier: 1.00,
+          ),
+          <String, dynamic>{
+            ...option(
+              key: 'together',
+              nameRu: 'Вместе',
+              nameUz: 'Birga',
+              tariffId: 2,
+              crewGroupId: 12,
+              multiplier: 0.82,
+            ),
+            'savingVsStart': (baseCost * 0.18).roundToDouble(),
+            'savingPercentVsStart': 18,
+            'priceBadgeRu': 'На 18% дешевле Старт',
+            'priceBadgeUz': 'Startdan 18% arzon',
+          },
+          option(
+            key: 'comfort',
+            nameRu: 'Комфорт',
+            nameUz: 'Komfort',
+            tariffId: 3,
+            crewGroupId: 13,
+            multiplier: 1.20,
+          ),
+          option(
+            key: 'business',
+            nameRu: 'Бизнес',
+            nameUz: 'Biznes',
+            tariffId: 4,
+            crewGroupId: 14,
+            multiplier: 1.55,
+          ),
+          option(
+            key: 'delivery',
+            nameRu: 'Доставка',
+            nameUz: 'Yetkazib berish',
+            tariffId: 5,
+            crewGroupId: 15,
+            multiplier: 1.10,
+          ),
+          option(
+            key: 'cargo',
+            nameRu: 'Грузовой',
+            nameUz: 'Yuk tashish',
+            tariffId: 6,
+            crewGroupId: 16,
+            multiplier: 1.80,
+          ),
+        ],
+        'route': <String, dynamic>{
+          'full_route_coords': <dynamic>[
+            <String, dynamic>{'lat': aLat, 'lon': aLon},
+            <String, dynamic>{
+              'lat': (aLat + bLat) / 2 + 0.003,
+              'lon': (aLon + bLon) / 2 - 0.002,
+            },
+            <String, dynamic>{'lat': bLat, 'lon': bLon},
+          ],
+        },
+      };
+    }
+
     if (path == '/api/orders/estimate') {
       final a = Map<String, dynamic>.from(body['source'] as Map);
       final b = Map<String, dynamic>.from(body['destination'] as Map);
@@ -366,14 +540,53 @@ class ApiClient {
     }
     if (path == '/api/orders') {
       final a = Map<String, dynamic>.from(body['source'] as Map);
-      final b = Map<String, dynamic>.from(body['destination'] as Map);
+      final b = body['destination'] is Map
+          ? Map<String, dynamic>.from(body['destination'] as Map)
+          : Map<String, dynamic>.from(a);
+      final hasDestination = body['destination'] is Map;
+      final key = (body['tariffKey'] ?? 'start').toString();
+      const tariffIds = <String, int>{
+        'start': 1,
+        'together': 2,
+        'comfort': 3,
+        'business': 4,
+        'delivery': 5,
+        'cargo': 6,
+      };
+      const groupIds = <String, int>{
+        'start': 11,
+        'together': 12,
+        'comfort': 13,
+        'business': 14,
+        'delivery': 15,
+        'cargo': 16,
+      };
+      const multipliers = <String, double>{
+        'start': 1.00,
+        'together': 0.82,
+        'comfort': 1.20,
+        'business': 1.55,
+        'delivery': 1.10,
+        'cargo': 1.80,
+      };
+      final aLat = (a['lat'] as num).toDouble();
+      final aLon = (a['lon'] as num).toDouble();
+      final bLat = (b['lat'] as num).toDouble();
+      final bLon = (b['lon'] as num).toDouble();
+      final dist = math.sqrt(math.pow(aLat - bLat, 2) + math.pow(aLon - bLon, 2));
+      final baseCost = 12000 + dist * 560000;
+      final finalCost = (baseCost * (multipliers[key] ?? 1.0)).roundToDouble();
+
       final id = 30000 + DateTime.now().millisecondsSinceEpoch.remainder(9000);
       _demoStarted = DateTime.now();
       _demoOrder = <String, dynamic>{
         'order_id': id,
+        'tariff_key': key,
+        'tariff_id': tariffIds[key] ?? 1,
+        'crew_group_id': groupIds[key] ?? 11,
         'state_kind': 'new_order',
         'source': a['address'],
-        'destination': b['address'],
+        'destination': hasDestination ? b['address'] : '',
         'source_lat': a['lat'],
         'source_lon': a['lon'],
         'destination_lat': b['lat'],
@@ -381,7 +594,7 @@ class ApiClient {
         'car_mark': 'Chevrolet',
         'car_model': 'Cobalt',
         'car_number': '01 Y 001 TX',
-        'total_cost': 28000,
+        'total_cost': finalCost,
       };
       return <String, dynamic>{'order_id': id};
     }
@@ -1264,6 +1477,7 @@ class _OrderScreenState extends State<OrderScreen> {
   bool estimating = false;
   Timer? estimateTimer;
   int estimateGeneration = 0;
+  List<Map<String, dynamic>> tariffCatalog = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> tariffOptions = <Map<String, dynamic>>[];
   String selectedTariffKey = 'start';
   String paymentMethod = 'cash';
@@ -1280,6 +1494,7 @@ class _OrderScreenState extends State<OrderScreen> {
     locationSearchManager = ys.SearchFactory.instance.createSearchManager(ys.SearchManagerType.Online);
     loadPaymentConfig();
     loadCards();
+    loadTariffCatalog();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       detectMyLocation(auto: true);
     });
@@ -1302,7 +1517,26 @@ class _OrderScreenState extends State<OrderScreen> {
         builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
       );
 
+  Future<void> ensurePickupFromCurrentLocation() async {
+    if (from != null) return;
+    if (currentLocation == null) {
+      await detectMyLocation(auto: false);
+      if (from != null) return;
+    }
+    final point = currentLocation;
+    if (point == null) return;
+    final place = await reverseCurrentLocation(point);
+    if (!mounted) return;
+    setState(() {
+      from = place;
+      cost = null;
+      route = <ym.Point>[];
+    });
+    await loadNearbyCars();
+  }
+
   Future<void> pickRoutePointOnMap({required bool pickup}) async {
+    if (!pickup) await ensurePickupFromCurrentLocation();
     final title = pickup ? tx(widget.lang, 'from') : tx(widget.lang, 'to');
     final initial = pickup
         ? (from ?? (currentLocation == null
@@ -1387,6 +1621,41 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
+  Future<void> loadTariffCatalog() async {
+    try {
+      final data = await widget.api.get('/api/tariffs');
+      if (!mounted || data is! List) return;
+      final loaded = data
+          .whereType<Map>()
+          .map((x) => Map<String, dynamic>.from(x))
+          .toList();
+      if (loaded.isEmpty) return;
+
+      String nextKey = selectedTariffKey;
+      final currentAvailable = loaded.any(
+        (x) => (x['key'] ?? '').toString() == selectedTariffKey && x['available'] == true,
+      );
+      if (!currentAvailable) {
+        for (final item in loaded) {
+          if (item['available'] == true) {
+            nextKey = (item['key'] ?? 'start').toString();
+            break;
+          }
+        }
+      }
+
+      setState(() {
+        tariffCatalog = loaded;
+        selectedTariffKey = nextKey;
+      });
+    } catch (_) {
+      // Older backends may not expose /api/tariffs. Route estimates still work.
+    }
+  }
+
+  List<Map<String, dynamic>> get visibleTariffs =>
+      tariffOptions.isNotEmpty ? tariffOptions : tariffCatalog;
+
   Map<String, dynamic>? get selectedCard {
     for (final card in cards) {
       if ((card['cardId'] as num?)?.toInt() == selectedCardId) return card;
@@ -1407,12 +1676,12 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Map<String, dynamic>? get selectedTariff {
-    for (final option in tariffOptions) {
+    for (final option in visibleTariffs) {
       if ((option['key'] ?? '').toString() == selectedTariffKey && option['available'] == true) {
         return option;
       }
     }
-    for (final option in tariffOptions) {
+    for (final option in visibleTariffs) {
       if (option['available'] == true) return option;
     }
     return null;
@@ -1420,6 +1689,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
   IconData tariffIcon(String key) {
     switch (key) {
+      case 'together':
+        return Icons.groups_rounded;
       case 'comfort':
         return Icons.airline_seat_recline_extra_rounded;
       case 'business':
@@ -1435,7 +1706,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   void selectTariff(String key) {
     Map<String, dynamic>? option;
-    for (final item in tariffOptions) {
+    for (final item in visibleTariffs) {
       if ((item['key'] ?? '').toString() == key) {
         option = item;
         break;
@@ -1446,6 +1717,51 @@ class _OrderScreenState extends State<OrderScreen> {
       selectedTariffKey = key;
       cost = (option!['cost'] as num?)?.toDouble();
     });
+  }
+
+  String get selectedServiceMode {
+    if (selectedTariffKey == 'together') return 'together';
+    if (selectedTariffKey == 'delivery') return 'delivery';
+    if (selectedTariffKey == 'cargo') return 'cargo';
+    return 'taxi';
+  }
+
+  void selectServiceMode(String mode) {
+    final target = switch (mode) {
+      'together' => 'together',
+      'delivery' => 'delivery',
+      'cargo' => 'cargo',
+      _ => 'start',
+    };
+
+    Map<String, dynamic>? option;
+    for (final item in visibleTariffs) {
+      if ((item['key'] ?? '').toString() == target) {
+        option = item;
+        break;
+      }
+    }
+
+    setState(() {
+      selectedTariffKey = target;
+      cost = option != null && option['available'] == true
+          ? (option['cost'] as num?)?.toDouble()
+          : null;
+      error = null;
+    });
+
+    if (from != null && to != null) {
+      scheduleEstimate(delay: Duration.zero);
+    }
+  }
+
+  List<Map<String, dynamic>> get serviceTariffs {
+    final mode = selectedServiceMode;
+    return visibleTariffs.where((item) {
+      final key = (item['key'] ?? '').toString();
+      if (mode == 'taxi') return key == 'start' || key == 'comfort' || key == 'business';
+      return key == mode;
+    }).toList();
   }
 
   void scheduleEstimate({Duration delay = const Duration(milliseconds: 250)}) {
@@ -1879,7 +2195,8 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> createOrder() async {
-    if (from == null || to == null) return;
+    final deliveryWithoutDestination = selectedTariffKey == 'delivery' && to == null;
+    if (from == null || (to == null && !deliveryWithoutDestination)) return;
     setState(() {
       busy = true;
       error = null;
@@ -1887,7 +2204,7 @@ class _OrderScreenState extends State<OrderScreen> {
     try {
       final data = await widget.api.post('/api/orders', <String, dynamic>{
         'source': from!.toJson(),
-        'destination': to!.toJson(),
+        if (to != null) 'destination': to!.toJson(),
         'tariffKey': selectedTariffKey,
         'paymentMethod': paymentMethod,
         if (paymentMethod == 'card' && selectedCardId > 0) 'cardId': selectedCardId,
@@ -1925,13 +2242,19 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     final center = from?.point ?? currentLocation ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
     final canUseCard = atmosEnabled && cardBindingAvailable;
     final destinationReady = to != null;
+    final destinationOptional = selectedTariffKey == 'delivery';
+    final routeReadyForOrder = from != null && (destinationReady || destinationOptional);
+    final tariffs = serviceTariffs;
+    final serviceMode = selectedServiceMode;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF6F5F2),
       body: Stack(
         children: <Widget>[
           Positioned.fill(
@@ -1944,109 +2267,97 @@ class _OrderScreenState extends State<OrderScreen> {
               zoom: destinationReady ? 13 : 15,
             ),
           ),
-
-          // Compact floating header. The map remains the main surface.
           Positioned(
-            top: 12,
+            top: 10,
             left: 12,
             right: 12,
             child: SafeArea(
               bottom: false,
               child: Row(
                 children: <Widget>[
-                  Material(
-                    color: Colors.white,
-                    elevation: 6,
-                    shadowColor: const Color(0x22000000),
-                    borderRadius: BorderRadius.circular(22),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(22),
-                      onTap: widget.onMenu,
-                      child: const Padding(
-                        padding: EdgeInsets.fromLTRB(10, 8, 14, 8),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(Icons.menu_rounded, size: 24),
-                            SizedBox(width: 8),
-                            Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                      ),
+                  _roundMapButton(icon: Icons.menu_rounded, onTap: widget.onMenu, tooltip: 'Yangi Taxi'),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(color: Color(0x24000000), blurRadius: 16, offset: Offset(0, 4)),
+                      ],
                     ),
+                    child: const Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
                   ),
                   const Spacer(),
-                  Material(
-                    color: Colors.white,
-                    elevation: 6,
-                    shadowColor: const Color(0x22000000),
-                    shape: const CircleBorder(),
-                    child: IconButton(
-                      onPressed: locating ? null : () => detectMyLocation(),
-                      tooltip: widget.lang == 'uz' ? 'Mening joylashuvim' : 'Моё местоположение',
-                      icon: locating
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.my_location_rounded),
-                    ),
+                  _roundMapButton(
+                    icon: locating ? Icons.more_horiz_rounded : Icons.my_location_rounded,
+                    onTap: locating ? null : () => detectMyLocation(),
+                    tooltip: widget.lang == 'uz' ? 'Mening joylashuvim' : 'Моё местоположение',
                   ),
                 ],
               ),
             ),
           ),
-
-          Align(
-            alignment: Alignment.bottomCenter,
+          Positioned(
+            right: 14,
+            bottom: MediaQuery.of(context).size.height * 0.34,
             child: SafeArea(
-              top: false,
-              minimum: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 720),
+              child: _roundMapButton(
+                icon: Icons.near_me_rounded,
+                onTap: locating ? null : () => detectMyLocation(),
+                tooltip: widget.lang == 'uz' ? 'Mening joylashuvim' : 'Моё местоположение',
+                large: true,
+              ),
+            ),
+          ),
+          DraggableScrollableSheet(
+            initialChildSize: destinationReady ? 0.60 : 0.43,
+            minChildSize: 0.33,
+            maxChildSize: 0.82,
+            snap: true,
+            snapSizes: const <double>[0.43, 0.60, 0.82],
+            builder: (context, scrollController) {
+              return Container(
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.all(Radius.circular(28)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
                   boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: Color(0x26000000),
-                      blurRadius: 28,
-                      offset: Offset(0, -8),
-                    ),
+                    BoxShadow(color: Color(0x26000000), blurRadius: 28, offset: Offset(0, -8)),
                   ],
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD7D9DD),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(14, 9, 14, 26),
+                  children: <Widget>[
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD2D3D6),
+                          borderRadius: BorderRadius.circular(99),
                         ),
                       ),
-                      const SizedBox(height: 11),
+                    ),
+                    const SizedBox(height: 13),
+                    if (!destinationReady)
+                      Text(
+                        widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда поедем?',
+                        style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900, letterSpacing: -0.7),
+                      )
+                    else
                       Row(
                         children: <Widget>[
                           Expanded(
                             child: Text(
-                              widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда едем?',
-                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.7,
-                                  ),
+                              widget.lang == 'uz' ? 'Safar tafsilotlari' : 'Детали поездки',
+                              style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, letterSpacing: -0.5),
                             ),
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF2F3F5),
+                              color: const Color(0xFFF1F2F4),
                               borderRadius: BorderRadius.circular(14),
                             ),
                             child: Row(
@@ -2056,261 +2367,626 @@ class _OrderScreenState extends State<OrderScreen> {
                                 const SizedBox(width: 5),
                                 Text(
                                   widget.lang == 'uz' ? 'Hozir' : 'Сейчас',
-                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
                                 ),
                               ],
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-
-                      // Both route rows have their own Map button directly next
-                      // to the address, matching the interaction the user expects.
-                      routeAddressRow(
-                        context,
-                        pickup: true,
-                        label: from?.address ?? (widget.lang == 'uz' ? 'Qayerdan' : 'Откуда'),
-                        onAddressTap: () async {
-                          final p = await selectAddress(tx(widget.lang, 'from'), from);
-                          if (p != null && mounted) {
-                            setState(() {
-                              from = p;
-                              cost = null;
-                              route = <ym.Point>[];
-                            });
-                            loadNearbyCars();
-                            scheduleEstimate();
-                          }
-                        },
-                        onMapTap: () => pickRoutePointOnMap(pickup: true),
+                    const SizedBox(height: 13),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(22),
                       ),
-                      const SizedBox(height: 8),
-                      routeAddressRow(
-                        context,
-                        pickup: false,
-                        label: to?.address ?? (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
-                        onAddressTap: () async {
-                          final p = await selectAddress(tx(widget.lang, 'to'), to);
-                          if (p != null && mounted) {
-                            setState(() {
-                              to = p;
-                              cost = null;
-                              route = <ym.Point>[];
-                            });
-                            scheduleEstimate();
-                          }
-                        },
-                        onMapTap: () => pickRoutePointOnMap(pickup: false),
+                      child: Column(
+                        children: <Widget>[
+                          _addressLine(
+                            pickup: true,
+                            title: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
+                            value: from?.address ??
+                                (locating
+                                    ? (widget.lang == 'uz' ? 'Joylashuv aniqlanmoqda…' : 'Определяем местоположение…')
+                                    : (widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение')),
+                            onTap: () async {
+                              final p = await selectAddress(tx(widget.lang, 'from'), from);
+                              if (p != null && mounted) {
+                                setState(() {
+                                  from = p;
+                                  cost = null;
+                                  route = <ym.Point>[];
+                                });
+                                await loadNearbyCars();
+                                scheduleEstimate();
+                              }
+                            },
+                            onMapTap: () => pickRoutePointOnMap(pickup: true),
+                          ),
+                          const Divider(height: 1, indent: 44, endIndent: 12),
+                          _addressLine(
+                            pickup: false,
+                            title: selectedTariffKey == 'delivery'
+                                ? (widget.lang == 'uz' ? 'Qayerga — ixtiyoriy' : 'Куда — необязательно')
+                                : (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
+                            value: to?.address ??
+                                (selectedTariffKey == 'delivery'
+                                    ? (widget.lang == 'uz' ? 'Keyinroq ko‘rsatish mumkin' : 'Можно указать позже')
+                                    : (widget.lang == 'uz' ? 'Manzilni tanlang' : 'Выберите адрес')),
+                            onTap: () async {
+                              await ensurePickupFromCurrentLocation();
+                              if (!mounted) return;
+                              final p = await selectAddress(tx(widget.lang, 'to'), to);
+                              if (p != null && mounted) {
+                                setState(() {
+                                  to = p;
+                                  cost = null;
+                                  route = <ym.Point>[];
+                                });
+                                scheduleEstimate();
+                              }
+                            },
+                            onMapTap: () async {
+                              await ensurePickupFromCurrentLocation();
+                              if (!mounted) return;
+                              await pickRoutePointOnMap(pickup: false);
+                            },
+                          ),
+                        ],
                       ),
-
-                      if (estimating && from != null && to != null) ...<Widget>[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF3F4F6),
-                            borderRadius: BorderRadius.circular(18),
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 44,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: <Widget>[
+                          _serviceModeChip(
+                            label: widget.lang == 'uz' ? 'Taksi' : 'Такси',
+                            icon: Icons.local_taxi_rounded,
+                            selected: serviceMode == 'taxi',
+                            onTap: () => selectServiceMode('taxi'),
                           ),
-                          child: Row(
-                            children: <Widget>[
-                              const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                widget.lang == 'uz' ? 'Narx hisoblanmoqda…' : 'Рассчитываем стоимость…',
-                                style: const TextStyle(fontWeight: FontWeight.w800),
-                              ),
-                            ],
+                          _serviceModeChip(
+                            label: widget.lang == 'uz' ? 'Birga' : 'Вместе',
+                            icon: Icons.groups_rounded,
+                            selected: serviceMode == 'together',
+                            onTap: () => selectServiceMode('together'),
                           ),
+                          _serviceModeChip(
+                            label: widget.lang == 'uz' ? 'Yetkazish' : 'Доставка',
+                            icon: Icons.inventory_2_rounded,
+                            selected: serviceMode == 'delivery',
+                            onTap: () => selectServiceMode('delivery'),
+                          ),
+                          _serviceModeChip(
+                            label: widget.lang == 'uz' ? 'Yuk' : 'Грузовой',
+                            icon: Icons.local_shipping_rounded,
+                            selected: serviceMode == 'cargo',
+                            onTap: () => selectServiceMode('cargo'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (estimating && from != null && to != null) ...<Widget>[
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF8D8),
+                          borderRadius: BorderRadius.circular(18),
                         ),
-                      ],
-                      if (tariffOptions.isNotEmpty && !estimating) ...<Widget>[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 112,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: tariffOptions.length,
-                            separatorBuilder: (_, __) => const SizedBox(width: 8),
-                            itemBuilder: (context, index) {
-                              final option = tariffOptions[index];
-                              final key = (option['key'] ?? '').toString();
-                              final available = option['available'] == true;
-                              final selected = available && key == selectedTariffKey;
-                              final price = (option['cost'] as num?)?.toDouble();
-                              final title = widget.lang == 'uz'
-                                  ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
-                                  : (option['nameRu'] ?? key).toString();
+                        child: Row(
+                          children: <Widget>[
+                            const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2.4),
+                            ),
+                            const SizedBox(width: 11),
+                            Text(
+                              widget.lang == 'uz' ? 'Narx hisoblanmoqda…' : 'Рассчитываем стоимость…',
+                              style: const TextStyle(fontWeight: FontWeight.w900),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (tariffs.isNotEmpty && !estimating) ...<Widget>[
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        height: serviceMode == 'taxi' ? 164 : 154,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: tariffs.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 10),
+                          itemBuilder: (context, index) {
+                            final option = tariffs[index];
+                            final key = (option['key'] ?? '').toString();
+                            final available = option['available'] == true;
+                            final selected = available && key == selectedTariffKey;
+                            final price = (option['cost'] as num?)?.toDouble();
+                            final title = widget.lang == 'uz'
+                                ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
+                                : (option['nameRu'] ?? key).toString();
+                            final saving = (option['savingVsStart'] as num?)?.toDouble() ?? 0;
+                            final savingPercent = (option['savingPercentVsStart'] as num?)?.toInt() ?? 0;
 
-                              return SizedBox(
-                                width: 112,
-                                child: Material(
-                                  color: selected
-                                      ? const Color(0xFF111827)
-                                      : (available ? const Color(0xFFF3F4F6) : const Color(0xFFF7F7F8)),
-                                  borderRadius: BorderRadius.circular(19),
-                                  child: InkWell(
-                                    onTap: available ? () => selectTariff(key) : null,
-                                    borderRadius: BorderRadius.circular(19),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: <Widget>[
-                                          Icon(
-                                            tariffIcon(key),
-                                            size: 25,
-                                            color: selected
-                                                ? Colors.white
-                                                : (available ? const Color(0xFF111827) : const Color(0xFFB7BBC2)),
+                            return SizedBox(
+                              width: serviceMode == 'taxi' ? 142 : 190,
+                              child: Material(
+                                color: selected ? const Color(0xFFFFE500) : const Color(0xFFF2F3F5),
+                                borderRadius: BorderRadius.circular(22),
+                                child: InkWell(
+                                  onTap: available ? () => selectTariff(key) : null,
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        SizedBox(
+                                          height: 58,
+                                          width: double.infinity,
+                                          child: Stack(
+                                            children: <Widget>[
+                                              Positioned(
+                                                right: -5,
+                                                bottom: -3,
+                                                child: Opacity(
+                                                  opacity: available ? 1 : 0.35,
+                                                  child: Image.asset(
+                                                    'assets/car.png',
+                                                    width: 98,
+                                                    height: 58,
+                                                    fit: BoxFit.contain,
+                                                  ),
+                                                ),
+                                              ),
+                                              Align(
+                                                alignment: Alignment.topLeft,
+                                                child: Container(
+                                                  width: 34,
+                                                  height: 34,
+                                                  decoration: BoxDecoration(
+                                                    color: selected ? Colors.white70 : Colors.white,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: Icon(tariffIcon(key), size: 19),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                          const Spacer(),
+                                        ),
+                                        const Spacer(),
+                                        Text(
+                                          title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w900,
+                                            color: available ? const Color(0xFF111111) : const Color(0xFF9CA3AF),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          price != null
+                                              ? '${price.toStringAsFixed(0)} UZS'
+                                              : (available
+                                                  ? (widget.lang == 'uz' ? 'Manzilni tanlang' : 'Выберите маршрут')
+                                                  : (widget.lang == 'uz' ? 'Mavjud emas' : 'Недоступен')),
+                                          maxLines: 1,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF62666D),
+                                          ),
+                                        ),
+                                        if (key == 'together' && savingPercent > 0) ...<Widget>[
+                                          const SizedBox(height: 4),
                                           Text(
-                                            title,
+                                            widget.lang == 'uz'
+                                                ? 'Startdan $savingPercent% arzon • ${saving.toStringAsFixed(0)} UZS'
+                                                : 'На $savingPercent% дешевле • −${saving.toStringAsFixed(0)} UZS',
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
+                                            style: const TextStyle(
+                                              fontSize: 10,
                                               fontWeight: FontWeight.w900,
-                                              color: selected
-                                                  ? Colors.white
-                                                  : (available ? const Color(0xFF111827) : const Color(0xFF9CA3AF)),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            available && price != null
-                                                ? price.toStringAsFixed(0) + ' UZS'
-                                                : (widget.lang == 'uz' ? 'Mavjud emas' : 'Недоступен'),
-                                            maxLines: 1,
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: selected
-                                                  ? Colors.white70
-                                                  : (available ? const Color(0xFF6B7280) : const Color(0xFFB7BBC2)),
+                                              color: Color(0xFF137A3D),
                                             ),
                                           ),
                                         ],
-                                      ),
+                                      ],
                                     ),
                                   ),
                                 ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 9),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: _paymentChoice(
-                                context,
-                                value: 'cash',
-                                icon: Icons.payments_rounded,
-                                title: widget.lang == 'uz' ? 'Naqd' : 'Наличные',
-                                enabled: true,
                               ),
-                            ),
-                            const SizedBox(width: 8),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                    if (selectedTariffKey == 'together' && selectedTariff != null) ...<Widget>[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(13),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0FAF4),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            const Icon(Icons.groups_rounded, color: Color(0xFF15803D)),
+                            const SizedBox(width: 10),
                             Expanded(
-                              child: _paymentChoice(
-                                context,
-                                value: 'card',
-                                icon: Icons.credit_card_rounded,
-                                title: selectedCard == null ? 'ATMOS' : (selectedCard!['maskedPan'] ?? 'ATMOS').toString(),
-                                enabled: canUseCard,
-                                subtitle: !canUseCard
-                                    ? (widget.lang == 'uz' ? 'Ulanmoqda' : 'Подключается')
-                                    : (selectedCard == null
-                                        ? (widget.lang == 'uz' ? 'Karta qo‘shish' : 'Добавить карту')
-                                        : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта')),
-                                onTap: () async {
-                                  if (selectedCard == null) {
-                                    await openCardsManager();
-                                  } else {
-                                    setState(() => paymentMethod = 'card');
+                              child: Text(
+                                (() {
+                                  final x = selectedTariff!;
+                                  final pct = (x['savingPercentVsStart'] as num?)?.toInt() ?? 0;
+                                  final sum = (x['savingVsStart'] as num?)?.toDouble() ?? 0;
+                                  if (pct <= 0) {
+                                    return widget.lang == 'uz'
+                                        ? 'Birga — boshqa yo‘lovchilar bilan tejamkor safar.'
+                                        : 'Вместе — выгодная поездка с другими пассажирами.';
                                   }
-                                },
+                                  return widget.lang == 'uz'
+                                      ? 'Startdan $pct% arzon • ${sum.toStringAsFixed(0)} UZS tejash'
+                                      : 'На $pct% дешевле Старт • экономия ${sum.toStringAsFixed(0)} UZS';
+                                })(),
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
                               ),
                             ),
                           ],
                         ),
-                      ],
-
-                      if (locationHint != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: InkWell(
-                            onTap: openLocationSettings,
-                            child: Row(
-                              children: <Widget>[
-                                const Icon(Icons.location_searching_rounded, size: 18),
-                                const SizedBox(width: 7),
-                                Expanded(
-                                  child: Text(
-                                    locationHint!,
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                ),
-                                const Icon(Icons.settings_outlined, size: 17),
-                              ],
-                            ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    _actionRow(
+                      icon: paymentMethod == 'card' ? Icons.credit_card_rounded : Icons.payments_rounded,
+                      title: paymentMethod == 'card'
+                          ? (selectedCard == null ? 'ATMOS' : (selectedCard!['maskedPan'] ?? 'ATMOS').toString())
+                          : (widget.lang == 'uz' ? 'Naqd' : 'Наличные'),
+                      subtitle: widget.lang == 'uz' ? 'To‘lov usuli' : 'Способ оплаты',
+                      onTap: () => _showPaymentSheet(canUseCard),
+                    ),
+                    const SizedBox(height: 8),
+                    _actionRow(
+                      icon: Icons.tune_rounded,
+                      title: widget.lang == 'uz' ? 'Safar sozlamalari' : 'Пожелания к поездке',
+                      subtitle: widget.lang == 'uz'
+                          ? 'Izoh, bagaj, bolalar o‘rindig‘i'
+                          : 'Комментарий, багаж, детское кресло',
+                      onTap: _showRideOptionsSheet,
+                    ),
+                    if (locationHint != null) ...<Widget>[
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: openLocationSettings,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: <Widget>[
+                              const Icon(Icons.location_searching_rounded, size: 18),
+                              const SizedBox(width: 7),
+                              Expanded(child: Text(locationHint!, style: const TextStyle(fontSize: 12))),
+                              const Icon(Icons.settings_outlined, size: 17),
+                            ],
                           ),
-                        ),
-                      if (error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            error!,
-                            style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
-                          ),
-                        ),
-
-                      const SizedBox(height: 11),
-                      SizedBox(
-                        height: 54,
-                        child: FilledButton(
-                          onPressed: busy || estimating || from == null || to == null
-                              ? null
-                              : (cost == null
-                                  ? () {
-                                      scheduleEstimate(delay: Duration.zero);
-                                    }
-                                  : createOrder),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF111827),
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor: const Color(0xFFE5E7EB),
-                            disabledForegroundColor: const Color(0xFF9CA3AF),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
-                          ),
-                          child: busy
-                              ? const SizedBox.square(
-                                  dimension: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : Text(
-                                  estimating
-                                      ? (widget.lang == 'uz' ? 'Narx hisoblanmoqda…' : 'Считаем стоимость…')
-                                      : cost == null
-                                          ? (widget.lang == 'uz' ? 'Qayta hisoblash' : 'Повторить расчёт')
-                                          : (widget.lang == 'uz'
-                                              ? 'Buyurtma berish • ' + cost!.toStringAsFixed(0) + ' UZS'
-                                              : 'Заказать • ' + cost!.toStringAsFixed(0) + ' UZS'),
-                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-                                ),
                         ),
                       ),
                     ],
-                  ),
+                    if (error != null) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+                    ],
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 58,
+                      child: FilledButton(
+                        onPressed: busy || estimating || !routeReadyForOrder
+                            ? null
+                            : (destinationOptional && !destinationReady
+                                ? createOrder
+                                : (cost == null
+                                    ? () => scheduleEstimate(delay: Duration.zero)
+                                    : createOrder)),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFFFE500),
+                          foregroundColor: const Color(0xFF111111),
+                          disabledBackgroundColor: const Color(0xFFE5E7EB),
+                          disabledForegroundColor: const Color(0xFF9CA3AF),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          elevation: 0,
+                        ),
+                        child: busy
+                            ? const SizedBox.square(
+                                dimension: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2.2),
+                              )
+                            : Text(
+                                estimating
+                                    ? (widget.lang == 'uz' ? 'Narx hisoblanmoqda…' : 'Считаем стоимость…')
+                                    : (destinationOptional && !destinationReady)
+                                        ? (widget.lang == 'uz' ? 'Yetkazishni buyurtma qilish' : 'Заказать доставку')
+                                        : cost == null
+                                            ? (widget.lang == 'uz' ? 'Narxni hisoblash' : 'Рассчитать стоимость')
+                                            : (widget.lang == 'uz'
+                                                ? 'Buyurtma berish • ${cost!.toStringAsFixed(0)} UZS'
+                                                : 'Заказать • ${cost!.toStringAsFixed(0)} UZS'),
+                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _roundMapButton({
+    required IconData icon,
+    required VoidCallback? onTap,
+    required String tooltip,
+    bool large = false,
+  }) {
+    return Material(
+      color: Colors.white,
+      elevation: 7,
+      shadowColor: const Color(0x26000000),
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Tooltip(
+          message: tooltip,
+          child: SizedBox(
+            width: large ? 58 : 48,
+            height: large ? 58 : 48,
+            child: Icon(icon, size: large ? 28 : 24),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _addressLine({
+    required bool pickup,
+    required String title,
+    required String value,
+    required VoidCallback onTap,
+    required VoidCallback onMapTap,
+  }) {
+    return SizedBox(
+      height: 64,
+      child: Row(
+        children: <Widget>[
+          const SizedBox(width: 13),
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: pickup ? Colors.white : const Color(0xFF111111),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: pickup ? const Color(0xFF1F8A4C) : const Color(0xFF111111),
+                width: 3,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: InkWell(
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: const TextStyle(fontSize: 10, color: Color(0xFF8A8D93), fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
+          TextButton.icon(
+            onPressed: onMapTap,
+            icon: const Icon(Icons.map_outlined, size: 17),
+            label: Text(widget.lang == 'uz' ? 'Xarita' : 'Карта'),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF111111),
+              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+            ),
+          ),
+          const SizedBox(width: 4),
         ],
+      ),
+    );
+  }
+
+  Widget _serviceModeChip({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: selected ? const Color(0xFF111111) : const Color(0xFFF2F3F5),
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            child: Row(
+              children: <Widget>[
+                Icon(icon, size: 18, color: selected ? Colors.white : const Color(0xFF111111)),
+                const SizedBox(width: 7),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: selected ? Colors.white : const Color(0xFF111111),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _actionRow({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: const Color(0xFFF3F4F6),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 38,
+                height: 38,
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                child: Icon(icon, size: 20),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                    Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF777B82))),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showPaymentSheet(bool canUseCard) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                widget.lang == 'uz' ? 'To‘lov usuli' : 'Способ оплаты',
+                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 14),
+              ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                tileColor: const Color(0xFFF3F4F6),
+                leading: const Icon(Icons.payments_rounded),
+                title: Text(widget.lang == 'uz' ? 'Naqd' : 'Наличные'),
+                trailing: paymentMethod == 'cash' ? const Icon(Icons.check_circle_rounded) : null,
+                onTap: () {
+                  setState(() => paymentMethod = 'cash');
+                  Navigator.pop(sheetContext);
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                enabled: canUseCard,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                tileColor: const Color(0xFFF3F4F6),
+                leading: const Icon(Icons.credit_card_rounded),
+                title: Text(selectedCard == null ? 'ATMOS' : (selectedCard!['maskedPan'] ?? 'ATMOS').toString()),
+                subtitle: Text(
+                  selectedCard == null
+                      ? (widget.lang == 'uz' ? 'Karta qo‘shish' : 'Добавить карту')
+                      : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта'),
+                ),
+                trailing: paymentMethod == 'card' ? const Icon(Icons.check_circle_rounded) : null,
+                onTap: !canUseCard
+                    ? null
+                    : () async {
+                        if (selectedCard == null) {
+                          Navigator.pop(sheetContext);
+                          await openCardsManager();
+                        } else {
+                          setState(() => paymentMethod = 'card');
+                          if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        }
+                      },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRideOptionsSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                widget.lang == 'uz' ? 'Safar sozlamalari' : 'Пожелания к поездке',
+                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 10),
+              ListTile(
+                leading: const Icon(Icons.chat_bubble_outline_rounded),
+                title: Text(widget.lang == 'uz' ? 'Haydovchiga izoh' : 'Комментарий водителю'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_add_alt_1_rounded),
+                title: Text(widget.lang == 'uz' ? 'Boshqa odam uchun' : 'Заказ другому человеку'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.pets_rounded),
+                title: Text(widget.lang == 'uz' ? 'Uy hayvoni bilan' : 'С питомцем'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.child_care_rounded),
+                title: Text(widget.lang == 'uz' ? 'Bolalar o‘rindig‘i' : 'Детское кресло'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
