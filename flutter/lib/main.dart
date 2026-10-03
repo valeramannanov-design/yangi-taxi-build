@@ -4875,6 +4875,7 @@ class _RideScreenState extends State<RideScreen> {
   ym.Point? driver;
   bool loading = true;
   String? error;
+  int? feedbackPromptedOrderId;
 
   @override
   void initState() {
@@ -4917,12 +4918,25 @@ class _RideScreenState extends State<RideScreen> {
       if (loc is Map && loc['lat'] != null && loc['lon'] != null) {
         d = ym.Point(latitude: (loc['lat'] as num).toDouble(), longitude: (loc['lon'] as num).toDouble());
       }
-      if (mounted) setState(() {
-        order = state;
-        driver = d;
-        loading = false;
-        error = null;
-      });
+      final stateKind = (state['state_kind'] ?? '').toString();
+      final resolvedOrderId = (state['order_id'] as num?)?.toInt() ?? id;
+      final shouldAskRating = stateKind == 'finished' && feedbackPromptedOrderId != resolvedOrderId;
+      if (shouldAskRating) feedbackPromptedOrderId = resolvedOrderId;
+      if (mounted) {
+        setState(() {
+          order = state;
+          driver = d;
+          loading = false;
+          error = null;
+        });
+        if (shouldAskRating) {
+          final driverName = (state['driver_name'] ?? '').toString();
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) return;
+            await showDriverRatingDialog(context, widget.api, widget.lang, resolvedOrderId, driverName: driverName);
+          });
+        }
+      }
     } catch (e) {
       if (mounted) setState(() {
         loading = false;
@@ -5673,9 +5687,10 @@ Future<void> showDriverRatingDialog(
   }
 
   try {
-    await api.post('/api/orders/' + orderId.toString() + '/feedback', <String, dynamic>{
+    await api.post('/api/orders/' + orderId.toString() + '/rating', <String, dynamic>{
       'rating': rating,
-      'text': comment.text.trim(),
+      'tags': <String>[],
+      'comment': comment.text.trim(),
     });
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
