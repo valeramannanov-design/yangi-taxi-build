@@ -1582,63 +1582,66 @@ void _applyYangiMapAppearance(ym.Map map, bool dark) {
   map.setMapStyle(dark ? _yangiDarkMapStyle : _yangiLightMapStyle);
 }
 
+
 class _MapPinMarker extends StatelessWidget {
   const _MapPinMarker({required this.pickup});
   final bool pickup;
 
   @override
   Widget build(BuildContext context) {
-    final fill = pickup ? const Color(0xFFFFD900) : const Color(0xFF17191C);
-    final center = pickup ? const Color(0xFF17191C) : Colors.white;
+    final fill = pickup ? yangiGreen : const Color(0xFFE92319);
     return SizedBox(
-      width: 44,
-      height: 58,
+      width: 54,
+      height: 68,
       child: Stack(
         alignment: Alignment.topCenter,
         children: <Widget>[
           Positioned(
-            top: 3,
+            top: 4,
             child: Container(
-              width: 42,
-              height: 42,
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: fill.withValues(alpha: 0.18),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 10,
+            child: Container(
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
                 color: fill,
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 3),
                 boxShadow: const <BoxShadow>[
-                  BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 4)),
+                  BoxShadow(color: Color(0x30000000), blurRadius: 7, offset: Offset(0, 3)),
                 ],
               ),
               child: Center(
                 child: Container(
-                  width: 13,
-                  height: 13,
-                  decoration: BoxDecoration(
-                    color: center,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: pickup ? fill : const Color(0xFF17191C),
-                      width: 3,
-                    ),
-                  ),
+                  width: 11,
+                  height: 11,
+                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                 ),
               ),
             ),
           ),
           Positioned(
-            top: 39,
-            child: Transform.rotate(
-              angle: math.pi / 4,
-              child: Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: fill,
-                  border: const Border(
-                    right: BorderSide(color: Colors.white, width: 2),
-                    bottom: BorderSide(color: Colors.white, width: 2),
-                  ),
-                ),
+            top: 41,
+            child: Container(width: 4, height: 14, color: fill),
+          ),
+          Positioned(
+            top: 53,
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: fill, width: 3),
               ),
             ),
           ),
@@ -1653,63 +1656,127 @@ class _MapCarMarker extends StatelessWidget {
   final String kind;
   final bool driver;
 
-  Color get accent {
-    if (driver) return const Color(0xFF17191C);
-    switch (kind) {
-      case 'business':
-        return const Color(0xFF25272B);
-      case 'comfort':
-        return const Color(0xFFBFC5CC);
-      case 'delivery':
-        return const Color(0xFFFFD900);
-      case 'cargo':
-        return const Color(0xFF2F3338);
-      case 'together':
-        return const Color(0xFFFFC400);
-      default:
-        return const Color(0xFFFFD900);
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: driver ? 40 : 34,
+      height: driver ? 58 : 50,
+      child: CustomPaint(
+        painter: _TopCarPainter(kind: kind, driver: driver),
+      ),
+    );
+  }
+}
+
+class _TopCarPainter extends CustomPainter {
+  const _TopCarPainter({required this.kind, required this.driver});
+  final String kind;
+  final bool driver;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final body = Paint()
+      ..color = kind == 'business'
+          ? const Color(0xFF17191C)
+          : const Color(0xFFF7F8F8);
+    final dark = Paint()..color = const Color(0xFF20252A);
+    final glass = Paint()..color = const Color(0xFF2A3138);
+    final lime = Paint()..color = yangiLime;
+    final outline = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8;
+
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(size.width / 2, size.height * 0.54),
+        width: size.width * 0.90,
+        height: size.height * 0.80,
+      ),
+      Paint()..color = const Color(0x22000000),
+    );
+
+    final carRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width * 0.18,
+        size.height * 0.05,
+        size.width * 0.64,
+        size.height * 0.88,
+      ),
+      Radius.circular(size.width * 0.22),
+    );
+    canvas.drawRRect(carRect, body);
+    canvas.drawRRect(carRect, outline);
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * 0.25,
+          size.height * 0.25,
+          size.width * 0.50,
+          size.height * 0.29,
+        ),
+        Radius.circular(size.width * 0.12),
+      ),
+      glass,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * 0.29,
+          size.height * 0.60,
+          size.width * 0.42,
+          size.height * 0.17,
+        ),
+        Radius.circular(size.width * 0.08),
+      ),
+      dark,
+    );
+
+    if (kind != 'business') {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+            size.width * 0.19,
+            size.height * 0.07,
+            size.width * 0.62,
+            size.height * 0.09,
+          ),
+          Radius.circular(size.width * 0.09),
+        ),
+        lime,
+      );
+    }
+
+    if (kind == 'delivery') {
+      canvas.drawRect(
+        Rect.fromLTWH(
+          size.width * 0.43,
+          size.height * 0.10,
+          size.width * 0.28,
+          size.height * 0.22,
+        ),
+        lime,
+      );
+    }
+
+    if (kind == 'together') {
+      canvas.drawCircle(Offset(size.width * 0.43, size.height * 0.16), 2.1, lime);
+      canvas.drawCircle(Offset(size.width * 0.57, size.height * 0.16), 2.1, lime);
+    }
+
+    if (driver) {
+      canvas.drawCircle(
+        Offset(size.width * 0.79, size.height * 0.10),
+        size.width * 0.08,
+        lime,
+      );
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final icon = switch (kind) {
-      'delivery' => Icons.local_shipping_rounded,
-      'cargo' => Icons.fire_truck_rounded,
-      'business' => Icons.time_to_leave_rounded,
-      'comfort' => Icons.directions_car_filled_rounded,
-      'together' => Icons.people_alt_rounded,
-      _ => Icons.local_taxi_rounded,
-    };
-    return Container(
-      width: driver ? 44 : 38,
-      height: driver ? 44 : 38,
-      decoration: BoxDecoration(
-        color: accent,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white, width: 2.2),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 3)),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: <Widget>[
-          Icon(
-            icon,
-            size: driver ? 26 : 22,
-            color: kind == 'comfort' ? const Color(0xFF1D2329) : Colors.white,
-          ),
-          if (driver)
-            const Positioned(
-              right: 3,
-              top: 3,
-              child: CircleAvatar(radius: 4, backgroundColor: Color(0xFFFFD900)),
-            ),
-        ],
-      ),
-    );
-  }
+  bool shouldRepaint(covariant _TopCarPainter oldDelegate) =>
+      oldDelegate.kind != kind || oldDelegate.driver != driver;
 }
 
 class _TariffVehicleArt extends StatelessWidget {
