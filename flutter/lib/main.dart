@@ -683,6 +683,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
   bool loading = true;
   bool loggedIn = false;
   String lang = 'ru';
+  String themeSetting = 'system';
   String rememberedPhone = '';
 
   @override
@@ -694,12 +695,16 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
   Future<void> restore() async {
     final savedUrl = await storage.read(key: 'backend_url');
     final savedLang = await storage.read(key: 'lang');
+    final savedTheme = await storage.read(key: 'theme_mode');
     final remember = await storage.read(key: 'remember_me');
     final shouldRemember = remember == 'true';
     final session = shouldRemember ? await storage.read(key: 'session') : null;
     final savedPhone = shouldRemember ? await storage.read(key: 'remembered_phone') : null;
     api.setBaseUrl(savedUrl ?? 'demo');
     if (savedLang == 'uz' || savedLang == 'ru') lang = savedLang!;
+    if (savedTheme == 'light' || savedTheme == 'dark' || savedTheme == 'system') {
+      themeSetting = savedTheme!;
+    }
     rememberedPhone = savedPhone ?? '';
 
     if (!shouldRemember) {
@@ -724,6 +729,13 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
   Future<void> saveLang(String value) async {
     lang = value;
     await storage.write(key: 'lang', value: value);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> saveTheme(String value) async {
+    if (value != 'light' && value != 'dark' && value != 'system') return;
+    themeSetting = value;
+    await storage.write(key: 'theme_mode', value: value);
     if (mounted) setState(() {});
   }
 
@@ -788,9 +800,19 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
       brightness: Brightness.light,
       surface: Colors.white,
     );
+    final darkScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF5FCF7B),
+      brightness: Brightness.dark,
+    );
+    final resolvedThemeMode = switch (themeSetting) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Yangi Taxi',
+      themeMode: resolvedThemeMode,
       theme: ThemeData(
         colorScheme: scheme,
         useMaterial3: true,
@@ -822,10 +844,49 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
           ),
         ),
       ),
+      darkTheme: ThemeData(
+        colorScheme: darkScheme,
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFF111315),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF17191C),
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+        ),
+        navigationBarTheme: const NavigationBarThemeData(
+          height: 68,
+          backgroundColor: Color(0xFF17191C),
+          indicatorColor: Color(0xFF263D2E),
+          elevation: 8,
+        ),
+        cardTheme: const CardThemeData(
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          color: Color(0xFF1B1E21),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(20))),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: darkScheme.surfaceContainerHighest,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: darkScheme.outlineVariant),
+          ),
+        ),
+      ),
       home: loading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : loggedIn
-              ? Shell(api: api, lang: lang, onLang: saveLang, onBackend: saveBackend, onLogout: logout)
+              ? Shell(
+                  api: api,
+                  lang: lang,
+                  themeSetting: themeSetting,
+                  onLang: saveLang,
+                  onTheme: saveTheme,
+                  onBackend: saveBackend,
+                  onLogout: logout,
+                )
               : LoginScreen(
                   api: api,
                   lang: lang,
@@ -1206,14 +1267,18 @@ class Shell extends StatefulWidget {
     super.key,
     required this.api,
     required this.lang,
+    required this.themeSetting,
     required this.onLang,
+    required this.onTheme,
     required this.onBackend,
     required this.onLogout,
     this.onMenu,
   });
   final ApiClient api;
   final String lang;
+  final String themeSetting;
   final ValueChanged<String> onLang;
+  final Future<void> Function(String) onTheme;
   final Future<void> Function(String) onBackend;
   final VoidCallback onLogout;
   final VoidCallback? onMenu;
@@ -1286,7 +1351,9 @@ class _ShellState extends State<Shell> {
       SettingsScreen(
         api: widget.api,
         lang: widget.lang,
+        themeSetting: widget.themeSetting,
         onLang: widget.onLang,
+        onTheme: widget.onTheme,
         onBackend: widget.onBackend,
         onMenu: openMenu,
       ),
@@ -4562,14 +4629,18 @@ class SettingsScreen extends StatelessWidget {
     super.key,
     required this.api,
     required this.lang,
+    required this.themeSetting,
     required this.onLang,
+    required this.onTheme,
     required this.onBackend,
     required this.onMenu,
   });
 
   final ApiClient api;
   final String lang;
+  final String themeSetting;
   final ValueChanged<String> onLang;
+  final Future<void> Function(String) onTheme;
   final Future<void> Function(String) onBackend;
   final VoidCallback onMenu;
 
@@ -4611,6 +4682,35 @@ class SettingsScreen extends StatelessWidget {
                   ),
                   const Divider(height: 1),
                   ListTile(
+                    leading: const Icon(Icons.brightness_6_rounded),
+                    title: Text(lang == 'uz' ? 'Mavzu' : 'Тема'),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: SegmentedButton<String>(
+                        segments: <ButtonSegment<String>>[
+                          ButtonSegment<String>(
+                            value: 'system',
+                            icon: const Icon(Icons.phone_android_rounded, size: 17),
+                            label: Text(lang == 'uz' ? 'Tizim' : 'Система'),
+                          ),
+                          ButtonSegment<String>(
+                            value: 'light',
+                            icon: const Icon(Icons.light_mode_rounded, size: 17),
+                            label: Text(lang == 'uz' ? 'Yorug‘' : 'Светлая'),
+                          ),
+                          ButtonSegment<String>(
+                            value: 'dark',
+                            icon: const Icon(Icons.dark_mode_rounded, size: 17),
+                            label: Text(lang == 'uz' ? 'Qorong‘i' : 'Тёмная'),
+                          ),
+                        ],
+                        selected: <String>{themeSetting},
+                        onSelectionChanged: (x) => onTheme(x.first),
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
                     leading: const Icon(Icons.my_location_rounded),
                     title: Text(lang == 'uz' ? 'Geolokatsiya' : 'Геолокация'),
                     subtitle: Text(lang == 'uz' ? 'Ruxsat va GPS sozlamalari' : 'Разрешения и настройки GPS'),
@@ -4636,7 +4736,7 @@ class SettingsScreen extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.info_outline_rounded),
                     title: Text(lang == 'uz' ? 'Ilova haqida' : 'О приложении'),
-                    subtitle: const Text('Yangi Taxi 1.4.0'),
+                    subtitle: const Text('Yangi Taxi 1.6.2'),
                   ),
                 ],
               ),
