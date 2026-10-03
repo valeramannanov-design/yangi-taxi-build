@@ -2826,6 +2826,11 @@ class _OrderScreenState extends State<OrderScreen> {
       points[points.length - 1] = destinationPoint;
     }
 
+    final directDistance = _distanceBetween(sourcePoint, destinationPoint);
+    final routeDistance = _polylineDistance(points);
+    if (routeDistance > math.max(12.0, directDistance * 6.0)) {
+      return <ym.Point>[sourcePoint, destinationPoint];
+    }
     return points;
   }
 
