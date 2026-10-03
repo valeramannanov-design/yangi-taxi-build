@@ -6459,7 +6459,7 @@ class SettingsScreen extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.info_outline_rounded),
                     title: Text(lang == 'uz' ? 'Ilova haqida' : 'О приложении'),
-                    subtitle: const Text('Yangi Taxi 1.7.0'),
+                    subtitle: const Text('Yangi Taxi 1.7.2'),
                   ),
                 ],
               ),
