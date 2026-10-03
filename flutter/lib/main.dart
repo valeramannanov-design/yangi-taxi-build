@@ -1502,7 +1502,7 @@ class _ShellState extends State<Shell> {
         ),
       ),
       body: IndexedStack(index: tab, children: pages),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: tab >= 2 ? NavigationBar(
         selectedIndex: tab == 0
             ? 0
             : tab == 1
@@ -1541,7 +1541,7 @@ class _ShellState extends State<Shell> {
             label: widget.lang == 'uz' ? 'Profil' : 'Профиль',
           ),
         ],
-      ),
+      ) : null,
     );
   }
 }
