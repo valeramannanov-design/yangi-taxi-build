@@ -1,14 +1,16 @@
-name: Build Yangi Taxi v1.7.3 APK
+name: Build Yangi Taxi v1.8.0 APK
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - 'flutter/**'
+      - 'backend/**'
       - '.github/workflows/build-apk.yml'
   push:
     paths:
       - 'flutter/**'
+      - 'backend/**'
       - '.github/workflows/build-apk.yml'
 
 jobs:
@@ -59,6 +61,8 @@ jobs:
                   g += '\n\ndependencies {\n    implementation "com.google.android.gms:play-services-location:21.1.0"\n}\n'
               gradle.write_text(g)
           PY
+      - name: Check backend syntax
+        run: node --check backend/server.mjs
       - name: Get packages
         working-directory: flutter
         run: flutter pub get
@@ -68,9 +72,9 @@ jobs:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
         run: flutter build apk --release --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY"
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.7.3-payment-route-tariff-cars.apk
+        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.8.0-ratings-profile-exit.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-v1.7.3-payment-route-tariff-cars-apk
-          path: Yangi-Taxi-v1.7.3-payment-route-tariff-cars.apk
+          name: Yangi-Taxi-v1.8.0-ratings-profile-exit-apk
+          path: Yangi-Taxi-v1.8.0-ratings-profile-exit.apk
           if-no-files-found: error
