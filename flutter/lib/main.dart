@@ -1262,6 +1262,54 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 }
 
+
+const yangiLime = Color(0xFFA6FF00);
+const yangiGraphite = Color(0xFF0F1111);
+const yangiSoftGray = Color(0xFFF2F4F5);
+const yangiGreen = Color(0xFF13A83E);
+
+class YangiWordmark extends StatelessWidget {
+  const YangiWordmark({super.key, this.compact = false});
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = compact ? 18.0 : 26.0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          'Yangi',
+          style: TextStyle(
+            fontSize: size,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.8,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 9, vertical: compact ? 3 : 5),
+          decoration: BoxDecoration(
+            color: yangiLime,
+            borderRadius: BorderRadius.circular(compact ? 8 : 11),
+          ),
+          child: Text(
+            'Taxi',
+            style: TextStyle(
+              fontSize: size,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.8,
+              color: yangiGraphite,
+              height: 0.95,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class Shell extends StatefulWidget {
   const Shell({
     super.key,
@@ -1387,19 +1435,19 @@ class _ShellState extends State<Shell> {
                       width: 46,
                       height: 46,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF111827),
+                        color: yangiLime,
                         borderRadius: BorderRadius.circular(15),
                       ),
-                      child: const Icon(Icons.local_taxi_rounded, color: Colors.white),
+                      child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite),
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text('Yangi Taxi', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-                          SizedBox(height: 2),
-                          Text('Passenger', style: TextStyle(color: Color(0xFF8B8F97), fontSize: 12)),
+                          YangiWordmark(compact: true),
+                          SizedBox(height: 3),
+                          Text('Движение ближе к вам', style: TextStyle(color: Color(0xFF8B8F97), fontSize: 11)),
                         ],
                       ),
                     ),
@@ -1443,6 +1491,46 @@ class _ShellState extends State<Shell> {
         ),
       ),
       body: IndexedStack(index: tab, children: pages),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: tab == 0
+            ? 0
+            : tab == 1
+                ? 1
+                : tab == 2
+                    ? 2
+                    : 3,
+        onDestinationSelected: (index) {
+          final target = switch (index) {
+            0 => 0,
+            1 => 1,
+            2 => 2,
+            _ => 5,
+          };
+          if (mounted) setState(() => tab = target);
+        },
+        destinations: <NavigationDestination>[
+          NavigationDestination(
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(Icons.home_rounded),
+            label: widget.lang == 'uz' ? 'Asosiy' : 'Главная',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.local_taxi_outlined),
+            selectedIcon: const Icon(Icons.local_taxi_rounded),
+            label: widget.lang == 'uz' ? 'Safar' : 'Поездка',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.history_rounded),
+            selectedIcon: const Icon(Icons.history_toggle_off_rounded),
+            label: widget.lang == 'uz' ? 'Tarix' : 'История',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.person_outline_rounded),
+            selectedIcon: const Icon(Icons.person_rounded),
+            label: widget.lang == 'uz' ? 'Profil' : 'Профиль',
+          ),
+        ],
+      ),
     );
   }
 }
