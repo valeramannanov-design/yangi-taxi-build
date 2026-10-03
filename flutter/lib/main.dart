@@ -5987,164 +5987,321 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final rating = me?['rating']?.toString() ?? '—';
-    final email = (me?['email'] ?? '').toString();
-    final birthday = (me?['birthday'] ?? '').toString();
-    final address = (me?['address'] ?? '').toString();
-    final contract = (me?['number'] ?? '').toString();
-    final balance = (me?['balance'] ?? 0).toString();
-    final bonus = (me?['bonus_balance'] ?? 0).toString();
+    final name = (me?['name'] ?? 'Yangi Taxi').toString().trim();
+    final address = (me?['address'] ?? '').toString().trim();
+    final recent = orders.take(3).toList();
+
+    Widget menuRow({
+      required IconData icon,
+      required String title,
+      String? subtitle,
+      VoidCallback? onTap,
+      Widget? trailing,
+    }) {
+      return ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: yangiLime.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(icon, color: yangiGraphite, size: 21),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        subtitle: subtitle == null ? null : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+        trailing: trailing ?? const Icon(Icons.chevron_right_rounded),
+        onTap: onTap,
+      );
+    }
+
+    void notReady(String title) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.lang == 'uz'
+                ? title + ' keyingi bosqichda ulanadi'
+                : title + ' будет подключено на следующем этапе',
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
         leading: widget.onMenu == null
             ? null
             : IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
-        title: Text(tx(widget.lang, 'profile'), style: const TextStyle(fontWeight: FontWeight.w800)),
-        actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh))],
+        centerTitle: true,
+        title: const YangiWordmark(compact: true),
+        actions: <Widget>[
+          IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
+        ],
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-              children: <Widget>[
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: <Color>[
-                        Theme.of(context).colorScheme.primaryContainer,
-                        Theme.of(context).colorScheme.secondaryContainer,
+          : RefreshIndicator(
+              onRefresh: load,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
+                children: <Widget>[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(color: Color(0x11000000), blurRadius: 18, offset: Offset(0, 6)),
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      CircleAvatar(
-                        radius: 34,
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        child: Text(
-                          ((me?['name'] ?? 'Y').toString().trim().isEmpty ? 'Y' : (me?['name'] ?? 'Y').toString().trim()[0]).toUpperCase(),
-                          style: const TextStyle(fontSize: 26, color: Colors.white, fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              (me?['name'] ?? 'Yangi Taxi').toString(),
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                    child: Row(
+                      children: <Widget>[
+                        CircleAvatar(
+                          radius: 34,
+                          backgroundColor: yangiLime,
+                          child: Text(
+                            name.isEmpty ? 'Y' : name.substring(0, 1).toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                              color: yangiGraphite,
                             ),
-                            const SizedBox(height: 3),
-                            Text(phone),
-                            if (contract.isNotEmpty) Text('№ ' + contract, style: Theme.of(context).textTheme.bodySmall),
-                          ],
+                          ),
                         ),
-                      ),
-                      Column(
-                        children: <Widget>[
-                          const Icon(Icons.star, color: Color(0xFFFFB300)),
-                          Text(rating, style: const TextStyle(fontWeight: FontWeight.w800)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: <Widget>[
-                    metric(context, Icons.check_circle_outline, completed.toString(), widget.lang == 'uz' ? 'Safarlar' : 'Поездки'),
-                    const SizedBox(width: 8),
-                    metric(context, Icons.close, cancelled.toString(), widget.lang == 'uz' ? 'Bekor' : 'Отмены'),
-                    const SizedBox(width: 8),
-                    metric(context, Icons.payments_outlined, totalSpend.toStringAsFixed(0), 'UZS'),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  child: Column(
-                    children: <Widget>[
-                      infoRow(Icons.phone_outlined, widget.lang == 'uz' ? 'Telefon' : 'Телефон', phone),
-                      infoRow(Icons.email_outlined, 'E-mail', email),
-                      infoRow(Icons.cake_outlined, widget.lang == 'uz' ? 'Tug‘ilgan sana' : 'Дата рождения', birthday),
-                      infoRow(Icons.home_outlined, widget.lang == 'uz' ? 'Manzil' : 'Домашний адрес', address),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Card(
-                  child: Column(
-                    children: <Widget>[
-                      ListTile(
-                        leading: const Icon(Icons.account_balance_wallet_outlined),
-                        title: Text(widget.lang == 'uz' ? 'Asosiy balans' : 'Основной баланс'),
-                        trailing: Text(balance + ' UZS', style: const TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.savings_outlined),
-                        title: const Text('Бонусы / Bonuslar'),
-                        trailing: Text(bonus, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.credit_card),
-                        title: Text(widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты'),
-                        subtitle: Text(widget.lang == 'uz'
-                            ? 'Naqd pul • ATMOS orqali xavfsiz karta to‘lovi'
-                            : 'Наличные • безопасная оплата картой через ATMOS'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => showDialog<void>(
-                          context: context,
-                          builder: (c) => AlertDialog(
-                            title: Text(widget.lang == 'uz' ? 'ATMOS to‘lovi' : 'Оплата ATMOS'),
-                            content: Text(widget.lang == 'uz'
-                                ? 'Karta orqali to‘lov ATMOSning himoyalangan sahifasida amalga oshiriladi. Yangi Taxi karta raqami va CVVni saqlamaydi. Safar tugagach to‘langan summa haydovchining TaxiMaster/TMDriver asosiy balansiga avtomatik tushadi; komissiya va pul yechish TaxiMaster qoidalarida qoladi.'
-                                : 'Оплата картой выполняется на защищённой странице ATMOS. Yangi Taxi не хранит номер карты и CVV. После завершения оплаченной поездки сумма автоматически зачисляется на основной баланс водителя в TaxiMaster/TMDriver; комиссия и вывод средств остаются по вашим правилам TaxiMaster.'),
-                            actions: <Widget>[
-                              FilledButton(onPressed: () => Navigator.pop(c), child: const Text('OK')),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                name.isEmpty ? 'Yangi Taxi' : name,
+                                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                phone.isEmpty ? '—' : phone,
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: yangiLime.withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(11),
+                                ),
+                                child: Text(
+                                  widget.lang == 'uz' ? 'Yangi Taxi mijoz' : 'Клиент Yangi Taxi',
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                      ),
-                    ],
+                        const Icon(Icons.chevron_right_rounded),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Card(
-                  child: Column(
-                    children: <Widget>[
-                      ListTile(
-                        leading: const Icon(Icons.language),
-                        title: const Text('Язык / Til'),
-                        trailing: SegmentedButton<String>(
-                          segments: const <ButtonSegment<String>>[
-                            ButtonSegment<String>(value: 'ru', label: Text('RU')),
-                            ButtonSegment<String>(value: 'uz', label: Text('UZ')),
-                          ],
-                          selected: <String>{widget.lang},
-                          onSelectionChanged: (x) => widget.onLang(x.first),
+
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.lang == 'uz' ? 'So‘nggi safarlar' : 'Последние поездки',
+                    style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 9),
+
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: recent.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Text(widget.lang == 'uz' ? 'Safarlar yo‘q' : 'Поездок пока нет'),
+                          )
+                        : Column(
+                            children: <Widget>[
+                              ...recent.asMap().entries.map((entry) {
+                                final raw = entry.value;
+                                final o = Map<String, dynamic>.from(raw as Map);
+                                final source = (o['source'] ?? '').toString();
+                                final destination = (o['destination'] ?? '').toString();
+                                final total = o['total_cost'];
+                                final tariffKey = (o['tariff_key'] ?? 'start').toString();
+                                return Column(
+                                  children: <Widget>[
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                      child: Row(
+                                        children: <Widget>[
+                                          SizedBox(
+                                            width: 82,
+                                            height: 46,
+                                            child: _TariffVehicleArt(
+                                              kind: tariffKey,
+                                              selected: false,
+                                              available: true,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: <Widget>[
+                                                Text(
+                                                  source,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  destination.isEmpty
+                                                      ? (widget.lang == 'uz' ? 'Manzil ko‘rsatilmagan' : 'Без конечного адреса')
+                                                      : destination,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          if (total != null)
+                                            Text(
+                                              total.toString() + ' so‘m',
+                                              style: const TextStyle(fontWeight: FontWeight.w900),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (entry.key != recent.length - 1)
+                                      const Divider(height: 1, indent: 14, endIndent: 14),
+                                  ],
+                                );
+                              }),
+                            ],
+                          ),
+                  ),
+
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.lang == 'uz' ? 'Manzillar' : 'Сохранённые адреса',
+                    style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 9),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Column(
+                      children: <Widget>[
+                        menuRow(
+                          icon: Icons.home_rounded,
+                          title: widget.lang == 'uz' ? 'Uy' : 'Дом',
+                          subtitle: address.isEmpty
+                              ? (widget.lang == 'uz' ? 'Manzil qo‘shish' : 'Добавить адрес')
+                              : address,
+                          onTap: () => notReady(widget.lang == 'uz' ? 'Uy manzili' : 'Домашний адрес'),
                         ),
-                      ),
-                      ListTile(
-                        leading: Icon(widget.api.isDemo ? Icons.science_outlined : Icons.dns_outlined),
-                        title: Text(tx(widget.lang, 'backend')),
-                        subtitle: Text(widget.api.baseUrl),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => backendDialog(context, widget.api, widget.onBackend),
-                      ),
-                    ],
+                        const Divider(height: 1, indent: 14, endIndent: 14),
+                        menuRow(
+                          icon: Icons.work_rounded,
+                          title: widget.lang == 'uz' ? 'Ish' : 'Работа',
+                          subtitle: widget.lang == 'uz' ? 'Manzil qo‘shish' : 'Добавить адрес',
+                          onTap: () => notReady(widget.lang == 'uz' ? 'Ish manzili' : 'Рабочий адрес'),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                OutlinedButton.icon(
-                  onPressed: widget.onLogout,
-                  icon: const Icon(Icons.logout),
-                  label: Text(tx(widget.lang, 'logout')),
-                ),
-              ],
+
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.lang == 'uz' ? 'Akkaunt' : 'Аккаунт',
+                    style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 9),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Column(
+                      children: <Widget>[
+                        menuRow(
+                          icon: Icons.account_balance_wallet_rounded,
+                          title: widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+                          subtitle: widget.lang == 'uz' ? 'Kartalar va naqd pul' : 'Карты и наличные',
+                          onTap: () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) => CardsScreen(api: widget.api, lang: widget.lang),
+                            ),
+                          ),
+                        ),
+                        const Divider(height: 1, indent: 14, endIndent: 14),
+                        menuRow(
+                          icon: Icons.card_giftcard_rounded,
+                          title: widget.lang == 'uz' ? 'Promokodlar' : 'Промокоды',
+                          subtitle: widget.lang == 'uz' ? 'Chegirmalar va bonuslar' : 'Скидки и бонусы',
+                          onTap: () => notReady(widget.lang == 'uz' ? 'Promokodlar' : 'Промокоды'),
+                        ),
+                        const Divider(height: 1, indent: 14, endIndent: 14),
+                        menuRow(
+                          icon: Icons.support_agent_rounded,
+                          title: widget.lang == 'uz' ? 'Yordam' : 'Поддержка',
+                          subtitle: widget.lang == 'uz' ? 'Yordam va savollar' : 'Помощь и вопросы',
+                          onTap: () => showDialog<void>(
+                            context: context,
+                            builder: (c) => AlertDialog(
+                              title: const YangiWordmark(compact: true),
+                              content: Text(
+                                widget.lang == 'uz'
+                                    ? 'Yordam markazi keyingi bosqichda ulanadi.'
+                                    : 'Центр поддержки будет подключён на следующем этапе.',
+                              ),
+                              actions: <Widget>[
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(c),
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Divider(height: 1, indent: 14, endIndent: 14),
+                        menuRow(
+                          icon: Icons.language_rounded,
+                          title: widget.lang == 'uz' ? 'Ilova tili' : 'Язык приложения',
+                          subtitle: widget.lang == 'uz' ? 'O‘zbekcha' : 'Русский',
+                          trailing: SegmentedButton<String>(
+                            segments: const <ButtonSegment<String>>[
+                              ButtonSegment<String>(value: 'ru', label: Text('RU')),
+                              ButtonSegment<String>(value: 'uz', label: Text('UZ')),
+                            ],
+                            selected: <String>{widget.lang},
+                            onSelectionChanged: (x) => widget.onLang(x.first),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: widget.onLogout,
+                    icon: const Icon(Icons.logout_rounded),
+                    label: Text(widget.lang == 'uz' ? 'Chiqish' : 'Выйти'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(50),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ],
+              ),
             ),
     );
-  }
-}
+  }}
