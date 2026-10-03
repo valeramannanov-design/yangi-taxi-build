@@ -421,6 +421,7 @@ async function buildLiveEstimateOptions(session, source, destination) {
 
 let mockOrder = null;
 let mockStarted = null;
+let mockClientPhoto = '';
 const mockHistory = [];
 
 function mockState() {
@@ -441,7 +442,34 @@ async function mockRoute(req, res, path, url) {
   }
   const session = auth(req);
   if (req.method === 'GET' && path === '/api/me') {
-    return send(res, 200, { ok: true, data: { client_id: session.clientId, name: 'Yangi Taxi Demo', phones: [{ phone: session.phone }], bonus_balance: 12000 } });
+    return send(res, 200, {
+      ok: true,
+      data: {
+        client_id: session.clientId,
+        name: 'Yangi Taxi Demo',
+        phones: [{ phone: session.phone }],
+        bonus_balance: 12000,
+        client_rating: 4.86,
+        client_rating_count: 27,
+        client_photo: mockClientPhoto,
+      },
+    });
+  }
+  if (req.method === 'POST' && path === '/api/profile/photo') {
+    const body = await readJson(req);
+    mockClientPhoto = String(body.photoBase64 || '');
+    return send(res, 200, { ok: true, data: { saved: true } });
+  }
+  const mockRating = /^\/api\/orders\/(\d+)\/rating$/.exec(path);
+  if (req.method === 'POST' && mockRating) {
+    const body = await readJson(req);
+    const rating = Number(body.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      const e = new Error('rating must be an integer from 1 to 5');
+      e.statusCode = 400;
+      throw e;
+    }
+    return send(res, 200, { ok: true, data: { saved: true, rating } });
   }
   if (req.method === 'GET' && path === '/api/addresses/search') {
     const list = [
@@ -548,7 +576,45 @@ async function realRoute(req, res, path, url) {
 
   if (req.method === 'GET' && path === '/api/me') {
     const data = await tmGet('get_client_info', { client_id: session.clientId });
+    try {
+      const photo = await tmGet('get_client_info', {
+        client_id: session.clientId,
+        fields: 'client_photo',
+      });
+      if (photo.client_photo != null) data.client_photo = photo.client_photo;
+    } catch (error) {
+      console.warn('[profile] client_photo is unavailable:', error.message || error);
+    }
     return send(res, 200, { ok: true, data });
+  }
+
+  if (req.method === 'POST' && path === '/api/profile/photo') {
+    const body = await readJson(req);
+    const raw = String(body.photoBase64 || '')
+      .trim()
+      .replace(/^data:image\/[^;]+;base64,/, '')
+      .replace(/\s+/g, '');
+    if (!raw) {
+      const e = new Error('photoBase64 is required');
+      e.statusCode = 400;
+      throw e;
+    }
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(raw) || raw.length % 4 === 1) {
+      const e = new Error('Invalid Base64 image');
+      e.statusCode = 400;
+      throw e;
+    }
+    const bytes = Buffer.from(raw, 'base64');
+    if (!bytes.length || bytes.length > 3 * 1024 * 1024) {
+      const e = new Error('Photo must be between 1 byte and 3 MB');
+      e.statusCode = 413;
+      throw e;
+    }
+    await tmPostJson('update_client_info2', {
+      client_id: session.clientId,
+      client_photo: raw,
+    });
+    return send(res, 200, { ok: true, data: { saved: true, bytes: bytes.length } });
   }
 
   if (req.method === 'GET' && path === '/api/addresses/search') {
@@ -724,6 +790,44 @@ async function realRoute(req, res, path, url) {
       location = coords.crews_coords?.[0] || null;
     }
     return send(res, 200, { ok: true, data: { state, location } });
+  }
+
+  const ratingMatch = /^\/api\/orders\/(\d+)\/rating$/.exec(path);
+  if (req.method === 'POST' && ratingMatch) {
+    const orderId = Number(ratingMatch[1]);
+    const state = await tmGet('get_order_state', { order_id: orderId });
+    if (state.client_id && Number(state.client_id) !== Number(session.clientId)) {
+      const e = new Error('Forbidden');
+      e.statusCode = 403;
+      throw e;
+    }
+
+    const body = await readJson(req);
+    const rating = Number(body.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      const e = new Error('rating must be an integer from 1 to 5');
+      e.statusCode = 400;
+      throw e;
+    }
+
+    const stateKind = String(state.state_kind || state.state_type || '').toLowerCase();
+    if (stateKind && stateKind !== 'finished') {
+      const e = new Error('The trip must be finished before rating the driver');
+      e.statusCode = 409;
+      throw e;
+    }
+
+    const comment = String(body.comment || '').trim().slice(0, 1000);
+    await tmPostJson('save_client_feed_back', {
+      phone: session.phone,
+      rating,
+      text: comment,
+      order_id: orderId,
+    });
+    return send(res, 200, {
+      ok: true,
+      data: { saved: true, orderId, rating },
+    });
   }
 
   const penalty = /^\/api\/orders\/(\d+)\/cancel-penalty$/.exec(path);
