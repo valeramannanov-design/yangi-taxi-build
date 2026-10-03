@@ -6678,16 +6678,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     child: Row(
                       children: <Widget>[
-                        CircleAvatar(
-                          radius: 34,
-                          backgroundColor: yangiLime,
-                          child: Text(
-                            name.isEmpty ? 'Y' : name.substring(0, 1).toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w900,
-                              color: yangiGraphite,
-                            ),
+                        GestureDetector(
+                          onTap: chooseProfilePhoto,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: <Widget>[
+                              CircleAvatar(
+                                radius: 36,
+                                backgroundColor: yangiLime,
+                                child: clientPhotoBytes == null
+                                    ? Text(
+                                        name.isEmpty ? 'Y' : name.substring(0, 1).toUpperCase(),
+                                        style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: yangiGraphite),
+                                      )
+                                    : ClipOval(
+                                        child: Image.memory(clientPhotoBytes!, width: 72, height: 72, fit: BoxFit.cover),
+                                      ),
+                              ),
+                              Positioned(
+                                right: -2,
+                                bottom: -2,
+                                child: Container(
+                                  width: 25,
+                                  height: 25,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.surface,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: yangiLime, width: 2),
+                                  ),
+                                  child: const Icon(Icons.camera_alt_rounded, size: 14),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -6705,16 +6727,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                               ),
                               const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: yangiLime.withValues(alpha: 0.18),
-                                  borderRadius: BorderRadius.circular(11),
-                                ),
-                                child: Text(
-                                  widget.lang == 'uz' ? 'Yangi Taxi mijoz' : 'Клиент Yangi Taxi',
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
-                                ),
+                              Wrap(
+                                spacing: 7,
+                                runSpacing: 6,
+                                children: <Widget>[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: yangiLime.withValues(alpha: 0.18),
+                                      borderRadius: BorderRadius.circular(11),
+                                    ),
+                                    child: Text(
+                                      widget.lang == 'uz' ? 'Yangi Taxi mijoz' : 'Клиент Yangi Taxi',
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                                      borderRadius: BorderRadius.circular(11),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFB300)),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          clientRating == null ? '—' : clientRating!.toStringAsFixed(2),
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                                        ),
+                                        if (clientRatingCount != null && clientRatingCount! > 0)
+                                          Text(' (' + clientRatingCount!.toString() + ')', style: const TextStyle(fontSize: 10)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
