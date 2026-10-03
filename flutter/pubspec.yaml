@@ -25,6 +25,9 @@ flutter:
   assets:
     - assets/car.png
     - assets/pin.png
+    - assets/tariff_start.webp
+    - assets/tariff_comfort.webp
+    - assets/tariff_business.webp
 
 # live-ready v0.2 build
 # CI verify v0.2.1
