@@ -1855,6 +1855,7 @@ class _MapPinMarker extends StatelessWidget {
   }
 }
 
+
 class _MapCarMarker extends StatelessWidget {
   const _MapCarMarker({required this.kind, this.driver = false});
   final String kind;
@@ -1863,8 +1864,8 @@ class _MapCarMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: driver ? 40 : 34,
-      height: driver ? 58 : 50,
+      width: driver ? 43 : 38,
+      height: driver ? 66 : 58,
       child: CustomPaint(
         painter: _TopCarPainter(kind: kind, driver: driver),
       ),
@@ -1877,103 +1878,178 @@ class _TopCarPainter extends CustomPainter {
   final String kind;
   final bool driver;
 
+  Color get _body => switch (kind) {
+        'business' => const Color(0xFF141618),
+        'delivery' => const Color(0xFFF5F6F6),
+        'cargo' => const Color(0xFFF0F2F3),
+        _ => const Color(0xFFF9FAFA),
+      };
+
   @override
   void paint(Canvas canvas, Size size) {
-    final body = Paint()
-      ..color = kind == 'business'
-          ? const Color(0xFF17191C)
-          : const Color(0xFFF7F8F8);
-    final dark = Paint()..color = const Color(0xFF20252A);
-    final glass = Paint()..color = const Color(0xFF2A3138);
-    final lime = Paint()..color = yangiLime;
-    final outline = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8;
+    final w = size.width;
+    final h = size.height;
+    final cx = w / 2;
 
+    final shadow = Paint()
+      ..color = const Color(0x33000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.5);
     canvas.drawOval(
       Rect.fromCenter(
-        center: Offset(size.width / 2, size.height * 0.54),
-        width: size.width * 0.90,
-        height: size.height * 0.80,
+        center: Offset(cx, h * 0.56),
+        width: w * 0.76,
+        height: h * 0.86,
       ),
-      Paint()..color = const Color(0x22000000),
+      shadow,
     );
 
-    final carRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        size.width * 0.18,
-        size.height * 0.05,
-        size.width * 0.64,
-        size.height * 0.88,
-      ),
-      Radius.circular(size.width * 0.22),
-    );
-    canvas.drawRRect(carRect, body);
-    canvas.drawRRect(carRect, outline);
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.25,
-          size.height * 0.25,
-          size.width * 0.50,
-          size.height * 0.29,
+    final wheel = Paint()..color = const Color(0xFF131517);
+    for (final y in <double>[h * 0.25, h * 0.69]) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(center: Offset(w * 0.15, y), width: w * 0.13, height: h * 0.18),
+          const Radius.circular(2),
         ),
-        Radius.circular(size.width * 0.12),
-      ),
-      glass,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.29,
-          size.height * 0.60,
-          size.width * 0.42,
-          size.height * 0.17,
+        wheel,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(center: Offset(w * 0.85, y), width: w * 0.13, height: h * 0.18),
+          const Radius.circular(2),
         ),
-        Radius.circular(size.width * 0.08),
-      ),
-      dark,
+        wheel,
+      );
+    }
+
+    final bodyPath = Path()
+      ..moveTo(cx, h * 0.025)
+      ..cubicTo(w * 0.30, h * 0.04, w * 0.23, h * 0.12, w * 0.22, h * 0.25)
+      ..lineTo(w * 0.18, h * 0.72)
+      ..cubicTo(w * 0.18, h * 0.86, w * 0.30, h * 0.95, cx, h * 0.975)
+      ..cubicTo(w * 0.70, h * 0.95, w * 0.82, h * 0.86, w * 0.82, h * 0.72)
+      ..lineTo(w * 0.78, h * 0.25)
+      ..cubicTo(w * 0.77, h * 0.12, w * 0.70, h * 0.04, cx, h * 0.025)
+      ..close();
+
+    canvas.drawPath(bodyPath, Paint()..color = _body);
+    canvas.drawPath(
+      bodyPath,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.25
+        ..color = kind == 'business' ? const Color(0xFF54585D) : const Color(0xFFB8BDC2),
     );
 
+    final roof = Path()
+      ..moveTo(w * 0.31, h * 0.22)
+      ..quadraticBezierTo(cx, h * 0.14, w * 0.69, h * 0.22)
+      ..lineTo(w * 0.72, h * 0.61)
+      ..quadraticBezierTo(cx, h * 0.70, w * 0.28, h * 0.61)
+      ..close();
+    canvas.drawPath(roof, Paint()..color = const Color(0xFF171B1F));
+
+    final frontGlass = Path()
+      ..moveTo(w * 0.33, h * 0.25)
+      ..quadraticBezierTo(cx, h * 0.20, w * 0.67, h * 0.25)
+      ..lineTo(w * 0.65, h * 0.39)
+      ..lineTo(w * 0.35, h * 0.39)
+      ..close();
+    canvas.drawPath(frontGlass, Paint()..color = const Color(0xFF344049));
+
+    final rearGlass = Path()
+      ..moveTo(w * 0.35, h * 0.46)
+      ..lineTo(w * 0.65, h * 0.46)
+      ..lineTo(w * 0.68, h * 0.59)
+      ..quadraticBezierTo(cx, h * 0.63, w * 0.32, h * 0.59)
+      ..close();
+    canvas.drawPath(rearGlass, Paint()..color = const Color(0xFF29343C));
+
+    final glassHighlight = Paint()
+      ..color = const Color(0x557F939F)
+      ..strokeWidth = 1;
+    canvas.drawLine(Offset(w * 0.38, h * 0.27), Offset(w * 0.46, h * 0.37), glassHighlight);
+    canvas.drawLine(Offset(w * 0.39, h * 0.48), Offset(w * 0.47, h * 0.58), glassHighlight);
+
+    final lime = Paint()..color = yangiLime;
     if (kind != 'business') {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            size.width * 0.19,
-            size.height * 0.07,
-            size.width * 0.62,
-            size.height * 0.09,
-          ),
-          Radius.circular(size.width * 0.09),
+          Rect.fromLTWH(w * 0.25, h * 0.055, w * 0.50, h * 0.075),
+          Radius.circular(w * 0.08),
+        ),
+        lime,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(w * 0.19, h * 0.43, w * 0.07, h * 0.20),
+          Radius.circular(w * 0.035),
+        ),
+        lime,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(w * 0.74, h * 0.43, w * 0.07, h * 0.20),
+          Radius.circular(w * 0.035),
         ),
         lime,
       );
     }
 
     if (kind == 'delivery') {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          size.width * 0.43,
-          size.height * 0.10,
-          size.width * 0.28,
-          size.height * 0.22,
-        ),
-        lime,
-      );
+      final stripe = Path()
+        ..moveTo(w * 0.23, h * 0.72)
+        ..lineTo(w * 0.77, h * 0.57)
+        ..lineTo(w * 0.78, h * 0.69)
+        ..lineTo(w * 0.25, h * 0.82)
+        ..close();
+      canvas.drawPath(stripe, lime);
     }
 
     if (kind == 'together') {
-      canvas.drawCircle(Offset(size.width * 0.43, size.height * 0.16), 2.1, lime);
-      canvas.drawCircle(Offset(size.width * 0.57, size.height * 0.16), 2.1, lime);
+      canvas.drawCircle(Offset(w * 0.42, h * 0.10), w * 0.055, Paint()..color = yangiGraphite);
+      canvas.drawCircle(Offset(w * 0.58, h * 0.10), w * 0.055, Paint()..color = yangiGraphite);
     }
+
+    if (kind == 'cargo') {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(w * 0.25, h * 0.67, w * 0.50, h * 0.18),
+          Radius.circular(w * 0.06),
+        ),
+        Paint()..color = const Color(0xFFD8DDE1),
+      );
+    }
+
+    final headLamp = Paint()..color = const Color(0xFFE8F7FF);
+    canvas.drawOval(Rect.fromLTWH(w * 0.27, h * 0.82, w * 0.16, h * 0.055), headLamp);
+    canvas.drawOval(Rect.fromLTWH(w * 0.57, h * 0.82, w * 0.16, h * 0.055), headLamp);
+
+    final tailLamp = Paint()..color = const Color(0xFFEB3D43);
+    canvas.drawOval(Rect.fromLTWH(w * 0.25, h * 0.145, w * 0.13, h * 0.045), tailLamp);
+    canvas.drawOval(Rect.fromLTWH(w * 0.62, h * 0.145, w * 0.13, h * 0.045), tailLamp);
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(cx, h * 0.88),
+          width: w * 0.27,
+          height: h * 0.035,
+        ),
+        const Radius.circular(2),
+      ),
+      Paint()..color = const Color(0xFF31363A),
+    );
 
     if (driver) {
       canvas.drawCircle(
-        Offset(size.width * 0.79, size.height * 0.10),
-        size.width * 0.08,
-        lime,
+        Offset(w * 0.82, h * 0.12),
+        w * 0.12,
+        Paint()..color = yangiLime,
+      );
+      canvas.drawCircle(
+        Offset(w * 0.82, h * 0.12),
+        w * 0.055,
+        Paint()..color = yangiGraphite,
       );
     }
   }
