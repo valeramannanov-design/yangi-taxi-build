@@ -1,4 +1,4 @@
-name: Build Yangi Taxi v1.8.1 APK
+name: Build Yangi Taxi v1.8.2 APK
 
 on:
   workflow_dispatch:
@@ -72,9 +72,9 @@ jobs:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
         run: flutter build apk --release --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY"
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.8.1-tariff-icons-order-back.apk
+        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.8.2-real-route-tariff-cards.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-v1.8.1-tariff-icons-order-back-apk
-          path: Yangi-Taxi-v1.8.1-tariff-icons-order-back.apk
+          name: Yangi-Taxi-v1.8.2-real-route-tariff-cards-apk
+          path: Yangi-Taxi-v1.8.2-real-route-tariff-cards.apk
           if-no-files-found: error
