@@ -1661,10 +1661,12 @@ class _MapPinMarker extends StatelessWidget {
   const _MapPinMarker({
     required this.pickup,
     this.label = '',
+    this.caption = '',
   });
 
   final bool pickup;
   final String label;
+  final String caption;
 
   @override
   Widget build(BuildContext context) {
@@ -1756,7 +1758,7 @@ class _MapPinMarker extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  pickup ? 'Откуда' : 'Куда',
+                  caption.isNotEmpty ? caption : (pickup ? 'Откуда' : 'Куда'),
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -2125,6 +2127,8 @@ class TaxiYandexMap extends StatefulWidget {
     this.to,
     this.fromLabel = '',
     this.toLabel = '',
+    this.fromCaption = 'Откуда',
+    this.toCaption = 'Куда',
     this.driver,
     this.nearbyCars = const <NearbyCrew>[],
     this.vehicleKind = 'start',
@@ -2136,6 +2140,8 @@ class TaxiYandexMap extends StatefulWidget {
   final ym.Point? to;
   final String fromLabel;
   final String toLabel;
+  final String fromCaption;
+  final String toCaption;
   final ym.Point? driver;
   final List<NearbyCrew> nearbyCars;
   final String vehicleKind;
@@ -2150,15 +2156,25 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
   bool darkMode = false;
   final Map<String, yv.ViewProvider> _providers = <String, yv.ViewProvider>{};
 
-  yv.ViewProvider _pinProvider(bool pickup, String label) {
+  yv.ViewProvider _pinProvider(bool pickup, String label, String caption) {
     final cleanLabel = label.trim();
-    final key = 'pin-' + (pickup ? 'pickup' : 'destination') + '-' + cleanLabel.hashCode.toString();
+    final cleanCaption = caption.trim();
+    final key = 'pin-' +
+        (pickup ? 'pickup' : 'destination') +
+        '-' +
+        cleanLabel.hashCode.toString() +
+        '-' +
+        cleanCaption.hashCode.toString();
     return _providers.putIfAbsent(
       key,
       () => yv.ViewProvider(
         id: 'yangi-' + key,
         cacheable: cleanLabel.isEmpty,
-        builder: () => _MapPinMarker(pickup: pickup, label: cleanLabel),
+        builder: () => _MapPinMarker(
+          pickup: pickup,
+          label: cleanLabel,
+          caption: cleanCaption,
+        ),
       ),
     );
   }
@@ -2268,7 +2284,7 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
       map.mapObjects.addPlacemark()
         ..geometry = widget.from!
         ..setViewWithStyle(
-          _pinProvider(true, widget.fromLabel),
+          _pinProvider(true, widget.fromLabel, widget.fromCaption),
           ym.IconStyle(
             anchor: widget.fromLabel.trim().isEmpty
                 ? const math.Point<double>(0.5, 1.0)
@@ -2283,7 +2299,7 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
       map.mapObjects.addPlacemark()
         ..geometry = widget.to!
         ..setViewWithStyle(
-          _pinProvider(false, widget.toLabel),
+          _pinProvider(false, widget.toLabel, widget.toCaption),
           ym.IconStyle(
             anchor: widget.toLabel.trim().isEmpty
                 ? const math.Point<double>(0.5, 1.0)
@@ -3407,6 +3423,8 @@ class _OrderScreenState extends State<OrderScreen> {
               to: to?.point,
               fromLabel: from?.address ?? '',
               toLabel: to?.address ?? '',
+              fromCaption: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
+              toCaption: widget.lang == 'uz' ? 'Qayerga' : 'Куда',
               nearbyCars: nearbyCars,
               vehicleKind: selectedTariffKey,
               zoom: destinationReady ? 13.7 : 15,
