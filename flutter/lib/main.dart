@@ -3252,7 +3252,15 @@ class _OrderScreenState extends State<OrderScreen> {
           );
 
       final distanceFromApi = mapData is Map
-          ? ((mapData['distance_km'] ?? mapData['distanceKm'] ?? mapData['distance']) as num?)?.toDouble()
+          ? (() {
+              final explicit =
+                  _routeNumber(mapData['distance_km'] ?? mapData['distanceKm'] ?? mapData['distance']);
+              if (explicit != null && explicit > 0) return explicit;
+              final city = _routeNumber(mapData['city_dist']) ?? 0;
+              final country = _routeNumber(mapData['country_dist']) ?? 0;
+              final taxiMasterDistance = city + country;
+              return taxiMasterDistance > 0 ? taxiMasterDistance : null;
+            })()
           : null;
       final minutesFromApi = mapData is Map
           ? ((mapData['duration_minutes'] ?? mapData['duration_min'] ?? mapData['time_min'] ?? mapData['minutes']) as num?)?.toInt()
