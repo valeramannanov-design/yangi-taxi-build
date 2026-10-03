@@ -2679,6 +2679,138 @@ class _OrderScreenState extends State<OrderScreen> {
     return total;
   }
 
+  double? _routeNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value.trim().replaceAll(',', '.'));
+    }
+    return null;
+  }
+
+  bool _validCoordinate(double lat, double lon) =>
+      lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+
+  ym.Point? _routePointFromRaw(dynamic raw, Place source, Place destination) {
+    double? lat;
+    double? lon;
+
+    if (raw is Map) {
+      final coords = raw['coords'];
+      if (coords is Map) {
+        lat = _routeNumber(coords['lat'] ?? coords['latitude'] ?? coords['y']);
+        lon = _routeNumber(coords['lon'] ?? coords['lng'] ?? coords['longitude'] ?? coords['x']);
+      }
+      lat ??= _routeNumber(raw['lat'] ?? raw['latitude'] ?? raw['y']);
+      lon ??= _routeNumber(raw['lon'] ?? raw['lng'] ?? raw['longitude'] ?? raw['x']);
+    } else if (raw is List && raw.length >= 2) {
+      final a = _routeNumber(raw[0]);
+      final b = _routeNumber(raw[1]);
+      if (a != null && b != null) {
+        final midpoint = ym.Point(
+          latitude: (source.lat + destination.lat) / 2,
+          longitude: (source.lon + destination.lon) / 2,
+        );
+        final first = _validCoordinate(a, b) ? ym.Point(latitude: a, longitude: b) : null;
+        final swapped = _validCoordinate(b, a) ? ym.Point(latitude: b, longitude: a) : null;
+        if (first != null && swapped != null) {
+          return _distanceBetween(first, midpoint) <= _distanceBetween(swapped, midpoint)
+              ? first
+              : swapped;
+        }
+        return first ?? swapped;
+      }
+    } else if (raw is String) {
+      final pieces = raw
+          .trim()
+          .split(RegExp(r'[;,\s]+'))
+          .where((x) => x.isNotEmpty)
+          .toList();
+      if (pieces.length >= 2) {
+        final a = _routeNumber(pieces[0]);
+        final b = _routeNumber(pieces[1]);
+        if (a != null && b != null) {
+          if (_validCoordinate(a, b)) {
+            lat = a;
+            lon = b;
+          } else if (_validCoordinate(b, a)) {
+            lat = b;
+            lon = a;
+          }
+        }
+      }
+    }
+
+    if (lat == null || lon == null || !_validCoordinate(lat, lon)) return null;
+    return ym.Point(latitude: lat, longitude: lon);
+  }
+
+  List<ym.Point> _normalizeRoutePoints(
+    dynamic routeData,
+    Place source,
+    Place destination,
+  ) {
+    dynamic rawPoints;
+    if (routeData is Map) {
+      rawPoints = routeData['full_route_coords'] ??
+          routeData['route_coords'] ??
+          routeData['coords'] ??
+          routeData['points'] ??
+          routeData['geometry'];
+      if (rawPoints is Map) {
+        rawPoints = rawPoints['points'] ?? rawPoints['coordinates'] ?? rawPoints['coords'];
+      }
+    } else {
+      rawPoints = routeData;
+    }
+
+    final points = <ym.Point>[];
+    if (rawPoints is List) {
+      for (final raw in rawPoints) {
+        final p = _routePointFromRaw(raw, source, destination);
+        if (p == null) continue;
+        if (points.isEmpty || _distanceBetween(points.last, p) > 0.003) {
+          points.add(p);
+        }
+      }
+    }
+
+    final sourcePoint = source.point;
+    final destinationPoint = destination.point;
+
+    if (points.length >= 2) {
+      final normalScore =
+          _distanceBetween(points.first, sourcePoint) +
+          _distanceBetween(points.last, destinationPoint);
+      final reversedScore =
+          _distanceBetween(points.first, destinationPoint) +
+          _distanceBetween(points.last, sourcePoint);
+      if (reversedScore + 0.05 < normalScore) {
+        final reversed = points.reversed.toList();
+        points
+          ..clear()
+          ..addAll(reversed);
+      }
+    }
+
+    if (points.isEmpty) {
+      return <ym.Point>[sourcePoint, destinationPoint];
+    }
+
+    if (_distanceBetween(points.first, sourcePoint) > 0.15) {
+      points.insert(0, sourcePoint);
+    } else {
+      points[0] = sourcePoint;
+    }
+
+    if (_distanceBetween(points.last, destinationPoint) > 0.15) {
+      points.add(destinationPoint);
+    } else {
+      points[points.length - 1] = destinationPoint;
+    }
+
+    return points;
+  }
+
   void selectTariff(String key) {
     Map<String, dynamic>? option;
     for (final item in visibleTariffs) {
@@ -2748,6 +2880,8 @@ class _OrderScreenState extends State<OrderScreen> {
           cost = null;
           tariffOptions = <Map<String, dynamic>>[];
           route = <ym.Point>[];
+          routeDistanceKm = null;
+          routeMinutes = null;
         });
       }
       return;
@@ -2998,19 +3132,7 @@ class _OrderScreenState extends State<OrderScreen> {
       if (currentGeneration != estimateGeneration || !mounted) return;
 
       final mapData = data['route'];
-      final points = <ym.Point>[];
-      if (mapData is Map && mapData['full_route_coords'] is List) {
-        for (final dynamic x in mapData['full_route_coords'] as List) {
-          if (x is Map && x['lat'] != null && x['lon'] != null) {
-            points.add(
-              ym.Point(
-                latitude: (x['lat'] as num).toDouble(),
-                longitude: (x['lon'] as num).toDouble(),
-              ),
-            );
-          }
-        }
-      }
+      final points = _normalizeRoutePoints(mapData, source, destination);
 
       final rawOptions = data['options'];
       final options = rawOptions is List
