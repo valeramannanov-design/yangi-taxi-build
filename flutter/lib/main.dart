@@ -2719,6 +2719,27 @@ class _OrderScreenState extends State<OrderScreen> {
       }
       lat ??= _routeNumber(raw['lat'] ?? raw['latitude'] ?? raw['y']);
       lon ??= _routeNumber(raw['lon'] ?? raw['lng'] ?? raw['longitude'] ?? raw['x']);
+
+      if (lat != null && lon != null) {
+        final midpoint = ym.Point(
+          latitude: (source.lat + destination.lat) / 2,
+          longitude: (source.lon + destination.lon) / 2,
+        );
+        final normal = _validCoordinate(lat, lon)
+            ? ym.Point(latitude: lat, longitude: lon)
+            : null;
+        final swapped = _validCoordinate(lon, lat)
+            ? ym.Point(latitude: lon, longitude: lat)
+            : null;
+        if (normal != null && swapped != null) {
+          final normalScore = _distanceBetween(normal, midpoint);
+          final swappedScore = _distanceBetween(swapped, midpoint);
+          if (swappedScore + 1.0 < normalScore) {
+            lat = swapped.latitude;
+            lon = swapped.longitude;
+          }
+        }
+      }
     } else if (raw is List && raw.length >= 2) {
       final a = _routeNumber(raw[0]);
       final b = _routeNumber(raw[1]);
@@ -2823,6 +2844,13 @@ class _OrderScreenState extends State<OrderScreen> {
       points.add(destinationPoint);
     } else {
       points[points.length - 1] = destinationPoint;
+    }
+
+    final directDistance = _distanceBetween(sourcePoint, destinationPoint);
+    final routeDistance = _polylineDistance(points);
+    final unreasonable = routeDistance > math.max(12.0, directDistance * 6.0);
+    if (unreasonable) {
+      return <ym.Point>[sourcePoint, destinationPoint];
     }
 
     return points;
