@@ -108,6 +108,9 @@ class ApiClient {
   String? token;
   Map<String, dynamic>? _demoOrder;
   DateTime? _demoStarted;
+  String _demoClientPhoto = '';
+  double _demoClientRating = 4.86;
+  final Map<int, int> _demoDriverRatings = <int, int>{};
   final List<Map<String, dynamic>> _demoHistory = [];
   final List<Map<String, dynamic>> _demoCards = <Map<String, dynamic>>[
     <String, dynamic>{
@@ -190,6 +193,8 @@ class ApiClient {
         'name': 'Yangi Taxi Demo',
         'phones': <dynamic>[<String, dynamic>{'phone': '+998901234567'}],
         'bonus_balance': 12000,
+        'client_rating': _demoClientRating,
+        'client_photo': _demoClientPhoto,
       };
 
   List<Map<String, dynamic>> get demoAddresses => <Map<String, dynamic>>[
@@ -404,6 +409,32 @@ class ApiClient {
       };
     }
 
+    if (path == '/api/profile/photo') {
+      final raw = (body['photoBase64'] ?? '').toString().trim();
+      if (raw.isEmpty) throw ApiException('Фото не передано');
+      _demoClientPhoto = raw;
+      return <String, dynamic>{'client_photo': raw};
+    }
+
+    final demoRatingMatch = RegExp(r'^/api/orders/(\d+)/rating$').firstMatch(path);
+    if (demoRatingMatch != null) {
+      final orderId = int.parse(demoRatingMatch.group(1)!);
+      final rating = (body['rating'] as num?)?.toInt() ?? 0;
+      if (rating < 1 || rating > 5) {
+        throw ApiException('Оценка должна быть от 1 до 5');
+      }
+      _demoDriverRatings[orderId] = rating;
+      if (_demoOrder != null &&
+          (_demoOrder!['order_id'] as num?)?.toInt() == orderId) {
+        _demoOrder!['driver_rating_by_client'] = rating;
+      }
+      return <String, dynamic>{
+        'orderId': orderId,
+        'rating': rating,
+        'saved': true,
+      };
+    }
+
     if (path == '/api/auth/register/request-code') {
       return <String, dynamic>{
         'expiresIn': 300,
@@ -596,6 +627,9 @@ class ApiClient {
         'car_mark': 'Chevrolet',
         'car_model': 'Cobalt',
         'car_number': '01 Y 001 TX',
+        'driver_name': 'Aziz',
+        'driver_phone': '+998901112233',
+        'driver_rating': 4.91,
         'total_cost': finalCost,
       };
       return <String, dynamic>{'order_id': id};
