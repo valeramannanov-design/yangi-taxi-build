@@ -1379,17 +1379,66 @@ class _ShellState extends State<Shell> {
     String? subtitle,
   }) {
     final selected = tab == index;
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final selectedBg = Color.alphaBlend(
+      yangiLime.withValues(alpha: dark ? 0.17 : 0.14),
+      theme.colorScheme.surface,
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      child: ListTile(
-        selected: selected,
-        selectedTileColor: const Color(0xFFE8F5EC),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        leading: Icon(icon, color: selected ? const Color(0xFF1F8A4C) : null),
-        title: Text(title, style: TextStyle(fontWeight: selected ? FontWeight.w900 : FontWeight.w700)),
-        subtitle: subtitle == null ? null : Text(subtitle),
-        trailing: selected ? const Icon(Icons.chevron_right_rounded, size: 20) : null,
-        onTap: () => selectTab(index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          color: selected ? selectedBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: ListTile(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          leading: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: selected
+                  ? yangiLime
+                  : theme.colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: selected ? yangiGraphite : theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          title: Text(
+            title,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+            ),
+          ),
+          subtitle: subtitle == null
+              ? null
+              : Text(
+                  subtitle,
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                ),
+          trailing: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: selected
+                ? Icon(
+                    Icons.chevron_right_rounded,
+                    key: const ValueKey<String>('selected'),
+                    size: 20,
+                    color: theme.colorScheme.onSurface,
+                  )
+                : const SizedBox(key: ValueKey<String>('idle'), width: 20),
+          ),
+          onTap: () => selectTab(index),
+        ),
       ),
     );
   }
@@ -1431,11 +1480,32 @@ class _ShellState extends State<Shell> {
       ),
     ];
 
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+
     return Scaffold(
       key: shellKey,
+      drawerScrimColor: Colors.black.withValues(alpha: dark ? 0.58 : 0.34),
+      drawerEdgeDragWidth: 44,
       drawer: Drawer(
-        backgroundColor: Colors.white,
-        child: SafeArea(
+        width: math.min(370.0, MediaQuery.sizeOf(context).width * 0.88),
+        elevation: 18,
+        backgroundColor: theme.colorScheme.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
+        ),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(-14 * (1 - value), 0),
+              child: child,
+            ),
+          ),
+          child: SafeArea(
           child: Column(
             children: <Widget>[
               Padding(
@@ -1458,14 +1528,17 @@ class _ShellState extends State<Shell> {
                         children: <Widget>[
                           YangiWordmark(compact: true),
                           SizedBox(height: 3),
-                          Text('Движение ближе к вам', style: TextStyle(color: Color(0xFF8B8F97), fontSize: 11)),
+                          Text(
+                            widget.lang == 'uz' ? 'Harakat sizga yaqinroq' : 'Движение ближе к вам',
+                            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
+                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 18),
+              Divider(height: 18, color: theme.colorScheme.outlineVariant),
               Expanded(
                 child: ListView(
                   padding: EdgeInsets.zero,
@@ -1487,7 +1560,7 @@ class _ShellState extends State<Shell> {
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              Divider(height: 1, color: theme.colorScheme.outlineVariant),
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: ListTile(
@@ -1499,6 +1572,7 @@ class _ShellState extends State<Shell> {
               ),
             ],
           ),
+        ),
         ),
       ),
       body: IndexedStack(index: tab, children: pages),
