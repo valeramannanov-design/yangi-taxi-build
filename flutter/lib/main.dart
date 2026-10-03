@@ -1397,7 +1397,13 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      OrderScreen(api: widget.api, lang: widget.lang, onOrder: orderCreated, onMenu: openMenu),
+      OrderScreen(
+        api: widget.api,
+        lang: widget.lang,
+        onOrder: orderCreated,
+        onMenu: openMenu,
+        onProfile: () => selectTab(5),
+      ),
       RideScreen(api: widget.api, lang: widget.lang, orderId: activeId, onMenu: openMenu),
       HistoryScreen(api: widget.api, lang: widget.lang, onMenu: openMenu),
       CardsScreen(
@@ -2087,11 +2093,13 @@ class OrderScreen extends StatefulWidget {
     required this.lang,
     required this.onOrder,
     required this.onMenu,
+    required this.onProfile,
   });
   final ApiClient api;
   final String lang;
   final ValueChanged<int> onOrder;
   final VoidCallback onMenu;
+  final VoidCallback onProfile;
 
   @override
   State<OrderScreen> createState() => _OrderScreenState();
@@ -2102,6 +2110,8 @@ class _OrderScreenState extends State<OrderScreen> {
   Place? to;
   double? cost;
   List<ym.Point> route = <ym.Point>[];
+  double? routeDistanceKm;
+  int? routeMinutes;
   bool busy = false;
   bool locating = false;
   String? error;
@@ -2338,6 +2348,65 @@ class _OrderScreenState extends State<OrderScreen> {
       default:
         return Icons.local_taxi_rounded;
     }
+  }
+
+  String? tariffAsset(String key) {
+    switch (key) {
+      case 'start':
+        return 'assets/tariff_start.webp';
+      case 'comfort':
+        return 'assets/tariff_comfort.webp';
+      case 'business':
+        return 'assets/tariff_business.webp';
+      default:
+        return null;
+    }
+  }
+
+  int tariffPassengers(String key) {
+    switch (key) {
+      case 'cargo':
+        return 2;
+      case 'delivery':
+        return 1;
+      default:
+        return 4;
+    }
+  }
+
+  int tariffBaggage(String key) {
+    switch (key) {
+      case 'business':
+      case 'comfort':
+        return 3;
+      case 'cargo':
+        return 6;
+      case 'delivery':
+        return 1;
+      default:
+        return 2;
+    }
+  }
+
+  double _distanceBetween(ym.Point a, ym.Point b) {
+    const earthKm = 6371.0;
+    final lat1 = a.latitude * math.pi / 180;
+    final lat2 = b.latitude * math.pi / 180;
+    final dLat = (b.latitude - a.latitude) * math.pi / 180;
+    final dLon = (b.longitude - a.longitude) * math.pi / 180;
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1) * math.cos(lat2) *
+            math.sin(dLon / 2) * math.sin(dLon / 2);
+    return 2 * earthKm * math.asin(math.sqrt(h.clamp(0.0, 1.0)));
+  }
+
+  double _polylineDistance(List<ym.Point> points) {
+    if (points.length < 2) return 0;
+    double total = 0;
+    for (var i = 1; i < points.length; i++) {
+      total += _distanceBetween(points[i - 1], points[i]);
+    }
+    return total;
   }
 
   void selectTariff(String key) {
@@ -2693,9 +2762,21 @@ class _OrderScreenState extends State<OrderScreen> {
             orElse: () => null,
           );
 
+      final distanceFromApi = mapData is Map
+          ? ((mapData['distance_km'] ?? mapData['distanceKm'] ?? mapData['distance']) as num?)?.toDouble()
+          : null;
+      final minutesFromApi = mapData is Map
+          ? ((mapData['duration_minutes'] ?? mapData['duration_min'] ?? mapData['time_min'] ?? mapData['minutes']) as num?)?.toInt()
+          : null;
+      final computedDistance = distanceFromApi ?? _polylineDistance(points);
+      final computedMinutes = minutesFromApi ??
+          (computedDistance > 0 ? math.max(1, (computedDistance / 28 * 60).round()) : null);
+
       setState(() {
         tariffOptions = options;
         route = points;
+        routeDistanceKm = computedDistance > 0 ? computedDistance : null;
+        routeMinutes = computedMinutes;
         if (active != null) {
           selectedTariffKey = (active!['key'] ?? 'start').toString();
           cost = (active!['cost'] as num?)?.toDouble();
@@ -2711,6 +2792,8 @@ class _OrderScreenState extends State<OrderScreen> {
         setState(() {
           cost = null;
           tariffOptions = <Map<String, dynamic>>[];
+          routeDistanceKm = null;
+          routeMinutes = null;
           error = e.toString();
         });
       }
