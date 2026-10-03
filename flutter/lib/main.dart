@@ -6520,6 +6520,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '';
   }
 
+  double? get clientRating {
+    final raw = me?['client_rating'] ?? me?['clientRating'] ?? me?['rating_value'] ?? me?['rating'];
+    final value = raw == null ? null : double.tryParse(raw.toString());
+    return value != null && value > 0 && value <= 5 ? value : null;
+  }
+
+  int? get clientRatingCount {
+    final raw = me?['client_rating_count'] ?? me?['clientRatingCount'] ?? me?['rating_count'] ?? me?['ratings_count'];
+    return raw == null ? null : int.tryParse(raw.toString());
+  }
+
+  Uint8List? get clientPhotoBytes {
+    var raw = (me?['client_photo'] ?? '').toString().trim();
+    if (raw.isEmpty) return null;
+    raw = raw.replaceFirst(RegExp(r'^data:image/[^;]+;base64,'), '');
+    try { return base64Decode(raw); } catch (_) { return null; }
+  }
+
+  Future<void> chooseProfilePhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(leading: const Icon(Icons.photo_library_rounded), title: Text(widget.lang == 'uz' ? 'Galereyadan tanlash' : 'Выбрать из галереи'), onTap: () => Navigator.pop(sheetContext, ImageSource.gallery)),
+            ListTile(leading: const Icon(Icons.photo_camera_rounded), title: Text(widget.lang == 'uz' ? 'Kamera bilan olish' : 'Сделать фото'), onTap: () => Navigator.pop(sheetContext, ImageSource.camera)),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    try {
+      final picked = await ImagePicker().pickImage(source: source, maxWidth: 1000, maxHeight: 1000, imageQuality: 82);
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (bytes.length > 3 * 1024 * 1024) throw ApiException(widget.lang == 'uz' ? 'Rasm hajmi 3 MB dan kichik bo‘lishi kerak' : 'Фото должно быть меньше 3 МБ');
+      final encoded = base64Encode(bytes);
+      await widget.api.post('/api/profile/photo', <String, dynamic>{'photoBase64': encoded});
+      if (!mounted) return;
+      setState(() => me = <String, dynamic>{...?me, 'client_photo': encoded});
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.lang == 'uz' ? 'Profil rasmi saqlandi' : 'Фото профиля сохранено')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
   int get completed => orders.where((x) => x is Map && x['state_kind'] == 'finished').length;
   int get cancelled => orders.where((x) => x is Map && x['state_kind'] == 'aborted').length;
 
