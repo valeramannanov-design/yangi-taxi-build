@@ -5158,65 +5158,202 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
           leading: IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
-          title: Text(tx(widget.lang, 'history'), style: const TextStyle(fontWeight: FontWeight.w800)),
-          actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh))],
+          centerTitle: true,
+          title: const YangiWordmark(compact: true),
+          actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded))],
         ),
         body: loading
             ? const Center(child: CircularProgressIndicator())
             : RefreshIndicator(
                 onRefresh: load,
-                child: orders.isEmpty
-                    ? ListView(children: <Widget>[const SizedBox(height: 180), Center(child: Text(tx(widget.lang, 'history')))])
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: orders.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (_, i) {
-                          final o = Map<String, dynamic>.from(orders[i] as Map);
-                          final state = (o['state_kind'] ?? '').toString();
-                          final orderId = (o['order_id'] as num?)?.toInt() ?? 0;
-                          return Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(6),
-                              child: Column(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            widget.lang == 'uz' ? 'Safarlar tarixi' : 'История поездок',
+                            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.7),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: yangiLime.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Text(
+                            orders.length.toString(),
+                            style: const TextStyle(fontWeight: FontWeight.w900, color: yangiGraphite),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    if (orders.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(28),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Column(
+                          children: <Widget>[
+                            const Icon(Icons.route_outlined, size: 54),
+                            const SizedBox(height: 10),
+                            Text(widget.lang == 'uz' ? 'Hali safarlar yo‘q' : 'Поездок пока нет'),
+                          ],
+                        ),
+                      )
+                    else
+                      ...orders.map((raw) {
+                        final o = Map<String, dynamic>.from(raw as Map);
+                        final state = (o['state_kind'] ?? '').toString();
+                        final orderId = (o['order_id'] as num?)?.toInt() ?? 0;
+                        final tariffKey = (o['tariff_key'] ?? 'start').toString();
+                        final source = (o['source'] ?? '').toString();
+                        final destination = (o['destination'] ?? '').toString();
+                        final total = o['total_cost'];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(13),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(22),
+                            boxShadow: const <BoxShadow>[
+                              BoxShadow(color: Color(0x10000000), blurRadius: 16, offset: Offset(0, 5)),
+                            ],
+                          ),
+                          child: Column(
+                            children: <Widget>[
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
-                                  ListTile(
-                                    leading: CircleAvatar(
-                                      child: Icon(state == 'finished' ? Icons.check : state == 'aborted' ? Icons.close : Icons.local_taxi),
+                                  SizedBox(
+                                    width: 100,
+                                    height: 58,
+                                    child: _TariffVehicleArt(
+                                      kind: tariffKey,
+                                      selected: false,
+                                      available: true,
                                     ),
-                                    title: Text(
-                                      (o['source'] ?? '').toString() + ' → ' + (o['destination'] ?? '').toString(),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    subtitle: Text('#' + orderId.toString() + ' • ' + state),
-                                    trailing: o['total_cost'] == null
-                                        ? null
-                                        : Text(o['total_cost'].toString() + ' UZS', style: const TextStyle(fontWeight: FontWeight.w700)),
                                   ),
-                                  if (state == 'finished' && orderId > 0)
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton.icon(
-                                        onPressed: () => showDriverRatingDialog(
-                                          context,
-                                          widget.api,
-                                          widget.lang,
-                                          orderId,
-                                          driverName: (o['driver_name'] ?? '').toString(),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        Row(
+                                          children: <Widget>[
+                                            Expanded(
+                                              child: Text(
+                                                '#' + orderId.toString(),
+                                                style: const TextStyle(fontWeight: FontWeight.w900),
+                                              ),
+                                            ),
+                                            if (total != null)
+                                              Text(
+                                                total.toString() + ' so‘m',
+                                                style: const TextStyle(fontWeight: FontWeight.w900),
+                                              ),
+                                          ],
                                         ),
-                                        icon: const Icon(Icons.star_outline),
-                                        label: Text(widget.lang == 'uz' ? 'Baholash' : 'Оценить'),
+                                        const SizedBox(height: 5),
+                                        Row(
+                                          children: <Widget>[
+                                            Container(
+                                              width: 10,
+                                              height: 10,
+                                              decoration: const BoxDecoration(color: yangiGreen, shape: BoxShape.circle),
+                                            ),
+                                            const SizedBox(width: 7),
+                                            Expanded(
+                                              child: Text(
+                                                source,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Row(
+                                          children: <Widget>[
+                                            Container(
+                                              width: 10,
+                                              height: 10,
+                                              decoration: BoxDecoration(
+                                                color: destination.isEmpty ? const Color(0xFF9CA3AF) : const Color(0xFFFF4B36),
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 7),
+                                            Expanded(
+                                              child: Text(
+                                                destination.isEmpty
+                                                    ? (widget.lang == 'uz' ? 'Manzil ko‘rsatilmagan' : 'Без конечного адреса')
+                                                    : destination,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: <Widget>[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: state == 'finished'
+                                          ? yangiLime.withValues(alpha: 0.18)
+                                          : Theme.of(context).colorScheme.surfaceContainerHigh,
+                                      borderRadius: BorderRadius.circular(11),
+                                    ),
+                                    child: Text(
+                                      state == 'finished'
+                                          ? (widget.lang == 'uz' ? 'Tugallangan' : 'Завершена')
+                                          : state == 'aborted'
+                                              ? (widget.lang == 'uz' ? 'Bekor qilingan' : 'Отменена')
+                                              : state,
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  if (state == 'finished' && orderId > 0)
+                                    TextButton.icon(
+                                      onPressed: () => showDriverRatingDialog(
+                                        context,
+                                        widget.api,
+                                        widget.lang,
+                                        orderId,
+                                        driverName: (o['driver_name'] ?? '').toString(),
                                       ),
+                                      icon: const Icon(Icons.star_outline_rounded, size: 18),
+                                      label: Text(widget.lang == 'uz' ? 'Baholash' : 'Оценить'),
                                     ),
                                 ],
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
               ),
       );
+
 }
 
 class CardsScreen extends StatefulWidget {
