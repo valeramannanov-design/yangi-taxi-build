@@ -1820,10 +1820,18 @@ class _MapCarMarker extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = switch (kind) {
       'business' => const Color(0xFF22252A),
-      'delivery' => const Color(0xFFFFD900),
+      'delivery' => yangiLime,
       'cargo' => const Color(0xFF43484F),
       'together' => yangiLime,
       _ => yangiLime,
+    };
+    final asset = switch (kind) {
+      'together' => 'assets/map_car_together.webp',
+      'comfort' => 'assets/map_car_comfort.webp',
+      'business' => 'assets/map_car_business.webp',
+      'delivery' => 'assets/map_car_delivery.webp',
+      'cargo' => 'assets/map_car_cargo.webp',
+      _ => 'assets/map_car_start.webp',
     };
 
     return SizedBox(
@@ -1845,7 +1853,7 @@ class _MapCarMarker extends StatelessWidget {
             ),
           ),
           Image.asset(
-            'assets/map_car.webp',
+            asset,
             width: driver ? 46 : 38,
             height: driver ? 50 : 43,
             fit: BoxFit.contain,
