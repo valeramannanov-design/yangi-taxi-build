@@ -1808,17 +1808,12 @@ class _MapCarMarker extends StatelessWidget {
   const _MapCarMarker({required this.kind, this.driver = false});
   final String kind;
   final bool driver;
-
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: driver ? 40 : 34,
-      height: driver ? 58 : 50,
-      child: CustomPaint(
-        painter: _TopCarPainter(kind: kind, driver: driver),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+        width: driver ? 43 : 38,
+        height: driver ? 66 : 58,
+        child: CustomPaint(painter: _TopCarPainter(kind: kind, driver: driver)),
+      );
 }
 
 class _TopCarPainter extends CustomPainter {
@@ -1826,112 +1821,71 @@ class _TopCarPainter extends CustomPainter {
   final String kind;
   final bool driver;
 
+  Color get bodyColor => kind == 'business' ? const Color(0xFF141618) : const Color(0xFFF8F9F9);
+
   @override
   void paint(Canvas canvas, Size size) {
-    final body = Paint()
-      ..color = kind == 'business'
-          ? const Color(0xFF17191C)
-          : const Color(0xFFF7F8F8);
-    final dark = Paint()..color = const Color(0xFF20252A);
-    final glass = Paint()..color = const Color(0xFF2A3138);
-    final lime = Paint()..color = yangiLime;
-    final outline = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8;
+    final w = size.width;
+    final h = size.height;
+    final cx = w / 2;
+    final shadow = Paint()..color = const Color(0x33000000)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawOval(Rect.fromCenter(center: Offset(cx, h * 0.56), width: w * 0.76, height: h * 0.86), shadow);
 
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(size.width / 2, size.height * 0.54),
-        width: size.width * 0.90,
-        height: size.height * 0.80,
-      ),
-      Paint()..color = const Color(0x22000000),
-    );
+    final wheel = Paint()..color = const Color(0xFF111315);
+    for (final y in <double>[h * 0.25, h * 0.69]) {
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(w * 0.15, y), width: w * 0.13, height: h * 0.18), const Radius.circular(2)), wheel);
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(w * 0.85, y), width: w * 0.13, height: h * 0.18), const Radius.circular(2)), wheel);
+    }
 
-    final carRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        size.width * 0.18,
-        size.height * 0.05,
-        size.width * 0.64,
-        size.height * 0.88,
-      ),
-      Radius.circular(size.width * 0.22),
-    );
-    canvas.drawRRect(carRect, body);
-    canvas.drawRRect(carRect, outline);
+    final body = Path()
+      ..moveTo(cx, h * 0.025)
+      ..cubicTo(w * 0.30, h * 0.04, w * 0.23, h * 0.12, w * 0.22, h * 0.25)
+      ..lineTo(w * 0.18, h * 0.72)
+      ..cubicTo(w * 0.18, h * 0.86, w * 0.30, h * 0.95, cx, h * 0.975)
+      ..cubicTo(w * 0.70, h * 0.95, w * 0.82, h * 0.86, w * 0.82, h * 0.72)
+      ..lineTo(w * 0.78, h * 0.25)
+      ..cubicTo(w * 0.77, h * 0.12, w * 0.70, h * 0.04, cx, h * 0.025)
+      ..close();
+    canvas.drawPath(body, Paint()..color = bodyColor);
+    canvas.drawPath(body, Paint()..style = PaintingStyle.stroke..strokeWidth = 1.2..color = kind == 'business' ? const Color(0xFF555B60) : const Color(0xFFB7BDC2));
 
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.25,
-          size.height * 0.25,
-          size.width * 0.50,
-          size.height * 0.29,
-        ),
-        Radius.circular(size.width * 0.12),
-      ),
-      glass,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.29,
-          size.height * 0.60,
-          size.width * 0.42,
-          size.height * 0.17,
-        ),
-        Radius.circular(size.width * 0.08),
-      ),
-      dark,
-    );
+    final roof = Path()
+      ..moveTo(w * 0.31, h * 0.22)
+      ..quadraticBezierTo(cx, h * 0.14, w * 0.69, h * 0.22)
+      ..lineTo(w * 0.72, h * 0.61)
+      ..quadraticBezierTo(cx, h * 0.70, w * 0.28, h * 0.61)
+      ..close();
+    canvas.drawPath(roof, Paint()..color = const Color(0xFF171B1F));
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.34, h * 0.25, w * 0.32, h * 0.15), Radius.circular(w * 0.05)), Paint()..color = const Color(0xFF3C4A54));
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.34, h * 0.47, w * 0.32, h * 0.13), Radius.circular(w * 0.05)), Paint()..color = const Color(0xFF2C3740));
 
     if (kind != 'business') {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            size.width * 0.19,
-            size.height * 0.07,
-            size.width * 0.62,
-            size.height * 0.09,
-          ),
-          Radius.circular(size.width * 0.09),
-        ),
-        lime,
-      );
+      final lime = Paint()..color = yangiLime;
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.25, h * 0.055, w * 0.50, h * 0.075), Radius.circular(w * 0.08)), lime);
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.19, h * 0.43, w * 0.07, h * 0.20), Radius.circular(w * 0.035)), lime);
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.74, h * 0.43, w * 0.07, h * 0.20), Radius.circular(w * 0.035)), lime);
+      if (kind == 'delivery') {
+        final stripe = Path()..moveTo(w * 0.23, h * 0.72)..lineTo(w * 0.77, h * 0.57)..lineTo(w * 0.78, h * 0.69)..lineTo(w * 0.25, h * 0.82)..close();
+        canvas.drawPath(stripe, lime);
+      }
     }
 
-    if (kind == 'delivery') {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          size.width * 0.43,
-          size.height * 0.10,
-          size.width * 0.28,
-          size.height * 0.22,
-        ),
-        lime,
-      );
-    }
-
-    if (kind == 'together') {
-      canvas.drawCircle(Offset(size.width * 0.43, size.height * 0.16), 2.1, lime);
-      canvas.drawCircle(Offset(size.width * 0.57, size.height * 0.16), 2.1, lime);
-    }
+    final headLamp = Paint()..color = const Color(0xFFE8F7FF);
+    canvas.drawOval(Rect.fromLTWH(w * 0.27, h * 0.82, w * 0.16, h * 0.055), headLamp);
+    canvas.drawOval(Rect.fromLTWH(w * 0.57, h * 0.82, w * 0.16, h * 0.055), headLamp);
+    final tailLamp = Paint()..color = const Color(0xFFEB3D43);
+    canvas.drawOval(Rect.fromLTWH(w * 0.25, h * 0.145, w * 0.13, h * 0.045), tailLamp);
+    canvas.drawOval(Rect.fromLTWH(w * 0.62, h * 0.145, w * 0.13, h * 0.045), tailLamp);
 
     if (driver) {
-      canvas.drawCircle(
-        Offset(size.width * 0.79, size.height * 0.10),
-        size.width * 0.08,
-        lime,
-      );
+      canvas.drawCircle(Offset(w * 0.82, h * 0.12), w * 0.12, Paint()..color = yangiLime);
+      canvas.drawCircle(Offset(w * 0.82, h * 0.12), w * 0.055, Paint()..color = yangiGraphite);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _TopCarPainter oldDelegate) =>
-      oldDelegate.kind != kind || oldDelegate.driver != driver;
+  bool shouldRepaint(covariant _TopCarPainter oldDelegate) => oldDelegate.kind != kind || oldDelegate.driver != driver;
 }
-
 class _TariffVehicleArt extends StatelessWidget {
   const _TariffVehicleArt({required this.kind, required this.selected, required this.available});
   final String kind;
