@@ -9,8 +9,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:yandex_maps_mapkit/init.dart' as yandex_init;
-import 'package:yandex_maps_mapkit/image.dart' as yi;
 import 'package:yandex_maps_mapkit/mapkit.dart' as ym;
+import 'package:yandex_maps_mapkit/ui_view.dart' as yv;
 import 'package:yandex_maps_mapkit/mapkit_factory.dart' as ym_factory;
 import 'package:yandex_maps_mapkit/search.dart' as ys;
 import 'package:yandex_maps_mapkit/yandex_map.dart' as ym_widget;
@@ -1447,6 +1447,359 @@ class _ShellState extends State<Shell> {
   }
 }
 
+
+const _yangiLightMapStyle = '''
+[
+  {"stylers":{"saturation":-0.20,"lightness":0.05}},
+  {"tags":{"all":["poi"]},"elements":"label.icon","stylers":{"scale":0.78,"opacity":0.72}},
+  {"tags":{"all":["poi"]},"elements":"label.text.fill","stylers":{"color":"#676B72"}},
+  {"tags":{"all":["road"]},"elements":"geometry","stylers":{"saturation":-0.35,"lightness":0.10}},
+  {"tags":{"all":["park"]},"elements":"geometry.fill","stylers":{"color":"#E8F2E6"}},
+  {"tags":{"all":["water"]},"elements":"geometry.fill","stylers":{"color":"#DCEBF1"}},
+  {"tags":{"all":["building"]},"elements":"geometry.fill","stylers":{"color":"#ECEBE7"}}
+]
+''';
+
+const _yangiDarkMapStyle = '''
+[
+  {"stylers":{"saturation":-0.38,"lightness":-0.12}},
+  {"tags":{"all":["poi"]},"elements":"label.icon","stylers":{"scale":0.75,"opacity":0.62}},
+  {"tags":{"all":["road"]},"elements":"geometry","stylers":{"saturation":-0.45}},
+  {"tags":{"all":["park"]},"elements":"geometry.fill","stylers":{"color":"#1D3025"}},
+  {"tags":{"all":["water"]},"elements":"geometry.fill","stylers":{"color":"#152A33"}}
+]
+''';
+
+void _applyYangiMapAppearance(ym.Map map, bool dark) {
+  map.mapType = ym.MapType.VectorMap;
+  map.mode = ym.MapMode.Driving;
+  map.set2DMode(true);
+  map.hdModeEnabled = true;
+  map.nightModeEnabled = dark;
+  map.poiLimit = 28;
+  map.fastTapEnabled = true;
+  map.rotateGesturesEnabled = false;
+  map.tiltGesturesEnabled = false;
+  map.setMapStyle(dark ? _yangiDarkMapStyle : _yangiLightMapStyle);
+}
+
+class _MapPinMarker extends StatelessWidget {
+  const _MapPinMarker({required this.pickup});
+  final bool pickup;
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = pickup ? const Color(0xFFFFD900) : const Color(0xFF17191C);
+    final center = pickup ? const Color(0xFF17191C) : Colors.white;
+    return SizedBox(
+      width: 44,
+      height: 58,
+      child: Stack(
+        alignment: Alignment.topCenter,
+        children: <Widget>[
+          Positioned(
+            top: 3,
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: fill,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3),
+                boxShadow: const <BoxShadow>[
+                  BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 4)),
+                ],
+              ),
+              child: Center(
+                child: Container(
+                  width: 13,
+                  height: 13,
+                  decoration: BoxDecoration(
+                    color: center,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: pickup ? fill : const Color(0xFF17191C),
+                      width: 3,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 39,
+            child: Transform.rotate(
+              angle: math.pi / 4,
+              child: Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: fill,
+                  border: const Border(
+                    right: BorderSide(color: Colors.white, width: 2),
+                    bottom: BorderSide(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapCarMarker extends StatelessWidget {
+  const _MapCarMarker({required this.kind, this.driver = false});
+  final String kind;
+  final bool driver;
+
+  Color get accent {
+    if (driver) return const Color(0xFF17191C);
+    switch (kind) {
+      case 'business':
+        return const Color(0xFF25272B);
+      case 'comfort':
+        return const Color(0xFFBFC5CC);
+      case 'delivery':
+        return const Color(0xFFFFD900);
+      case 'cargo':
+        return const Color(0xFF2F3338);
+      case 'together':
+        return const Color(0xFFFFC400);
+      default:
+        return const Color(0xFFFFD900);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = switch (kind) {
+      'delivery' => Icons.local_shipping_rounded,
+      'cargo' => Icons.fire_truck_rounded,
+      'business' => Icons.time_to_leave_rounded,
+      'comfort' => Icons.directions_car_filled_rounded,
+      'together' => Icons.people_alt_rounded,
+      _ => Icons.local_taxi_rounded,
+    };
+    return Container(
+      width: driver ? 44 : 38,
+      height: driver ? 44 : 38,
+      decoration: BoxDecoration(
+        color: accent,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white, width: 2.2),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 3)),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: <Widget>[
+          Icon(
+            icon,
+            size: driver ? 26 : 22,
+            color: kind == 'comfort' ? const Color(0xFF1D2329) : Colors.white,
+          ),
+          if (driver)
+            const Positioned(
+              right: 3,
+              top: 3,
+              child: CircleAvatar(radius: 4, backgroundColor: Color(0xFFFFD900)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TariffVehicleArt extends StatelessWidget {
+  const _TariffVehicleArt({required this.kind, required this.selected, required this.available});
+  final String kind;
+  final bool selected;
+  final bool available;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: available ? 1 : 0.36,
+      child: CustomPaint(
+        painter: _TariffVehiclePainter(kind: kind, selected: selected),
+        size: const Size(112, 48),
+      ),
+    );
+  }
+}
+
+class _TariffVehiclePainter extends CustomPainter {
+  const _TariffVehiclePainter({required this.kind, required this.selected});
+  final String kind;
+  final bool selected;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final sx = size.width / 112;
+    final sy = size.height / 48;
+    canvas.save();
+    canvas.scale(sx, sy);
+
+    canvas.drawOval(const Rect.fromLTWH(12, 38, 91, 7), Paint()..color = const Color(0x22000000));
+
+    final body = Paint()..color = _bodyColor(kind);
+    final dark = Paint()..color = const Color(0xFF252A30);
+    final glass = Paint()..color = const Color(0xFF4B5864);
+    final wheel = Paint()..color = const Color(0xFF151719);
+    final rim = Paint()..color = const Color(0xFFAEB4BB);
+    final yellow = Paint()..color = const Color(0xFFFFD900);
+
+    if (kind == 'cargo') {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(13, 13, 61, 25), const Radius.circular(3)),
+        yellow,
+      );
+      final cab = Path()
+        ..moveTo(74, 20)
+        ..lineTo(91, 20)
+        ..lineTo(104, 30)
+        ..lineTo(104, 38)
+        ..lineTo(74, 38)
+        ..close();
+      canvas.drawPath(cab, dark);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(83, 23, 13, 8), const Radius.circular(2)),
+        glass,
+      );
+      _wheel(canvas, 30, 39, wheel, rim);
+      _wheel(canvas, 87, 39, wheel, rim);
+    } else if (kind == 'delivery') {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(20, 13, 65, 25), const Radius.circular(7)),
+        yellow,
+      );
+      final nose = Path()
+        ..moveTo(85, 23)
+        ..lineTo(98, 25)
+        ..lineTo(106, 33)
+        ..lineTo(106, 38)
+        ..lineTo(84, 38)
+        ..close();
+      canvas.drawPath(nose, yellow);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(90, 26, 10, 6), const Radius.circular(2)),
+        glass,
+      );
+      canvas.drawRect(const Rect.fromLTWH(44, 18, 15, 13), Paint()..color = Colors.white);
+      final boxLine = Paint()..color = const Color(0x99252A30)..strokeWidth = 1.2;
+      canvas.drawLine(const Offset(51.5, 18), const Offset(51.5, 31), boxLine);
+      canvas.drawLine(const Offset(44, 24.5), const Offset(59, 24.5), boxLine);
+      _wheel(canvas, 34, 39, wheel, rim);
+      _wheel(canvas, 89, 39, wheel, rim);
+    } else {
+      final compact = kind == 'start' || kind == 'together';
+      final premium = kind == 'business';
+      final path = Path()
+        ..moveTo(8, 35)
+        ..lineTo(16, 27)
+        ..lineTo(compact ? 34 : 31, compact ? 19 : 17)
+        ..lineTo(compact ? 68 : 73, compact ? 19 : 17)
+        ..lineTo(86, 24)
+        ..lineTo(104, 33)
+        ..lineTo(106, 38)
+        ..lineTo(10, 38)
+        ..close();
+      canvas.drawPath(path, body);
+      final frontWindow = Path()
+        ..moveTo(compact ? 38 : 35, compact ? 21 : 19)
+        ..lineTo(54, compact ? 21 : 19)
+        ..lineTo(54, 29)
+        ..lineTo(31, 29)
+        ..close();
+      canvas.drawPath(frontWindow, glass);
+      final rearWindow = Path()
+        ..moveTo(57, compact ? 21 : 19)
+        ..lineTo(compact ? 68 : 72, compact ? 21 : 19)
+        ..lineTo(82, 28)
+        ..lineTo(57, 29)
+        ..close();
+      canvas.drawPath(rearWindow, glass);
+      if (premium) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(const Rect.fromLTWH(47, 33, 20, 1.8), const Radius.circular(1)),
+          Paint()..color = const Color(0xFFC8A44D),
+        );
+      }
+      if (kind == 'comfort') {
+        final accent = Path()
+          ..moveTo(23, 31)
+          ..lineTo(36, 22)
+          ..lineTo(42, 31)
+          ..close();
+        canvas.drawPath(accent, yellow);
+      }
+      if (kind == 'together') {
+        canvas.drawCircle(const Offset(64, 24), 2.2, yellow);
+        canvas.drawCircle(const Offset(71, 24), 2.2, yellow);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(const Rect.fromLTWH(60, 27, 15, 4), const Radius.circular(2)),
+          yellow,
+        );
+      }
+      _wheel(canvas, 28, 39, wheel, rim);
+      _wheel(canvas, 83, 39, wheel, rim);
+    }
+
+    canvas.restore();
+  }
+
+  void _wheel(Canvas canvas, double x, double y, Paint wheel, Paint rim) {
+    canvas.drawCircle(Offset(x, y), 7, wheel);
+    canvas.drawCircle(Offset(x, y), 3.5, rim);
+    canvas.drawCircle(Offset(x, y), 1.4, Paint()..color = const Color(0xFF555B62));
+  }
+
+  Color _bodyColor(String key) {
+    switch (key) {
+      case 'comfort':
+        return const Color(0xFFD9DEE3);
+      case 'business':
+        return const Color(0xFF202328);
+      default:
+        return const Color(0xFFFFD900);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TariffVehiclePainter oldDelegate) =>
+      oldDelegate.kind != kind || oldDelegate.selected != selected;
+}
+
+class _TariffGlyph extends StatelessWidget {
+  const _TariffGlyph({required this.kind, required this.selected});
+  final String kind;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = switch (kind) {
+      'together' => Icons.people_alt_rounded,
+      'comfort' => Icons.airline_seat_recline_extra_rounded,
+      'business' => Icons.workspace_premium_rounded,
+      'delivery' => Icons.inventory_2_rounded,
+      'cargo' => Icons.local_shipping_rounded,
+      _ => Icons.local_taxi_rounded,
+    };
+    return Container(
+      width: 29,
+      height: 29,
+      decoration: BoxDecoration(
+        color: selected ? Colors.white.withValues(alpha: 0.78) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(icon, size: 17, color: const Color(0xFF17191C)),
+    );
+  }
+}
+
 class TaxiYandexMap extends StatefulWidget {
   const TaxiYandexMap({
     super.key,
@@ -1456,6 +1809,7 @@ class TaxiYandexMap extends StatefulWidget {
     this.to,
     this.driver,
     this.nearbyCars = const <NearbyCrew>[],
+    this.vehicleKind = 'start',
     this.zoom = 14,
   });
   final ym.Point center;
@@ -1464,6 +1818,7 @@ class TaxiYandexMap extends StatefulWidget {
   final ym.Point? to;
   final ym.Point? driver;
   final List<NearbyCrew> nearbyCars;
+  final String vehicleKind;
   final double zoom;
 
   @override
@@ -1472,15 +1827,45 @@ class TaxiYandexMap extends StatefulWidget {
 
 class _TaxiYandexMapState extends State<TaxiYandexMap> {
   ym.MapWindow? mapWindow;
-  late final yi.ImageProvider carIcon;
-  late final yi.ImageProvider pinIcon;
+  bool darkMode = false;
+  final Map<String, yv.ViewProvider> _providers = <String, yv.ViewProvider>{};
+
+  yv.ViewProvider _pinProvider(bool pickup) => _providers.putIfAbsent(
+        'pin-' + (pickup ? 'pickup' : 'destination'),
+        () => yv.ViewProvider(
+          id: 'yangi-pin-' + (pickup ? 'pickup' : 'destination'),
+          cacheable: true,
+          builder: () => _MapPinMarker(pickup: pickup),
+        ),
+      );
+
+  yv.ViewProvider _carProvider(String kind, {bool driver = false}) => _providers.putIfAbsent(
+        'car-' + kind + '-' + driver.toString(),
+        () => yv.ViewProvider(
+          id: 'yangi-car-' + kind + '-' + driver.toString(),
+          cacheable: true,
+          builder: () => _MapCarMarker(kind: kind, driver: driver),
+        ),
+      );
 
   @override
   void initState() {
     super.initState();
-    carIcon = yi.ImageProvider.fromImageProvider(const AssetImage('assets/car.png'));
-    pinIcon = yi.ImageProvider.fromImageProvider(const AssetImage('assets/pin.png'));
     if (yandexMapKitApiKey.isNotEmpty) ym_factory.mapkit.onStart();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextDark = Theme.of(context).brightness == Brightness.dark;
+    if (nextDark != darkMode) {
+      darkMode = nextDark;
+      final window = mapWindow;
+      if (window != null) {
+        _applyYangiMapAppearance(window.map, darkMode);
+        _render(focusRoute: false);
+      }
+    }
   }
 
   @override
@@ -1501,55 +1886,67 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
     final map = window.map;
     map.mapObjects.clear();
 
-    void addTextPlacemark(ym.Point point, String text) {
-      map.mapObjects.addPlacemark()
-        ..geometry = point
-        ..setText(text);
-    }
-
     if (widget.route.length > 1) {
       final polyline = ym.Polyline(widget.route);
       map.mapObjects.addPolylineWithGeometry(polyline)
-        ..strokeWidth = 5.0
-        ..setStrokeColor(const Color(0xFF238B45));
+        ..strokeWidth = 7.5
+        ..setStrokeColor(darkMode ? const Color(0xCC121416) : const Color(0xCCFFFFFF));
+      map.mapObjects.addPolylineWithGeometry(polyline)
+        ..strokeWidth = 4.5
+        ..setStrokeColor(const Color(0xFF18B66A));
       if (focusRoute) {
         map.move(map.cameraPositionForGeometry(ym.Geometry.fromPolyline(polyline)));
       }
     }
-    if (widget.from != null) addTextPlacemark(widget.from!, '●');
-    if (widget.to != null) {
+
+    if (widget.from != null) {
       map.mapObjects.addPlacemark()
-        ..geometry = widget.to!
-        ..setIconWithStyle(
-          pinIcon,
+        ..geometry = widget.from!
+        ..setViewWithStyle(
+          _pinProvider(true),
           const ym.IconStyle(
             anchor: math.Point<double>(0.5, 1.0),
-            scale: 0.55,
-            zIndex: 20,
+            scale: 0.82,
+            zIndex: 22,
           ),
         );
     }
+
+    if (widget.to != null) {
+      map.mapObjects.addPlacemark()
+        ..geometry = widget.to!
+        ..setViewWithStyle(
+          _pinProvider(false),
+          const ym.IconStyle(
+            anchor: math.Point<double>(0.5, 1.0),
+            scale: 0.82,
+            zIndex: 23,
+          ),
+        );
+    }
+
     for (final car in widget.nearbyCars) {
       final placemark = map.mapObjects.addPlacemark()
         ..geometry = car.point
         ..direction = car.direction >= 0 ? car.direction : 0;
-      placemark.setIconWithStyle(
-        carIcon,
+      placemark.setViewWithStyle(
+        _carProvider(widget.vehicleKind),
         const ym.IconStyle(
           anchor: math.Point<double>(0.5, 0.5),
-          scale: 0.42,
+          scale: 0.82,
           zIndex: 15,
         ),
       );
     }
+
     if (widget.driver != null) {
       map.mapObjects.addPlacemark()
         ..geometry = widget.driver!
-        ..setIconWithStyle(
-          carIcon,
+        ..setViewWithStyle(
+          _carProvider(widget.vehicleKind, driver: true),
           const ym.IconStyle(
             anchor: math.Point<double>(0.5, 0.5),
-            scale: 0.50,
+            scale: 0.92,
             zIndex: 30,
           ),
         );
@@ -1564,15 +1961,18 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
   Widget build(BuildContext context) {
     if (yandexMapKitApiKey.isEmpty) {
       return Container(
-        color: const Color(0xFFEAF4EE),
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         alignment: Alignment.center,
         padding: const EdgeInsets.all(24),
         child: const Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.map_outlined, size: 52),
-            SizedBox(height: 12),
-            Text('Яндекс Карты подключены. Для отображения карты нужен MapKit API-ключ.', textAlign: TextAlign.center),
+            Icon(Icons.map_outlined, size: 46),
+            SizedBox(height: 10),
+            Text(
+              'Для отображения карты нужен Yandex MapKit API-ключ.',
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       );
@@ -1580,6 +1980,7 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
     return ym_widget.YandexMap(
       onMapCreated: (window) {
         mapWindow = window;
+        _applyYangiMapAppearance(window.map, darkMode);
         _render();
       },
     );
@@ -2406,6 +2807,7 @@ class _OrderScreenState extends State<OrderScreen> {
               from: from?.point,
               to: to?.point,
               nearbyCars: nearbyCars,
+              vehicleKind: selectedTariffKey,
               zoom: destinationReady ? 13 : 15,
             ),
           ),
@@ -2453,11 +2855,11 @@ class _OrderScreenState extends State<OrderScreen> {
             ),
           ),
           DraggableScrollableSheet(
-            initialChildSize: destinationReady ? 0.60 : 0.43,
-            minChildSize: 0.33,
-            maxChildSize: 0.82,
+            initialChildSize: destinationReady ? 0.54 : 0.38,
+            minChildSize: 0.29,
+            maxChildSize: 0.76,
             snap: true,
-            snapSizes: const <double>[0.43, 0.60, 0.82],
+            snapSizes: const <double>[0.38, 0.54, 0.76],
             builder: (context, scrollController) {
               return Container(
                 decoration: const BoxDecoration(
@@ -2469,7 +2871,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 ),
                 child: ListView(
                   controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(14, 9, 14, 26),
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
                   children: <Widget>[
                     Center(
                       child: Container(
@@ -2485,7 +2887,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     if (!destinationReady)
                       Text(
                         widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда поедем?',
-                        style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900, letterSpacing: -0.7),
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5),
                       )
                     else
                       Row(
@@ -2493,7 +2895,7 @@ class _OrderScreenState extends State<OrderScreen> {
                           Expanded(
                             child: Text(
                               widget.lang == 'uz' ? 'Safar tafsilotlari' : 'Детали поездки',
-                              style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+                              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, letterSpacing: -0.4),
                             ),
                           ),
                           Container(
@@ -2636,7 +3038,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     if (tariffs.isNotEmpty && !estimating) ...<Widget>[
                       const SizedBox(height: 14),
                       SizedBox(
-                        height: serviceMode == 'taxi' ? 164 : 154,
+                        height: serviceMode == 'taxi' ? 142 : 136,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: tariffs.length,
@@ -2654,7 +3056,7 @@ class _OrderScreenState extends State<OrderScreen> {
                             final savingPercent = (option['savingPercentVsStart'] as num?)?.toInt() ?? 0;
 
                             return SizedBox(
-                              width: serviceMode == 'taxi' ? 142 : 190,
+                              width: serviceMode == 'taxi' ? 126 : 164,
                               child: Material(
                                 color: selected ? const Color(0xFFFFE500) : const Color(0xFFF2F3F5),
                                 borderRadius: BorderRadius.circular(22),
@@ -2662,39 +3064,27 @@ class _OrderScreenState extends State<OrderScreen> {
                                   onTap: available ? () => selectTariff(key) : null,
                                   borderRadius: BorderRadius.circular(22),
                                   child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: <Widget>[
                                         SizedBox(
-                                          height: 58,
+                                          height: 52,
                                           width: double.infinity,
                                           child: Stack(
                                             children: <Widget>[
                                               Positioned(
-                                                right: -5,
-                                                bottom: -3,
-                                                child: Opacity(
-                                                  opacity: available ? 1 : 0.35,
-                                                  child: Image.asset(
-                                                    'assets/car.png',
-                                                    width: 98,
-                                                    height: 58,
-                                                    fit: BoxFit.contain,
-                                                  ),
+                                                right: -1,
+                                                bottom: 0,
+                                                child: _TariffVehicleArt(
+                                                  kind: key,
+                                                  selected: selected,
+                                                  available: available,
                                                 ),
                                               ),
                                               Align(
                                                 alignment: Alignment.topLeft,
-                                                child: Container(
-                                                  width: 34,
-                                                  height: 34,
-                                                  decoration: BoxDecoration(
-                                                    color: selected ? Colors.white70 : Colors.white,
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                  child: Icon(tariffIcon(key), size: 19),
-                                                ),
+                                                child: _TariffGlyph(kind: key, selected: selected),
                                               ),
                                             ],
                                           ),
@@ -3717,6 +4107,10 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
             ym_widget.YandexMap(
               onMapCreated: (window) {
                 mapWindow = window;
+                _applyYangiMapAppearance(
+                  window.map,
+                  Theme.of(context).brightness == Brightness.dark,
+                );
                 window.map.move(
                   ym.CameraPosition(initial, zoom: 16, azimuth: 0, tilt: 0),
                 );
@@ -3726,12 +4120,7 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
             child: Center(
               child: Transform.translate(
                 offset: const Offset(0, -34),
-                child: Image.asset(
-                  'assets/pin.png',
-                  width: 68,
-                  height: 68,
-                  filterQuality: FilterQuality.high,
-                ),
+                child: const _MapPinMarker(pickup: false),
               ),
             ),
           ),
