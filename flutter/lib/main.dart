@@ -5705,70 +5705,124 @@ Future<void> showDriverRatingDialog(
 }) async {
   int rating = 5;
   final comment = TextEditingController();
+  final selectedTags = <String>{};
+
+  List<String> availableTags() {
+    if (rating >= 4) {
+      return lang == 'uz'
+          ? <String>['Muloyim haydovchi', 'Toza mashina', 'Xavfsiz haydash', 'Tez yetib keldi']
+          : <String>['Вежливый водитель', 'Чистая машина', 'Безопасное вождение', 'Быстрая подача'];
+    }
+    return lang == 'uz'
+        ? <String>['Uzoq kutdim', 'Qo‘pol muomala', 'Mashina iflos', 'Xavfli haydash']
+        : <String>['Долго ждал', 'Грубое общение', 'Грязная машина', 'Опасное вождение'];
+  }
+
   final submit = await showDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        title: Text(lang == 'uz' ? 'Safarni baholang' : 'Оцените поездку'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (driverName.trim().isNotEmpty) ...<Widget>[
-              Text(driverName, style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
-            ],
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List<Widget>.generate(
-                5,
-                (i) => IconButton(
-                  onPressed: () => setDialogState(() => rating = i + 1),
-                  iconSize: 36,
-                  icon: Icon(i < rating ? Icons.star : Icons.star_border),
-                  color: const Color(0xFFFFB300),
+      builder: (context, setDialogState) {
+        final tags = availableTags();
+        selectedTags.removeWhere((tag) => !tags.contains(tag));
+        return AlertDialog(
+          icon: Container(
+            width: 52,
+            height: 52,
+            decoration: const BoxDecoration(color: yangiLime, shape: BoxShape.circle),
+            child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite, size: 28),
+          ),
+          title: Text(
+            lang == 'uz' ? 'Safar qanday o‘tdi?' : 'Как прошла поездка?',
+            textAlign: TextAlign.center,
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                if (driverName.trim().isNotEmpty) ...<Widget>[
+                  Text(driverName, style: const TextStyle(fontWeight: FontWeight.w800), textAlign: TextAlign.center),
+                  const SizedBox(height: 8),
+                ],
+                Text(
+                  lang == 'uz' ? 'Haydovchini baholang' : 'Оцените водителя',
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
-              ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List<Widget>.generate(
+                    5,
+                    (i) => IconButton(
+                      onPressed: () => setDialogState(() { rating = i + 1; selectedTags.clear(); }),
+                      iconSize: 38,
+                      icon: Icon(i < rating ? Icons.star_rounded : Icons.star_border_rounded),
+                      color: const Color(0xFFFFB300),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  alignment: WrapAlignment.center,
+                  children: tags.map((tag) {
+                    final selected = selectedTags.contains(tag);
+                    return FilterChip(
+                      selected: selected,
+                      label: Text(tag),
+                      selectedColor: yangiLime.withValues(alpha: 0.28),
+                      checkmarkColor: yangiGraphite,
+                      onSelected: (value) => setDialogState(() {
+                        if (value) { selectedTags.add(tag); } else { selectedTags.remove(tag); }
+                      }),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: comment,
+                  maxLines: 3,
+                  maxLength: 500,
+                  decoration: InputDecoration(
+                    labelText: lang == 'uz' ? 'Izoh (ixtiyoriy)' : 'Комментарий (необязательно)',
+                    hintText: lang == 'uz' ? 'Safar haqida qo‘shimcha fikr' : 'Что понравилось или можно улучшить',
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: comment,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: lang == 'uz' ? 'Izoh' : 'Комментарий',
-                hintText: lang == 'uz'
-                    ? 'Haydovchi va safar haqida fikringiz'
-                    : 'Что понравилось или можно улучшить',
-              ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(lang == 'uz' ? 'Keyinroq' : 'Позже'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(backgroundColor: yangiLime, foregroundColor: yangiGraphite),
+              icon: const Icon(Icons.send_rounded),
+              label: Text(lang == 'uz' ? 'Yuborish' : 'Отправить'),
             ),
           ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(lang == 'uz' ? 'Keyinroq' : 'Позже'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            icon: const Icon(Icons.send),
-            label: Text(lang == 'uz' ? 'Yuborish' : 'Отправить'),
-          ),
-        ],
-      ),
+        );
+      },
     ),
   );
+
   if (submit != true) {
     comment.dispose();
     return;
   }
 
   try {
-    await api.post('/api/orders/' + orderId.toString() + '/feedback', <String, dynamic>{
+    await api.post('/api/orders/' + orderId.toString() + '/rating', <String, dynamic>{
       'rating': rating,
-      'text': comment.text.trim(),
+      'tags': selectedTags.toList(),
+      'comment': comment.text.trim(),
     });
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(lang == 'uz' ? 'Bahoyingiz yuborildi' : 'Спасибо! Оценка отправлена')),
+        SnackBar(content: Text(lang == 'uz' ? 'Rahmat! Baho haydovchi reytingiga yuborildi' : 'Спасибо! Оценка отправлена в рейтинг водителя')),
       );
     }
   } catch (e) {
@@ -5779,7 +5833,6 @@ Future<void> showDriverRatingDialog(
     comment.dispose();
   }
 }
-
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, required this.api, required this.lang, required this.onMenu});
   final ApiClient api;
