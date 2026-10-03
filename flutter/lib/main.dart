@@ -2623,7 +2623,8 @@ class _OrderScreenState extends State<OrderScreen> {
   String? tariffAsset(String key) {
     switch (key) {
       case 'start':
-        return 'assets/tariff_start.webp';
+      case 'together':
+        return 'assets/tariff_comfort.webp';
       case 'comfort':
         return 'assets/tariff_comfort.webp';
       case 'business':
@@ -3368,69 +3369,6 @@ class _OrderScreenState extends State<OrderScreen> {
     final distanceLabel = routeDistanceKm == null ? '—' : '${routeDistanceKm!.toStringAsFixed(1)} км';
     final minutesLabel = routeMinutes == null ? '—' : '${routeMinutes!} мин';
 
-    Widget floatingAddress({
-      required bool pickup,
-      required String title,
-      required String subtitle,
-      required VoidCallback onTap,
-    }) {
-      return Material(
-        color: Theme.of(context).colorScheme.surface,
-        elevation: 7,
-        shadowColor: const Color(0x28000000),
-        borderRadius: BorderRadius.circular(17),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(17),
-          child: SizedBox(
-            width: 205,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: <Widget>[
-                  Container(
-                    width: 25,
-                    height: 25,
-                    decoration: BoxDecoration(
-                      color: pickup ? yangiGreen : const Color(0xFFE92319),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      pickup ? Icons.circle : Icons.location_on_rounded,
-                      color: Colors.white,
-                      size: pickup ? 10 : 17,
-                    ),
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
-                        ),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right_rounded, size: 20),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
     Widget metric(IconData icon, String value, String label) {
       return Expanded(
         child: Row(
@@ -3535,10 +3473,13 @@ class _OrderScreenState extends State<OrderScreen> {
           ),
 
           DraggableScrollableSheet(
-            initialChildSize: destinationReady ? 0.55 : 0.42,
-            minChildSize: destinationReady ? 0.46 : 0.35,
-            maxChildSize: 0.86,
+            initialChildSize: destinationReady ? 0.54 : 0.42,
+            minChildSize: destinationReady ? 0.44 : 0.34,
+            maxChildSize: 0.80,
             snap: true,
+            snapSizes: destinationReady
+                ? const <double>[0.44, 0.54, 0.80]
+                : const <double>[0.34, 0.42, 0.80],
             builder: (context, scrollController) {
               return Container(
                 decoration: BoxDecoration(
@@ -3681,8 +3622,11 @@ class _OrderScreenState extends State<OrderScreen> {
                             )
                           else
                             SizedBox(
-                              height: 154,
+                              height: 148,
                               child: ListView.separated(
+                                padding: const EdgeInsets.symmetric(horizontal: 2),
+                                clipBehavior: Clip.hardEdge,
+                                physics: const BouncingScrollPhysics(),
                                 scrollDirection: Axis.horizontal,
                                 itemCount: tariffs.length,
                                 separatorBuilder: (_, __) => const SizedBox(width: 8),
@@ -3698,7 +3642,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                   final asset = tariffAsset(key);
 
                                   return SizedBox(
-                                    width: 126,
+                                    width: 116,
                                     child: Material(
                                       color: isSelected
                                           ? yangiLime.withValues(alpha: 0.11)
@@ -3723,10 +3667,38 @@ class _OrderScreenState extends State<OrderScreen> {
                                                 height: 59,
                                                 width: 112,
                                                 child: asset != null
-                                                    ? Image.asset(
-                                                        asset,
-                                                        fit: BoxFit.contain,
-                                                        filterQuality: FilterQuality.high,
+                                                    ? Stack(
+                                                        alignment: Alignment.center,
+                                                        children: <Widget>[
+                                                          Image.asset(
+                                                            asset,
+                                                            fit: BoxFit.contain,
+                                                            filterQuality: FilterQuality.high,
+                                                            errorBuilder: (_, __, ___) => _TariffVehicleArt(
+                                                              kind: key,
+                                                              selected: isSelected,
+                                                              available: available,
+                                                            ),
+                                                          ),
+                                                          if (key == 'together')
+                                                            Positioned(
+                                                              right: 2,
+                                                              top: 2,
+                                                              child: Container(
+                                                                width: 23,
+                                                                height: 23,
+                                                                decoration: BoxDecoration(
+                                                                  color: yangiLime,
+                                                                  borderRadius: BorderRadius.circular(8),
+                                                                ),
+                                                                child: const Icon(
+                                                                  Icons.people_alt_rounded,
+                                                                  size: 14,
+                                                                  color: yangiGraphite,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                        ],
                                                       )
                                                     : _TariffVehicleArt(
                                                         kind: key,
@@ -3918,11 +3890,17 @@ class _OrderScreenState extends State<OrderScreen> {
                               : Row(
                                   children: <Widget>[
                                     Expanded(
-                                      child: Text(
-                                        widget.lang == 'uz'
-                                            ? 'Yangi Taxi buyurtma qilish'
-                                            : 'Заказать Yangi Taxi',
-                                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                                      flex: 5,
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          widget.lang == 'uz'
+                                              ? 'Yangi Taxi buyurtma qilish'
+                                              : 'Заказать Yangi Taxi',
+                                          maxLines: 1,
+                                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                                        ),
                                       ),
                                     ),
                                     if (selectedPrice != null) ...<Widget>[
