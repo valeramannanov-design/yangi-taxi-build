@@ -2261,18 +2261,25 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
         ..strokeWidth = 4.5
         ..setStrokeColor(const Color(0xFF18B66A));
       if (focusRoute) {
-        final fit = map.cameraPositionForGeometry(ym.Geometry.fromPolyline(polyline));
-        final minLat = widget.route.map((p) => p.latitude).reduce(math.min);
-        final maxLat = widget.route.map((p) => p.latitude).reduce(math.max);
-        final latSpan = math.max(0.0005, maxLat - minLat);
-        final shiftedTarget = ym.Point(
-          latitude: fit.target.latitude - latSpan * 0.20,
-          longitude: fit.target.longitude,
+        final width = window.width().toDouble();
+        final height = window.height().toDouble();
+        final routeFocus = width > 0 && height > 0
+            ? ym.ScreenRect(
+                ym.ScreenPoint(x: width * 0.06, y: height * 0.12),
+                ym.ScreenPoint(x: width * 0.94, y: height * 0.53),
+              )
+            : null;
+        window.focusRect = routeFocus;
+        final fit = map.cameraPositionForGeometry(
+          ym.Geometry.fromPolyline(polyline),
+          focusRect: routeFocus,
+          azimuth: 0,
+          tilt: 0,
         );
         map.move(
           ym.CameraPosition(
-            shiftedTarget,
-            zoom: math.max(10.0, fit.zoom - 0.65),
+            fit.target,
+            zoom: math.max(10.0, fit.zoom - 0.18),
             azimuth: 0,
             tilt: 0,
           ),
@@ -2768,11 +2775,12 @@ class _OrderScreenState extends State<OrderScreen> {
   ) {
     dynamic rawPoints;
     if (routeData is Map) {
-      rawPoints = routeData['full_route_coords'] ??
-          routeData['route_coords'] ??
-          routeData['coords'] ??
-          routeData['points'] ??
-          routeData['geometry'];
+      final root = routeData['data'] is Map ? routeData['data'] as Map : routeData;
+      rawPoints = root['full_route_coords'] ??
+          root['route_coords'] ??
+          root['coords'] ??
+          root['points'] ??
+          root['geometry'];
       if (rawPoints is Map) {
         rawPoints = rawPoints['points'] ?? rawPoints['coordinates'] ?? rawPoints['coords'];
       }
@@ -3171,9 +3179,15 @@ class _OrderScreenState extends State<OrderScreen> {
             orElse: () => null,
           );
 
-      final distanceFromApi = mapData is Map
-          ? ((mapData['distance_km'] ?? mapData['distanceKm'] ?? mapData['distance']) as num?)?.toDouble()
-          : null;
+      double? distanceFromApi;
+      if (mapData is Map) {
+        final explicitDistance =
+            _routeNumber(mapData['distance_km'] ?? mapData['distanceKm'] ?? mapData['distance']);
+        final cityDistance = _routeNumber(mapData['city_dist']) ?? 0;
+        final countryDistance = _routeNumber(mapData['country_dist']) ?? 0;
+        final taxiMasterDistance = cityDistance + countryDistance;
+        distanceFromApi = explicitDistance ?? (taxiMasterDistance > 0 ? taxiMasterDistance : null);
+      }
       final minutesFromApi = mapData is Map
           ? ((mapData['duration_minutes'] ?? mapData['duration_min'] ?? mapData['time_min'] ?? mapData['minutes']) as num?)?.toInt()
           : null;
@@ -4139,12 +4153,46 @@ class _OrderScreenState extends State<OrderScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFFF3F3F3),
+      useSafeArea: true,
       showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) {
+        final sheetTheme = Theme.of(sheetContext);
+        final scheme = sheetTheme.colorScheme;
+        final selectedFill = Color.alphaBlend(
+          yangiLime.withValues(alpha: sheetTheme.brightness == Brightness.dark ? 0.18 : 0.12),
+          scheme.surfaceContainerHigh,
+        );
+
+        Widget selectIcon(bool selected) => AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: selected ? yangiLime : Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected ? yangiLime : scheme.outlineVariant,
+                  width: 2,
+                ),
+              ),
+              child: selected
+                  ? const Icon(Icons.check_rounded, size: 20, color: yangiGraphite)
+                  : null,
+            );
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) => SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              14,
+              0,
+              14,
+              math.max(18, MediaQuery.paddingOf(context).bottom + 10),
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4152,67 +4200,94 @@ class _OrderScreenState extends State<OrderScreen> {
                 Center(
                   child: Text(
                     widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 18),
                 Text(
                   widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 9),
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: scheme.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.65)),
                   ),
                   child: Column(
                     children: <Widget>[
-                      ...cards.map((card) {
+                      ...cards.asMap().entries.map((entry) {
+                        final card = entry.value;
                         final id = (card['cardId'] as num?)?.toInt() ?? 0;
                         final selected = draftMethod == 'card' && draftCardId == id;
                         return Column(
                           children: <Widget>[
-                            ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-                              leading: const Icon(Icons.credit_card_rounded, size: 30),
-                              title: Text(
-                                (card['maskedPan'] ?? 'ATMOS').toString(),
-                                style: const TextStyle(fontWeight: FontWeight.w800),
+                            Material(
+                              color: selected ? selectedFill : Colors.transparent,
+                              borderRadius: BorderRadius.circular(18),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                leading: Container(
+                                  width: 46,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: <Color>[Color(0xFF07110A), Color(0xFF19A94B)],
+                                    ),
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                  child: const Icon(Icons.credit_card_rounded, color: Colors.white, size: 23),
+                                ),
+                                title: Text(
+                                  (card['maskedPan'] ?? 'ATMOS').toString(),
+                                  style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                                ),
+                                subtitle: Text(
+                                  widget.lang == 'uz' ? 'ATMOS karta' : 'Карта ATMOS',
+                                  style: TextStyle(color: scheme.onSurfaceVariant),
+                                ),
+                                trailing: selectIcon(selected),
+                                onTap: () {
+                                  setSheetState(() {
+                                    draftCardId = id;
+                                    draftMethod = 'card';
+                                  });
+                                },
                               ),
-                              subtitle: Text(widget.lang == 'uz' ? 'ATMOS karta' : 'Карта ATMOS'),
-                              trailing: Icon(
-                                selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                                color: selected ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
-                                size: 30,
-                              ),
-                              onTap: () {
-                                setSheetState(() {
-                                  draftCardId = id;
-                                  draftMethod = 'card';
-                                });
-                              },
                             ),
-                            const Divider(height: 1, indent: 14, endIndent: 14),
+                            if (entry.key != cards.length - 1)
+                              Divider(height: 1, indent: 14, endIndent: 14, color: scheme.outlineVariant),
                           ],
                         );
                       }),
+                      if (cards.isNotEmpty)
+                        Divider(height: 1, indent: 14, endIndent: 14, color: scheme.outlineVariant),
                       ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                         leading: Container(
-                          width: 42,
-                          height: 32,
+                          width: 46,
+                          height: 34,
                           decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFF9CA3AF)),
-                            borderRadius: BorderRadius.circular(7),
+                            color: scheme.surface,
+                            border: Border.all(color: scheme.outline),
+                            borderRadius: BorderRadius.circular(9),
                           ),
-                          child: const Icon(Icons.add_rounded),
+                          child: Icon(Icons.add_rounded, color: scheme.onSurface),
                         ),
                         title: Text(
                           widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
+                          style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
                         ),
-                        trailing: const Icon(Icons.chevron_right_rounded),
+                        trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
                         onTap: !canUseCard
                             ? null
                             : () async {
@@ -4223,30 +4298,46 @@ class _OrderScreenState extends State<OrderScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 15),
                 Text(
                   widget.lang == 'uz' ? 'Boshqa to‘lov usullari' : 'Другие способы оплаты',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 9),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    leading: const Icon(Icons.payments_rounded, color: Color(0xFF60C83D), size: 32),
-                    title: Text(
-                      widget.lang == 'uz' ? 'Naqd' : 'Наличные',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                    ),
-                    trailing: Icon(
-                      draftMethod == 'cash' ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                      color: draftMethod == 'cash' ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
-                      size: 30,
-                    ),
+                Material(
+                  color: draftMethod == 'cash' ? selectedFill : scheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(22),
+                  child: InkWell(
                     onTap: () => setSheetState(() => draftMethod = 'cash'),
+                    borderRadius: BorderRadius.circular(22),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 46,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF5DD63F),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.payments_rounded, color: Colors.white, size: 25),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              widget.lang == 'uz' ? 'Naqd' : 'Наличные',
+                              style: TextStyle(color: scheme.onSurface, fontSize: 17, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                          selectIcon(draftMethod == 'cash'),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -4261,8 +4352,8 @@ class _OrderScreenState extends State<OrderScreen> {
                       Navigator.pop(sheetContext);
                     },
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD900),
-                      foregroundColor: Colors.black,
+                      backgroundColor: yangiLime,
+                      foregroundColor: yangiGraphite,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                     ),
@@ -4275,8 +4366,8 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
