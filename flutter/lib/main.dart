@@ -4206,143 +4206,315 @@ class _OrderScreenState extends State<OrderScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFFF3F3F3),
-      showDragHandle: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.52),
       builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+        builder: (context, setSheetState) {
+          final theme = Theme.of(context);
+          final scheme = theme.colorScheme;
+          final dark = theme.brightness == Brightness.dark;
+          final cardSurface = dark
+              ? scheme.surfaceContainerHigh
+              : scheme.surface;
+          final mutedSurface = dark
+              ? scheme.surfaceContainerHighest
+              : const Color(0xFFF5F6F7);
+          final selectedSurface = Color.alphaBlend(
+            yangiLime.withValues(alpha: dark ? 0.17 : 0.12),
+            cardSurface,
+          );
+
+          Widget selectionIcon(bool selected) => Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: selected ? yangiLime : Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: selected ? yangiLime : scheme.outlineVariant,
+                    width: 2,
+                  ),
+                ),
+                child: selected
+                    ? const Icon(Icons.check_rounded, color: yangiGraphite, size: 19)
+                    : null,
+              );
+
+          return Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.82,
+            ),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 30,
+                  offset: Offset(0, -8),
+                ),
+              ],
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Center(
-                  child: Text(
-                    widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 9),
+                const SizedBox(height: 10),
                 Container(
+                  width: 42,
+                  height: 5,
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
+                    color: scheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Column(
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+                  child: Row(
                     children: <Widget>[
-                      ...cards.map((card) {
-                        final id = (card['cardId'] as num?)?.toInt() ?? 0;
-                        final selected = draftMethod == 'card' && draftCardId == id;
-                        return Column(
-                          children: <Widget>[
-                            ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-                              leading: const Icon(Icons.credit_card_rounded, size: 30),
-                              title: Text(
-                                (card['maskedPan'] ?? 'ATMOS').toString(),
-                                style: const TextStyle(fontWeight: FontWeight.w800),
-                              ),
-                              subtitle: Text(widget.lang == 'uz' ? 'ATMOS karta' : 'Карта ATMOS'),
-                              trailing: Icon(
-                                selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                                color: selected ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
-                                size: 30,
-                              ),
-                              onTap: () {
-                                setSheetState(() {
-                                  draftCardId = id;
-                                  draftMethod = 'card';
-                                });
-                              },
-                            ),
-                            const Divider(height: 1, indent: 14, endIndent: 14),
-                          ],
-                        );
-                      }),
-                      ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                        leading: Container(
-                          width: 42,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFF9CA3AF)),
-                            borderRadius: BorderRadius.circular(7),
+                      Expanded(
+                        child: Text(
+                          widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+                          style: TextStyle(
+                            color: scheme.onSurface,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.5,
                           ),
-                          child: const Icon(Icons.add_rounded),
                         ),
-                        title: Text(
-                          widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: !canUseCard
-                            ? null
-                            : () async {
-                                Navigator.pop(sheetContext);
-                                await openCardsManager();
-                              },
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close_rounded),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  widget.lang == 'uz' ? 'Boshqa to‘lov usullari' : 'Другие способы оплаты',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 9),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    leading: const Icon(Icons.payments_rounded, color: Color(0xFF60C83D), size: 32),
-                    title: Text(
-                      widget.lang == 'uz' ? 'Naqd' : 'Наличные',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                    ),
-                    trailing: Icon(
-                      draftMethod == 'cash' ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                      color: draftMethod == 'cash' ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
-                      size: 30,
-                    ),
-                    onTap: () => setSheetState(() => draftMethod = 'cash'),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 56,
-                  child: FilledButton(
-                    onPressed: () {
-                      setState(() {
-                        paymentMethod = draftMethod;
-                        if (draftMethod == 'card') selectedCardId = draftCardId;
-                      });
-                      Navigator.pop(sheetContext);
-                    },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD900),
-                      foregroundColor: Colors.black,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                    ),
-                    child: Text(
-                      widget.lang == 'uz' ? 'Tayyor' : 'Готово',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
-                    ),
+                Flexible(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 18),
+                    shrinkWrap: true,
+                    children: <Widget>[
+                      Text(
+                        widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
+                        style: TextStyle(
+                          color: scheme.onSurface,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 9),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: cardSurface,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: scheme.outlineVariant.withValues(alpha: 0.45),
+                          ),
+                        ),
+                        child: Column(
+                          children: <Widget>[
+                            ...cards.asMap().entries.map((entry) {
+                              final card = entry.value;
+                              final id = (card['cardId'] as num?)?.toInt() ?? 0;
+                              final selected = draftMethod == 'card' && draftCardId == id;
+                              final masked = (card['maskedPan'] ?? 'ATMOS').toString();
+                              return Column(
+                                children: <Widget>[
+                                  Material(
+                                    color: selected ? selectedSurface : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(18),
+                                    child: ListTile(
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 5,
+                                      ),
+                                      leading: Container(
+                                        width: 48,
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          gradient: const LinearGradient(
+                                            colors: <Color>[
+                                              Color(0xFF08110B),
+                                              Color(0xFF12A53E),
+                                            ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(9),
+                                        ),
+                                        child: const Icon(
+                                          Icons.credit_card_rounded,
+                                          color: Colors.white,
+                                          size: 22,
+                                        ),
+                                      ),
+                                      title: Text(
+                                        masked,
+                                        style: TextStyle(
+                                          color: scheme.onSurface,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        widget.lang == 'uz'
+                                            ? 'ATMOS orqali karta'
+                                            : 'Карта через ATMOS',
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                      trailing: selectionIcon(selected),
+                                      onTap: () {
+                                        setSheetState(() {
+                                          draftCardId = id;
+                                          draftMethod = 'card';
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  if (entry.key != cards.length - 1)
+                                    Divider(
+                                      height: 1,
+                                      indent: 14,
+                                      endIndent: 14,
+                                      color: scheme.outlineVariant.withValues(alpha: 0.55),
+                                    ),
+                                ],
+                              );
+                            }),
+                            if (cards.isNotEmpty)
+                              Divider(
+                                height: 1,
+                                indent: 14,
+                                endIndent: 14,
+                                color: scheme.outlineVariant.withValues(alpha: 0.55),
+                              ),
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 5,
+                              ),
+                              leading: Container(
+                                width: 48,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: mutedSurface,
+                                  border: Border.all(color: scheme.outlineVariant),
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Icon(Icons.add_rounded, color: scheme.onSurface),
+                              ),
+                              title: Text(
+                                widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
+                                style: TextStyle(
+                                  color: canUseCard ? scheme.onSurface : scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              subtitle: !canUseCard
+                                  ? Text(
+                                      widget.lang == 'uz'
+                                          ? 'ATMOS kartani bog‘lash o‘chirilgan'
+                                          : 'Привязка ATMOS недоступна',
+                                    )
+                                  : null,
+                              trailing: const Icon(Icons.chevron_right_rounded),
+                              onTap: !canUseCard
+                                  ? null
+                                  : () async {
+                                      Navigator.pop(sheetContext);
+                                      await openCardsManager();
+                                    },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        widget.lang == 'uz'
+                            ? 'Boshqa to‘lov usullari'
+                            : 'Другие способы оплаты',
+                        style: TextStyle(
+                          color: scheme.onSurface,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 9),
+                      Material(
+                        color: draftMethod == 'cash' ? selectedSurface : cardSurface,
+                        borderRadius: BorderRadius.circular(22),
+                        child: InkWell(
+                          onTap: () => setSheetState(() => draftMethod = 'cash'),
+                          borderRadius: BorderRadius.circular(22),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                            child: Row(
+                              children: <Widget>[
+                                Container(
+                                  width: 48,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF60C83D),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(
+                                    Icons.payments_rounded,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    widget.lang == 'uz' ? 'Naqd' : 'Наличные',
+                                    style: TextStyle(
+                                      color: scheme.onSurface,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                                selectionIcon(draftMethod == 'cash'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        height: 58,
+                        child: FilledButton(
+                          onPressed: () {
+                            setState(() {
+                              paymentMethod = draftMethod;
+                              if (draftMethod == 'card') selectedCardId = draftCardId;
+                            });
+                            Navigator.pop(sheetContext);
+                          },
+                          style: FilledButton.styleFrom(
+                            backgroundColor: yangiLime,
+                            foregroundColor: yangiGraphite,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(19),
+                            ),
+                          ),
+                          child: Text(
+                            widget.lang == 'uz' ? 'Tayyor' : 'Готово',
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
