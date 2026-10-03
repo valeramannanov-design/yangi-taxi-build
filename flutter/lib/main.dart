@@ -2822,10 +2822,10 @@ class _OrderScreenState extends State<OrderScreen> {
                   _roundMapButton(icon: Icons.menu_rounded, onTap: widget.onMenu, tooltip: 'Yangi Taxi'),
                   const Spacer(),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(22),
                       boxShadow: const <BoxShadow>[
                         BoxShadow(color: Color(0x24000000), blurRadius: 16, offset: Offset(0, 4)),
                       ],
@@ -2862,11 +2862,11 @@ class _OrderScreenState extends State<OrderScreen> {
             snapSizes: const <double>[0.38, 0.54, 0.76],
             builder: (context, scrollController) {
               return Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(color: Color(0x26000000), blurRadius: 28, offset: Offset(0, -8)),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(color: Color(0x26000000), blurRadius: 24, offset: Offset(0, -7)),
                   ],
                 ),
                 child: ListView(
@@ -2921,8 +2921,8 @@ class _OrderScreenState extends State<OrderScreen> {
                     const SizedBox(height: 13),
                     Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF3F4F6),
-                        borderRadius: BorderRadius.circular(22),
+                        color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(18),
                       ),
                       child: Column(
                         children: <Widget>[
@@ -3058,7 +3058,9 @@ class _OrderScreenState extends State<OrderScreen> {
                             return SizedBox(
                               width: serviceMode == 'taxi' ? 126 : 164,
                               child: Material(
-                                color: selected ? const Color(0xFFFFE500) : const Color(0xFFF2F3F5),
+                                color: selected
+                                    ? const Color(0xFFFFD900)
+                                    : Theme.of(context).colorScheme.surfaceContainerHigh,
                                 borderRadius: BorderRadius.circular(22),
                                 child: InkWell(
                                   onTap: available ? () => selectTariff(key) : null,
@@ -3097,7 +3099,11 @@ class _OrderScreenState extends State<OrderScreen> {
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w900,
-                                            color: available ? const Color(0xFF111111) : const Color(0xFF9CA3AF),
+                                            color: available
+                                                ? (selected
+                                                    ? const Color(0xFF111111)
+                                                    : Theme.of(context).colorScheme.onSurface)
+                                                : const Color(0xFF9CA3AF),
                                           ),
                                         ),
                                         const SizedBox(height: 3),
@@ -3215,7 +3221,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     ],
                     const SizedBox(height: 14),
                     SizedBox(
-                      height: 58,
+                      height: 52,
                       child: FilledButton(
                         onPressed: busy || estimating || !routeReadyForOrder
                             ? null
@@ -3268,8 +3274,8 @@ class _OrderScreenState extends State<OrderScreen> {
     bool large = false,
   }) {
     return Material(
-      color: Colors.white,
-      elevation: 7,
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 6,
       shadowColor: const Color(0x26000000),
       shape: const CircleBorder(),
       child: InkWell(
@@ -3278,9 +3284,9 @@ class _OrderScreenState extends State<OrderScreen> {
         child: Tooltip(
           message: tooltip,
           child: SizedBox(
-            width: large ? 58 : 48,
-            height: large ? 58 : 48,
-            child: Icon(icon, size: large ? 28 : 24),
+            width: large ? 52 : 44,
+            height: large ? 52 : 44,
+            child: Icon(icon, size: large ? 25 : 22),
           ),
         ),
       ),
@@ -3361,7 +3367,7 @@ class _OrderScreenState extends State<OrderScreen> {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Material(
-        color: selected ? const Color(0xFF111111) : const Color(0xFFF2F3F5),
+        color: selected ? const Color(0xFF17191C) : Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: onTap,
@@ -3370,13 +3376,17 @@ class _OrderScreenState extends State<OrderScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
             child: Row(
               children: <Widget>[
-                Icon(icon, size: 18, color: selected ? Colors.white : const Color(0xFF111111)),
+                Icon(
+                  icon,
+                  size: 17,
+                  color: selected ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                ),
                 const SizedBox(width: 7),
                 Text(
                   label,
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
-                    color: selected ? Colors.white : const Color(0xFF111111),
+                    color: selected ? Colors.white : Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ],
@@ -3394,20 +3404,23 @@ class _OrderScreenState extends State<OrderScreen> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: const Color(0xFFF3F4F6),
-      borderRadius: BorderRadius.circular(18),
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           child: Row(
             children: <Widget>[
               Container(
-                width: 38,
-                height: 38,
-                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                child: Icon(icon, size: 20),
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 19),
               ),
               const SizedBox(width: 11),
               Expanded(
