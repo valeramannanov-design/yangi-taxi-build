@@ -1658,67 +1658,143 @@ void _applyYangiMapAppearance(ym.Map map, bool dark) {
 
 
 class _MapPinMarker extends StatelessWidget {
-  const _MapPinMarker({required this.pickup});
+  const _MapPinMarker({
+    required this.pickup,
+    this.label = '',
+  });
+
   final bool pickup;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
     final fill = pickup ? yangiGreen : const Color(0xFFE92319);
-    return SizedBox(
-      width: 54,
-      height: 68,
-      child: Stack(
-        alignment: Alignment.topCenter,
-        children: <Widget>[
-          Positioned(
-            top: 4,
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: fill.withValues(alpha: 0.18),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          Positioned(
-            top: 10,
-            child: Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: fill,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 3),
-                boxShadow: const <BoxShadow>[
-                  BoxShadow(color: Color(0x30000000), blurRadius: 7, offset: Offset(0, 3)),
-                ],
-              ),
-              child: Center(
+    final hasLabel = label.trim().isNotEmpty;
+
+    Widget pin() => SizedBox(
+          width: 54,
+          height: 68,
+          child: Stack(
+            alignment: Alignment.topCenter,
+            children: <Widget>[
+              Positioned(
+                top: 4,
                 child: Container(
-                  width: 11,
-                  height: 11,
-                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: fill.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
-            ),
-          ),
-          Positioned(
-            top: 41,
-            child: Container(width: 4, height: 14, color: fill),
-          ),
-          Positioned(
-            top: 53,
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: fill, width: 3),
+              Positioned(
+                top: 10,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: fill,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(color: Color(0x30000000), blurRadius: 7, offset: Offset(0, 3)),
+                    ],
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 11,
+                      height: 11,
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                    ),
+                  ),
+                ),
               ),
+              Positioned(top: 41, child: Container(width: 4, height: 14, color: fill)),
+              Positioned(
+                top: 53,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: fill, width: 3),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+    if (!hasLabel) return pin();
+
+    final theme = Theme.of(context);
+    final card = Container(
+      width: 174,
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(color: Color(0x28000000), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  pickup ? 'Откуда' : 'Куда',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.1,
+                    fontWeight: FontWeight.w900,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
             ),
           ),
+        ],
+      ),
+    );
+
+    return SizedBox(
+      width: 228,
+      height: 72,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          if (pickup) ...<Widget>[
+            Positioned(left: 0, bottom: 0, child: pin()),
+            Positioned(left: 42, top: 4, child: card),
+          ] else ...<Widget>[
+            Positioned(right: 0, bottom: 0, child: pin()),
+            Positioned(right: 42, top: 4, child: card),
+          ],
         ],
       ),
     );
@@ -2047,6 +2123,8 @@ class TaxiYandexMap extends StatefulWidget {
     this.route = const <ym.Point>[],
     this.from,
     this.to,
+    this.fromLabel = '',
+    this.toLabel = '',
     this.driver,
     this.nearbyCars = const <NearbyCrew>[],
     this.vehicleKind = 'start',
@@ -2056,6 +2134,8 @@ class TaxiYandexMap extends StatefulWidget {
   final List<ym.Point> route;
   final ym.Point? from;
   final ym.Point? to;
+  final String fromLabel;
+  final String toLabel;
   final ym.Point? driver;
   final List<NearbyCrew> nearbyCars;
   final String vehicleKind;
@@ -2070,14 +2150,18 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
   bool darkMode = false;
   final Map<String, yv.ViewProvider> _providers = <String, yv.ViewProvider>{};
 
-  yv.ViewProvider _pinProvider(bool pickup) => _providers.putIfAbsent(
-        'pin-' + (pickup ? 'pickup' : 'destination'),
-        () => yv.ViewProvider(
-          id: 'yangi-pin-' + (pickup ? 'pickup' : 'destination'),
-          cacheable: true,
-          builder: () => _MapPinMarker(pickup: pickup),
-        ),
-      );
+  yv.ViewProvider _pinProvider(bool pickup, String label) {
+    final cleanLabel = label.trim();
+    final key = 'pin-' + (pickup ? 'pickup' : 'destination') + '-' + cleanLabel.hashCode.toString();
+    return _providers.putIfAbsent(
+      key,
+      () => yv.ViewProvider(
+        id: 'yangi-' + key,
+        cacheable: cleanLabel.isEmpty,
+        builder: () => _MapPinMarker(pickup: pickup, label: cleanLabel),
+      ),
+    );
+  }
 
   yv.ViewProvider _carProvider(String kind, {bool driver = false}) => _providers.putIfAbsent(
         'car-' + kind + '-' + driver.toString(),
@@ -2108,10 +2192,36 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
     }
   }
 
+  bool _samePoint(ym.Point? a, ym.Point? b) {
+    if (a == null || b == null) return a == null && b == null;
+    return (a.latitude - b.latitude).abs() < 0.0000001 &&
+        (a.longitude - b.longitude).abs() < 0.0000001;
+  }
+
+  bool _sameRoute(List<ym.Point> a, List<ym.Point> b) {
+    if (a.length != b.length) return false;
+    if (a.isEmpty) return true;
+    for (var i = 0; i < a.length; i++) {
+      if (!_samePoint(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
   @override
   void didUpdateWidget(covariant TaxiYandexMap oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (mapWindow != null) _render(focusRoute: false);
+    if (mapWindow == null) return;
+
+    final routeChanged = !_sameRoute(oldWidget.route, widget.route);
+    final endpointsChanged =
+        !_samePoint(oldWidget.from, widget.from) ||
+        !_samePoint(oldWidget.to, widget.to);
+    final centerChanged = !_samePoint(oldWidget.center, widget.center);
+
+    _render(
+      focusRoute: widget.route.length > 1 && (routeChanged || endpointsChanged),
+      moveCamera: routeChanged || endpointsChanged || centerChanged,
+    );
   }
 
   @override
@@ -2120,7 +2230,7 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
     super.dispose();
   }
 
-  void _render({bool focusRoute = true}) {
+  void _render({bool focusRoute = true, bool moveCamera = true}) {
     final window = mapWindow;
     if (window == null) return;
     final map = window.map;
@@ -2135,7 +2245,22 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
         ..strokeWidth = 4.5
         ..setStrokeColor(const Color(0xFF18B66A));
       if (focusRoute) {
-        map.move(map.cameraPositionForGeometry(ym.Geometry.fromPolyline(polyline)));
+        final fit = map.cameraPositionForGeometry(ym.Geometry.fromPolyline(polyline));
+        final minLat = widget.route.map((p) => p.latitude).reduce(math.min);
+        final maxLat = widget.route.map((p) => p.latitude).reduce(math.max);
+        final latSpan = math.max(0.0005, maxLat - minLat);
+        final shiftedTarget = ym.Point(
+          latitude: fit.target.latitude - latSpan * 0.20,
+          longitude: fit.target.longitude,
+        );
+        map.move(
+          ym.CameraPosition(
+            shiftedTarget,
+            zoom: math.max(10.0, fit.zoom - 0.65),
+            azimuth: 0,
+            tilt: 0,
+          ),
+        );
       }
     }
 
@@ -2143,10 +2268,12 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
       map.mapObjects.addPlacemark()
         ..geometry = widget.from!
         ..setViewWithStyle(
-          _pinProvider(true),
-          const ym.IconStyle(
-            anchor: math.Point<double>(0.5, 1.0),
-            scale: 0.82,
+          _pinProvider(true, widget.fromLabel),
+          ym.IconStyle(
+            anchor: widget.fromLabel.trim().isEmpty
+                ? const math.Point<double>(0.5, 1.0)
+                : const math.Point<double>(0.115, 1.0),
+            scale: widget.fromLabel.trim().isEmpty ? 0.82 : 0.88,
             zIndex: 22,
           ),
         );
@@ -2156,10 +2283,12 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
       map.mapObjects.addPlacemark()
         ..geometry = widget.to!
         ..setViewWithStyle(
-          _pinProvider(false),
-          const ym.IconStyle(
-            anchor: math.Point<double>(0.5, 1.0),
-            scale: 0.82,
+          _pinProvider(false, widget.toLabel),
+          ym.IconStyle(
+            anchor: widget.toLabel.trim().isEmpty
+                ? const math.Point<double>(0.5, 1.0)
+                : const math.Point<double>(0.885, 1.0),
+            scale: widget.toLabel.trim().isEmpty ? 0.82 : 0.88,
             zIndex: 23,
           ),
         );
@@ -2192,7 +2321,7 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
         );
     }
 
-    if (!focusRoute || widget.route.length < 2) {
+    if (moveCamera && widget.route.length < 2) {
       map.move(ym.CameraPosition(widget.center, zoom: widget.zoom, azimuth: 0, tilt: 0));
     }
   }
@@ -3216,6 +3345,8 @@ class _OrderScreenState extends State<OrderScreen> {
               route: route,
               from: from?.point,
               to: to?.point,
+              fromLabel: from?.address ?? '',
+              toLabel: to?.address ?? '',
               nearbyCars: nearbyCars,
               vehicleKind: selectedTariffKey,
               zoom: destinationReady ? 13.7 : 15,
@@ -3267,57 +3398,6 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
             ),
           ),
-
-          if (from != null)
-            Positioned(
-              left: 24,
-              top: MediaQuery.of(context).padding.top + 86,
-              child: floatingAddress(
-                pickup: true,
-                title: from!.address,
-                subtitle: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
-                onTap: () async {
-                  final p = await selectAddress(tx(widget.lang, 'from'), from);
-                  if (p != null && mounted) {
-                    setState(() {
-                      from = p;
-                      cost = null;
-                      route = <ym.Point>[];
-                      routeDistanceKm = null;
-                      routeMinutes = null;
-                    });
-                    await loadNearbyCars();
-                    scheduleEstimate();
-                  }
-                },
-              ),
-            ),
-
-          if (to != null)
-            Positioned(
-              right: 18,
-              top: MediaQuery.of(context).padding.top + 205,
-              child: floatingAddress(
-                pickup: false,
-                title: to!.address,
-                subtitle: widget.lang == 'uz' ? 'Qayerga' : 'Куда',
-                onTap: () async {
-                  await ensurePickupFromCurrentLocation();
-                  if (!mounted) return;
-                  final p = await selectAddress(tx(widget.lang, 'to'), to);
-                  if (p != null && mounted) {
-                    setState(() {
-                      to = p;
-                      cost = null;
-                      route = <ym.Point>[];
-                      routeDistanceKm = null;
-                      routeMinutes = null;
-                    });
-                    scheduleEstimate();
-                  }
-                },
-              ),
-            ),
 
           Positioned(
             right: 18,
