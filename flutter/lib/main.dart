@@ -7223,12 +7223,26 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? me;
   List<dynamic> orders = <dynamic>[];
+  Uint8List? photoBytes;
   bool loading = true;
+  bool photoBusy = false;
 
   @override
   void initState() {
     super.initState();
     load();
+  }
+
+  Uint8List? decodeClientPhoto(dynamic raw) {
+    final value = (raw ?? '').toString().trim();
+    if (value.isEmpty) return null;
+    try {
+      final payload =
+          value.contains(',') ? value.substring(value.indexOf(',') + 1) : value;
+      return base64Decode(payload);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> load() async {
@@ -7237,9 +7251,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         widget.api.get('/api/me'),
         widget.api.get('/api/orders/history'),
       ]);
+      final profile = Map<String, dynamic>.from(values[0] as Map);
+      final decodedPhoto = decodeClientPhoto(
+        profile['client_photo'] ??
+            profile['photo'] ??
+            profile['clientPhoto'],
+      );
       if (mounted) {
         setState(() {
-          me = Map<String, dynamic>.from(values[0] as Map);
+          me = profile;
+          photoBytes = decodedPhoto;
           orders = values[1] as List;
           loading = false;
         });
@@ -7257,6 +7278,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return first.toString();
     }
     return '';
+  }
+
+  double? get clientRating {
+    dynamic raw = me?['client_rating'] ??
+        me?['clientRating'] ??
+        me?['rating_value'] ??
+        me?['rating'];
+    if (raw is Map) {
+      raw = raw['value'] ?? raw['rating'] ?? raw['avg'];
+    }
+    final value =
+        raw is num ? raw.toDouble() : double.tryParse(raw?.toString() ?? '');
+    if (value == null || !value.isFinite || value <= 0) return null;
+    return value;
+  }
+
+  Future<void> pickProfilePhoto() async {
+    if (photoBusy) return;
+    try {
+      final image = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+        maxWidth: 900,
+        maxHeight: 900,
+      );
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
+      if (bytes.isEmpty) return;
+      if (bytes.length > 3 * 1024 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                widget.lang == 'uz'
+                    ? 'Rasm hajmi juda katta'
+                    : 'Фото слишком большое. Выберите изображение до 3 МБ.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (mounted) setState(() => photoBusy = true);
+      await widget.api.post('/api/profile/photo', <String, dynamic>{
+        'photoBase64': base64Encode(bytes),
+      });
+
+      if (!mounted) return;
+      setState(() {
+        photoBytes = bytes;
+        photoBusy = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.lang == 'uz'
+                ? 'Profil rasmi yangilandi'
+                : 'Фото профиля обновлено',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => photoBusy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
   }
 
   int get completed => orders.where((x) => x is Map && x['state_kind'] == 'finished').length;
@@ -7369,16 +7459,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     child: Row(
                       children: <Widget>[
-                        CircleAvatar(
-                          radius: 34,
-                          backgroundColor: yangiLime,
-                          child: Text(
-                            name.isEmpty ? 'Y' : name.substring(0, 1).toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w900,
-                              color: yangiGraphite,
-                            ),
+                        GestureDetector(
+                          onTap: photoBusy ? null : pickProfilePhoto,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: <Widget>[
+                              CircleAvatar(
+                                radius: 36,
+                                backgroundColor: yangiLime,
+                                backgroundImage: photoBytes == null
+                                    ? null
+                                    : MemoryImage(photoBytes!),
+                                child: photoBytes != null
+                                    ? null
+                                    : Text(
+                                        name.isEmpty
+                                            ? 'Y'
+                                            : name.substring(0, 1).toUpperCase(),
+                                        style: const TextStyle(
+                                          fontSize: 26,
+                                          fontWeight: FontWeight.w900,
+                                          color: yangiGraphite,
+                                        ),
+                                      ),
+                              ),
+                              Positioned(
+                                right: -2,
+                                bottom: -2,
+                                child: Container(
+                                  width: 26,
+                                  height: 26,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.surface,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .outlineVariant,
+                                    ),
+                                  ),
+                                  child: photoBusy
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(6),
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.photo_camera_rounded,
+                                          size: 15,
+                                        ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -7393,7 +7526,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               const SizedBox(height: 3),
                               Text(
                                 phone.isEmpty ? '—' : phone,
-                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                style: TextStyle(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 7),
+                              Row(
+                                children: <Widget>[
+                                  const Icon(
+                                    Icons.star_rounded,
+                                    size: 19,
+                                    color: Color(0xFFFFC400),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    clientRating == null
+                                        ? (widget.lang == 'uz'
+                                            ? 'Reyting: —'
+                                            : 'Рейтинг клиента: —')
+                                        : (widget.lang == 'uz'
+                                            ? 'Reyting: ' +
+                                                clientRating!.toStringAsFixed(2)
+                                            : 'Рейтинг клиента: ' +
+                                                clientRating!.toStringAsFixed(2)),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 8),
                               Container(
