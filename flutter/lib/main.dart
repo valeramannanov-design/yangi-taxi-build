@@ -1522,12 +1522,12 @@ class _ShellState extends State<Shell> {
                       child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          YangiWordmark(compact: true),
-                          SizedBox(height: 3),
+                          const YangiWordmark(compact: true),
+                          const SizedBox(height: 3),
                           Text(
                             widget.lang == 'uz' ? 'Harakat sizga yaqinroq' : 'Движение ближе к вам',
                             style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
