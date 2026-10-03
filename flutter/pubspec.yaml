@@ -25,7 +25,12 @@ flutter:
   assets:
     - assets/car.png
     - assets/pin.png
-    - assets/map_car.webp
+    - assets/map_car_start.webp
+    - assets/map_car_together.webp
+    - assets/map_car_comfort.webp
+    - assets/map_car_business.webp
+    - assets/map_car_delivery.webp
+    - assets/map_car_cargo.webp
     - assets/tariff_start.webp
     - assets/tariff_comfort.webp
     - assets/tariff_business.webp
