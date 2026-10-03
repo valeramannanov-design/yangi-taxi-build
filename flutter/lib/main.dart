@@ -889,14 +889,17 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
       home: loading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : loggedIn
-              ? Shell(
-                  api: api,
+              ? ExitConfirmScope(
                   lang: lang,
-                  themeSetting: themeSetting,
-                  onLang: saveLang,
-                  onTheme: saveTheme,
-                  onBackend: saveBackend,
-                  onLogout: logout,
+                  child: Shell(
+                    api: api,
+                    lang: lang,
+                    themeSetting: themeSetting,
+                    onLang: saveLang,
+                    onTheme: saveTheme,
+                    onBackend: saveBackend,
+                    onLogout: logout,
+                  ),
                 )
               : LoginScreen(
                   api: api,
@@ -1284,6 +1287,44 @@ const yangiGraphite = Color(0xFF0F1111);
 const yangiSoftGray = Color(0xFFF2F4F5);
 const yangiGreen = Color(0xFF13A83E);
 
+class ExitConfirmScope extends StatelessWidget {
+  const ExitConfirmScope({super.key, required this.lang, required this.child});
+  final String lang;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          final shouldExit = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              icon: const Icon(Icons.exit_to_app_rounded, size: 34),
+              title: Text(lang == 'uz' ? 'Ilovadan chiqasizmi?' : 'Выйти из приложения?'),
+              content: Text(
+                lang == 'uz'
+                    ? 'Yangi Taxi ilovasini yopmoqchimisiz?'
+                    : 'Вы действительно хотите закрыть Yangi Taxi?',
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: Text(lang == 'uz' ? 'Bekor' : 'Отмена'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  style: FilledButton.styleFrom(backgroundColor: yangiLime, foregroundColor: yangiGraphite),
+                  child: Text(lang == 'uz' ? 'Chiqish' : 'Выйти'),
+                ),
+              ],
+            ),
+          );
+          if (shouldExit == true) SystemNavigator.pop();
+        },
+        child: child,
+      );
+}
 class YangiWordmark extends StatelessWidget {
   const YangiWordmark({super.key, this.compact = false});
   final bool compact;
