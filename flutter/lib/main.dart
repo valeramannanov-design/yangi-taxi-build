@@ -1418,8 +1418,13 @@ class _ShellState extends State<Shell> {
   void openMenu() => shellKey.currentState?.openDrawer();
 
   void selectTab(int value) {
-    Navigator.of(context).maybePop();
-    if (mounted) setState(() => tab = value);
+    final scaffold = shellKey.currentState;
+    if (scaffold?.isDrawerOpen == true) {
+      scaffold!.closeDrawer();
+    }
+    if (mounted && tab != value) {
+      setState(() => tab = value);
+    }
   }
 
   void orderCreated(int id) {
@@ -1972,13 +1977,29 @@ class _TariffVehicleArt extends StatelessWidget {
   final bool selected;
   final bool available;
 
+  String get asset => switch (kind) {
+        'comfort' => 'assets/tariff_comfort.webp',
+        'business' => 'assets/tariff_business_v2.webp',
+        'delivery' => 'assets/tariff_delivery.webp',
+        'cargo' => 'assets/tariff_cargo.webp',
+        _ => 'assets/tariff_start.webp',
+      };
+
   @override
   Widget build(BuildContext context) {
     return Opacity(
-      opacity: available ? 1 : 0.36,
-      child: CustomPaint(
-        painter: _TariffVehiclePainter(kind: kind, selected: selected),
-        size: const Size(112, 48),
+      opacity: available ? 1 : 0.42,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+        child: Image.asset(
+          asset,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+          errorBuilder: (_, __, ___) => CustomPaint(
+            painter: _TariffVehiclePainter(kind: kind, selected: selected),
+            size: const Size(112, 48),
+          ),
+        ),
       ),
     );
   }
@@ -2765,11 +2786,15 @@ class _OrderScreenState extends State<OrderScreen> {
     switch (key) {
       case 'start':
       case 'together':
-        return 'assets/tariff_comfort.webp';
+        return 'assets/tariff_start.webp';
       case 'comfort':
         return 'assets/tariff_comfort.webp';
       case 'business':
-        return 'assets/tariff_business.webp';
+        return 'assets/tariff_business_v2.webp';
+      case 'delivery':
+        return 'assets/tariff_delivery.webp';
+      case 'cargo':
+        return 'assets/tariff_cargo.webp';
       default:
         return null;
     }
@@ -3587,7 +3612,27 @@ class _OrderScreenState extends State<OrderScreen> {
     final routeReadyForOrder = from != null && (destinationReady || destinationOptional);
     final tariffs = visibleTariffs;
     final activeTariff = selectedTariff;
+    final activeTariffAvailable = activeTariff?['available'] == true;
     final selectedPrice = (activeTariff?['cost'] as num?)?.toDouble() ?? cost;
+
+    String orderButtonLabel() {
+      if (busy) {
+        return widget.lang == 'uz' ? 'Buyurtma yaratilmoqda…' : 'Создаём заказ…';
+      }
+      if (from == null) {
+        return widget.lang == 'uz' ? 'Joylashuv aniqlanmoqda…' : 'Определяем местоположение…';
+      }
+      if (!destinationReady && !destinationOptional) {
+        return widget.lang == 'uz' ? 'Manzilni tanlang' : 'Выберите адрес назначения';
+      }
+      if (!activeTariffAvailable) {
+        return widget.lang == 'uz' ? 'Tarif mavjud emas' : 'Тариф недоступен';
+      }
+      if (destinationReady && cost == null) {
+        return widget.lang == 'uz' ? 'Narxni hisoblash' : 'Рассчитать стоимость';
+      }
+      return widget.lang == 'uz' ? 'Yangi Taxi buyurtma qilish' : 'Заказать Yangi Taxi';
+    }
     final distanceLabel = routeDistanceKm == null ? '—' : '${routeDistanceKm!.toStringAsFixed(1)} км';
     final minutesLabel = routeMinutes == null ? '—' : '${routeMinutes!} мин';
 
@@ -4091,7 +4136,10 @@ class _OrderScreenState extends State<OrderScreen> {
                       child: SizedBox(
                         height: 58,
                         child: FilledButton(
-                          onPressed: busy || estimating || !routeReadyForOrder
+                          onPressed: busy ||
+                                  estimating ||
+                                  !routeReadyForOrder ||
+                                  !activeTariffAvailable
                               ? null
                               : (destinationOptional && !destinationReady
                                   ? createOrder
@@ -4101,8 +4149,16 @@ class _OrderScreenState extends State<OrderScreen> {
                           style: FilledButton.styleFrom(
                             backgroundColor: yangiLime,
                             foregroundColor: yangiGraphite,
-                            disabledBackgroundColor: const Color(0xFFE5E7EB),
-                            disabledForegroundColor: const Color(0xFF9CA3AF),
+                            disabledBackgroundColor: Color.alphaBlend(
+                              Theme.of(context).colorScheme.onSurface.withValues(
+                                    alpha: Theme.of(context).brightness == Brightness.dark ? 0.10 : 0.06,
+                                  ),
+                              Theme.of(context).colorScheme.surfaceContainerHigh,
+                            ),
+                            disabledForegroundColor: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant
+                                .withValues(alpha: 0.74),
                             elevation: 0,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(19)),
                           ),
@@ -4119,9 +4175,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.centerLeft,
                                         child: Text(
-                                          widget.lang == 'uz'
-                                              ? 'Yangi Taxi buyurtma qilish'
-                                              : 'Заказать Yangi Taxi',
+                                          orderButtonLabel(),
                                           maxLines: 1,
                                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
                                         ),
@@ -6841,7 +6895,7 @@ class SettingsScreen extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.info_outline_rounded),
                     title: Text(lang == 'uz' ? 'Ilova haqida' : 'О приложении'),
-                    subtitle: const Text('Yangi Taxi 1.8.0'),
+                    subtitle: const Text('Yangi Taxi 1.8.1'),
                   ),
                 ],
               ),
