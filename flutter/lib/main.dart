@@ -1443,6 +1443,55 @@ class _ShellState extends State<Shell> {
     );
   }
 
+  Future<bool> confirmAppExit() async {
+    if (!mounted) return false;
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.logout_rounded, size: 34),
+        title: Text(
+          widget.lang == 'uz'
+              ? 'Ilovadan chiqasizmi?'
+              : 'Выйти из приложения?',
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        content: Text(
+          widget.lang == 'uz'
+              ? 'Yangi Taxi ilovasini yopmoqchimisiz?'
+              : 'Вы действительно хотите закрыть Yangi Taxi?',
+          textAlign: TextAlign.center,
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(widget.lang == 'uz' ? 'Bekor' : 'Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: yangiLime,
+              foregroundColor: yangiGraphite,
+            ),
+            child: Text(widget.lang == 'uz' ? 'Chiqish' : 'Выйти'),
+          ),
+        ],
+      ),
+    );
+    return answer == true;
+  }
+
+  Future<void> handleSystemBack() async {
+    final state = shellKey.currentState;
+    if (state?.isDrawerOpen == true) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    final exit = await confirmAppExit();
+    if (exit && mounted) {
+      await SystemNavigator.pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
@@ -1483,7 +1532,13 @@ class _ShellState extends State<Shell> {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
+    return PopScope<void>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await handleSystemBack();
+      },
+      child: Scaffold(
       key: shellKey,
       drawerScrimColor: Colors.black.withValues(alpha: dark ? 0.58 : 0.34),
       drawerEdgeDragWidth: 44,
@@ -1616,6 +1671,7 @@ class _ShellState extends State<Shell> {
           ),
         ],
       ) : null,
+    ),
     );
   }
 }
