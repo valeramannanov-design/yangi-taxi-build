@@ -1347,7 +1347,12 @@ class _ShellState extends State<Shell> {
       OrderScreen(api: widget.api, lang: widget.lang, onOrder: orderCreated, onMenu: openMenu),
       RideScreen(api: widget.api, lang: widget.lang, orderId: activeId, onMenu: openMenu),
       HistoryScreen(api: widget.api, lang: widget.lang, onMenu: openMenu),
-      CardsScreen(api: widget.api, lang: widget.lang, onMenu: openMenu),
+      CardsScreen(
+        api: widget.api,
+        lang: widget.lang,
+        onMenu: openMenu,
+        onDone: () => selectTab(0),
+      ),
       SettingsScreen(
         api: widget.api,
         lang: widget.lang,
@@ -3036,140 +3041,147 @@ class _OrderScreenState extends State<OrderScreen> {
     await loadCards();
     if (!mounted) return;
 
+    String draftMethod = paymentMethod;
+    int draftCardId = selectedCardId;
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFFF3F3F3),
       showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Center(
-                child: Text(
-                  widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 9),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Column(
-                  children: <Widget>[
-                    ...cards.map((card) {
-                      final id = (card['cardId'] as num?)?.toInt() ?? 0;
-                      final selected = paymentMethod == 'card' && selectedCardId == id;
-                      return Column(
-                        children: <Widget>[
-                          ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-                            leading: const Icon(Icons.credit_card_rounded, size: 30),
-                            title: Text(
-                              (card['maskedPan'] ?? 'ATMOS').toString(),
-                              style: const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                            subtitle: Text(widget.lang == 'uz' ? 'ATMOS karta' : 'Карта ATMOS'),
-                            trailing: Icon(
-                              selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                              color: selected ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
-                              size: 30,
-                            ),
-                            onTap: () {
-                              setState(() {
-                                selectedCardId = id;
-                                paymentMethod = 'card';
-                              });
-                              if (sheetContext.mounted) Navigator.pop(sheetContext);
-                            },
-                          ),
-                          const Divider(height: 1, indent: 14, endIndent: 14),
-                        ],
-                      );
-                    }),
-                    ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                      leading: Container(
-                        width: 42,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: const Color(0xFF9CA3AF)),
-                          borderRadius: BorderRadius.circular(7),
-                        ),
-                        child: const Icon(Icons.add_rounded),
-                      ),
-                      title: Text(
-                        widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: !canUseCard
-                          ? null
-                          : () async {
-                              Navigator.pop(sheetContext);
-                              await openCardsManager();
-                            },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                widget.lang == 'uz' ? 'Boshqa to‘lov usullari' : 'Другие способы оплаты',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 9),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  leading: const Icon(Icons.payments_rounded, color: Color(0xFF60C83D), size: 32),
-                  title: Text(
-                    widget.lang == 'uz' ? 'Naqd' : 'Наличные',
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                  ),
-                  trailing: Icon(
-                    paymentMethod == 'cash' ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                    color: paymentMethod == 'cash' ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
-                    size: 30,
-                  ),
-                  onTap: () {
-                    setState(() => paymentMethod = 'cash');
-                    Navigator.pop(sheetContext);
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 56,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(sheetContext),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFFFD900),
-                    foregroundColor: Colors.black,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                  ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Center(
                   child: Text(
-                    widget.lang == 'uz' ? 'Tayyor' : 'Готово',
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                    widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 18),
+                Text(
+                  widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 9),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Column(
+                    children: <Widget>[
+                      ...cards.map((card) {
+                        final id = (card['cardId'] as num?)?.toInt() ?? 0;
+                        final selected = draftMethod == 'card' && draftCardId == id;
+                        return Column(
+                          children: <Widget>[
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+                              leading: const Icon(Icons.credit_card_rounded, size: 30),
+                              title: Text(
+                                (card['maskedPan'] ?? 'ATMOS').toString(),
+                                style: const TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              subtitle: Text(widget.lang == 'uz' ? 'ATMOS karta' : 'Карта ATMOS'),
+                              trailing: Icon(
+                                selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                color: selected ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
+                                size: 30,
+                              ),
+                              onTap: () {
+                                setSheetState(() {
+                                  draftCardId = id;
+                                  draftMethod = 'card';
+                                });
+                              },
+                            ),
+                            const Divider(height: 1, indent: 14, endIndent: 14),
+                          ],
+                        );
+                      }),
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        leading: Container(
+                          width: 42,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xFF9CA3AF)),
+                            borderRadius: BorderRadius.circular(7),
+                          ),
+                          child: const Icon(Icons.add_rounded),
+                        ),
+                        title: Text(
+                          widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: !canUseCard
+                            ? null
+                            : () async {
+                                Navigator.pop(sheetContext);
+                                await openCardsManager();
+                              },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  widget.lang == 'uz' ? 'Boshqa to‘lov usullari' : 'Другие способы оплаты',
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 9),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    leading: const Icon(Icons.payments_rounded, color: Color(0xFF60C83D), size: 32),
+                    title: Text(
+                      widget.lang == 'uz' ? 'Naqd' : 'Наличные',
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                    ),
+                    trailing: Icon(
+                      draftMethod == 'cash' ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                      color: draftMethod == 'cash' ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
+                      size: 30,
+                    ),
+                    onTap: () => setSheetState(() => draftMethod = 'cash'),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 56,
+                  child: FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        paymentMethod = draftMethod;
+                        if (draftMethod == 'card') selectedCardId = draftCardId;
+                      });
+                      Navigator.pop(sheetContext);
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFD900),
+                      foregroundColor: Colors.black,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    ),
+                    child: Text(
+                      widget.lang == 'uz' ? 'Tayyor' : 'Готово',
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -4236,10 +4248,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
 }
 
 class CardsScreen extends StatefulWidget {
-  const CardsScreen({super.key, required this.api, required this.lang, this.onMenu});
+  const CardsScreen({
+    super.key,
+    required this.api,
+    required this.lang,
+    this.onMenu,
+    this.onDone,
+  });
   final ApiClient api;
   final String lang;
   final VoidCallback? onMenu;
+  final VoidCallback? onDone;
 
   @override
   State<CardsScreen> createState() => _CardsScreenState();
@@ -4592,8 +4611,8 @@ class _CardsScreenState extends State<CardsScreen> {
                     height: 56,
                     child: FilledButton(
                       onPressed: () {
-                        if (widget.onMenu != null) {
-                          widget.onMenu!();
+                        if (widget.onDone != null) {
+                          widget.onDone!();
                         } else {
                           Navigator.maybePop(context);
                         }
