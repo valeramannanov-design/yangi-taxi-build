@@ -1,7 +1,7 @@
 name: yangi_taxi
 description: Yangi Taxi passenger app
 publish_to: none
-version: 1.5.0+15
+version: 1.7.3+25
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -25,6 +25,15 @@ flutter:
   assets:
     - assets/car.png
     - assets/pin.png
+    - assets/map_car_start.webp
+    - assets/map_car_together.webp
+    - assets/map_car_comfort.webp
+    - assets/map_car_business.webp
+    - assets/map_car_delivery.webp
+    - assets/map_car_cargo.webp
+    - assets/tariff_start.webp
+    - assets/tariff_comfort.webp
+    - assets/tariff_business.webp
 
 # live-ready v0.2 build
 # CI verify v0.2.1
