@@ -6288,10 +6288,20 @@ class _CardsScreenState extends State<CardsScreen> {
                                       : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта'),
                                 ),
                                 trailing: isDefault
-                                    ? const Icon(Icons.check_circle_rounded, color: yangiLime, size: 29)
-                                    : IconButton(
-                                        icon: const Icon(Icons.radio_button_unchecked_rounded),
+                                    ? Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: yangiLime.withValues(alpha: 0.22),
+                                          borderRadius: BorderRadius.circular(11),
+                                        ),
+                                        child: Text(
+                                          widget.lang == 'uz' ? 'Asosiy' : 'Основная',
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                                        ),
+                                      )
+                                    : TextButton(
                                         onPressed: () => makeDefault(id),
+                                        child: Text(widget.lang == 'uz' ? 'Asosiy qilish' : 'Сделать основной'),
                                       ),
                                 onLongPress: () => removeCard(id),
                               ),
@@ -6342,7 +6352,17 @@ class _CardsScreenState extends State<CardsScreen> {
                         widget.lang == 'uz' ? 'Naqd' : 'Наличные',
                         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                       ),
-                      trailing: const Icon(Icons.check_circle_rounded, color: yangiLime, size: 31),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: yangiLime.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Text(
+                          widget.lang == 'uz' ? 'Mavjud' : 'Доступно',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 18),
