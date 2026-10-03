@@ -107,6 +107,7 @@ class ApiClient {
   String? token;
   Map<String, dynamic>? _demoOrder;
   DateTime? _demoStarted;
+  String _demoClientPhoto = '';
   final List<Map<String, dynamic>> _demoHistory = [];
   final List<Map<String, dynamic>> _demoCards = <Map<String, dynamic>>[
     <String, dynamic>{
@@ -189,6 +190,9 @@ class ApiClient {
         'name': 'Yangi Taxi Demo',
         'phones': <dynamic>[<String, dynamic>{'phone': '+998901234567'}],
         'bonus_balance': 12000,
+        'client_rating': 4.86,
+        'client_rating_count': 27,
+        'client_photo': _demoClientPhoto,
       };
 
   List<Map<String, dynamic>> get demoAddresses => <Map<String, dynamic>>[
@@ -420,6 +424,14 @@ class ApiClient {
     if (path == '/api/auth/login' || path == '/api/auth/register') {
       token = 'demo-session';
       return <String, dynamic>{'token': token, 'client': demoMe};
+    }
+    if (path == '/api/profile/photo') {
+      _demoClientPhoto = (body['photoBase64'] ?? '').toString();
+      return <String, dynamic>{'saved': true};
+    }
+    final demoRatingMatch = RegExp(r'^/api/orders/(\d+)/rating\$').firstMatch(path);
+    if (demoRatingMatch != null) {
+      return <String, dynamic>{'saved': true, 'rating': body['rating'] ?? 5};
     }
     if (path == '/api/orders/estimate-options') {
       final a = Map<String, dynamic>.from(body['source'] as Map);
