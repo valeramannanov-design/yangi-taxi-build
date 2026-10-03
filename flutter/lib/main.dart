@@ -5232,6 +5232,8 @@ class _RideScreenState extends State<RideScreen> {
   ym.Point? driver;
   bool loading = true;
   String? error;
+  int? promptedRatingOrderId;
+  bool ratingDialogOpen = false;
 
   @override
   void initState() {
@@ -5274,17 +5276,273 @@ class _RideScreenState extends State<RideScreen> {
       if (loc is Map && loc['lat'] != null && loc['lon'] != null) {
         d = ym.Point(latitude: (loc['lat'] as num).toDouble(), longitude: (loc['lon'] as num).toDouble());
       }
-      if (mounted) setState(() {
-        order = state;
-        driver = d;
-        loading = false;
-        error = null;
-      });
+      if (mounted) {
+        setState(() {
+          order = state;
+          driver = d;
+          loading = false;
+          error = null;
+        });
+        if ((state['state_kind'] ?? '').toString() == 'finished') {
+          unawaited(_promptDriverRating(state));
+        }
+      }
     } catch (e) {
       if (mounted) setState(() {
         loading = false;
         error = e.toString();
       });
+    }
+  }
+
+  Future<void> _promptDriverRating(Map<String, dynamic> finishedOrder) async {
+    final orderId = (finishedOrder['order_id'] as num?)?.toInt() ?? 0;
+    if (orderId <= 0 ||
+        !mounted ||
+        ratingDialogOpen ||
+        promptedRatingOrderId == orderId) {
+      return;
+    }
+
+    promptedRatingOrderId = orderId;
+    ratingDialogOpen = true;
+
+    int rating = 0;
+    final selectedTags = <String>{};
+    final comment = TextEditingController();
+    final driverName = (finishedOrder['driver_name'] ?? '').toString().trim();
+    final car = <String>[
+      (finishedOrder['car_mark'] ?? '').toString(),
+      (finishedOrder['car_model'] ?? '').toString(),
+    ].where((x) => x.trim().isNotEmpty).join(' ');
+
+    final tags = widget.lang == 'uz'
+        ? <String>[
+            'Xushmuomala haydovchi',
+            'Toza avtomobil',
+            'Xavfsiz haydash',
+            'Tez yetib keldi',
+            'Qulay safar',
+          ]
+        : <String>[
+            'Вежливый водитель',
+            'Чистый автомобиль',
+            'Безопасное вождение',
+            'Быстрая подача',
+            'Комфортная поездка',
+          ];
+
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final theme = Theme.of(context);
+          return Container(
+            padding: EdgeInsets.fromLTRB(
+              18,
+              10,
+              18,
+              MediaQuery.viewInsetsOf(context).bottom + 18,
+            ),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(30),
+              ),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: const BoxDecoration(
+                      color: yangiLime,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      color: yangiGraphite,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    widget.lang == 'uz'
+                        ? 'Safar qanday o‘tdi?'
+                        : 'Как прошла поездка?',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    driverName.isNotEmpty
+                        ? (widget.lang == 'uz'
+                            ? driverName + ' haydovchisini baholang'
+                            : 'Оцените водителя ' + driverName)
+                        : (widget.lang == 'uz'
+                            ? 'Haydovchini baholang'
+                            : 'Оцените водителя'),
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (car.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 3),
+                    Text(
+                      car,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List<Widget>.generate(5, (index) {
+                      final value = index + 1;
+                      final selected = value <= rating;
+                      return IconButton(
+                        onPressed: () => setSheetState(() => rating = value),
+                        iconSize: 43,
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                        icon: Icon(
+                          selected
+                              ? Icons.star_rounded
+                              : Icons.star_outline_rounded,
+                          color: selected
+                              ? const Color(0xFFFFC400)
+                              : theme.colorScheme.outline,
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    alignment: WrapAlignment.center,
+                    children: tags.map((tag) {
+                      final selected = selectedTags.contains(tag);
+                      return FilterChip(
+                        selected: selected,
+                        label: Text(tag),
+                        onSelected: (value) {
+                          setSheetState(() {
+                            if (value) {
+                              selectedTags.add(tag);
+                            } else {
+                              selectedTags.remove(tag);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: comment,
+                    maxLines: 3,
+                    maxLength: 500,
+                    decoration: InputDecoration(
+                      labelText: widget.lang == 'uz'
+                          ? 'Izoh (ixtiyoriy)'
+                          : 'Комментарий (необязательно)',
+                      prefixIcon:
+                          const Icon(Icons.chat_bubble_outline_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: FilledButton(
+                      onPressed: rating == 0
+                          ? null
+                          : () => Navigator.pop(
+                                sheetContext,
+                                <String, dynamic>{
+                                  'rating': rating,
+                                  'tags': selectedTags.toList(),
+                                  'comment': comment.text.trim(),
+                                },
+                              ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: yangiLime,
+                        foregroundColor: yangiGraphite,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      child: Text(
+                        widget.lang == 'uz'
+                            ? 'Bahoni yuborish'
+                            : 'Отправить оценку',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(sheetContext),
+                    child:
+                        Text(widget.lang == 'uz' ? 'Keyinroq' : 'Позже'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    comment.dispose();
+    ratingDialogOpen = false;
+    if (result == null || !mounted) return;
+
+    try {
+      await widget.api.post(
+        '/api/orders/' + orderId.toString() + '/rating',
+        <String, dynamic>{
+          'rating': result['rating'],
+          'tags': result['tags'],
+          'comment': result['comment'],
+        },
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.lang == 'uz'
+                ? 'Rahmat! Baho saqlandi.'
+                : 'Спасибо! Оценка водителя сохранена.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     }
   }
 
