@@ -1104,27 +1104,26 @@ class _LoginScreenState extends State<LoginScreen> {
                               width: 48,
                               height: 48,
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary,
+                                color: yangiLime,
                                 borderRadius: BorderRadius.circular(15),
                               ),
-                              child: const Icon(Icons.local_taxi, color: Colors.white),
+                              child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite),
                             ),
                             const SizedBox(width: 12),
-                            Expanded(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'Yangi Taxi',
-                                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                                ),
-                              ),
-                            ),
+                            const Expanded(child: YangiWordmark()),
                             IconButton(
                               onPressed: busy ? null : () => backendDialog(context, widget.api, widget.onBackend),
                               icon: const Icon(Icons.settings_outlined),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          widget.lang == 'uz' ? 'Harakat erkinligi siz bilan' : 'Движение ближе к вам',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         const SizedBox(height: 10),
                         Row(
@@ -1231,6 +1230,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         const SizedBox(height: 14),
                         FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: yangiLime,
+                            foregroundColor: yangiGraphite,
+                            minimumSize: const Size.fromHeight(52),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+                          ),
                           onPressed: busy ? null : submit,
                           icon: busy
                               ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
