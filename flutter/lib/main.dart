@@ -6438,152 +6438,279 @@ class _CardsScreenState extends State<CardsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFFF3F3F3),
-        appBar: AppBar(
-          leading: widget.onMenu == null
-              ? null
-              : IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
-          centerTitle: true,
-          title: Text(
-            widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
-            style: const TextStyle(fontWeight: FontWeight.w900),
-          ),
-          actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded))],
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final panelColor = dark ? scheme.surfaceContainerHigh : scheme.surface;
+    final softColor = dark ? scheme.surfaceContainerHighest : const Color(0xFFF3F4F6);
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        leading: widget.onMenu == null
+            ? null
+            : IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
+        centerTitle: true,
+        title: Text(
+          widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        body: loading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 30),
-                children: <Widget>[
-                  Text(
-                    widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+        actions: <Widget>[
+          IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
+        ],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 32),
+              children: <Widget>[
+                Text(
+                  widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
                   ),
-                  const SizedBox(height: 10),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: panelColor,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: scheme.outlineVariant.withValues(alpha: 0.45),
                     ),
-                    child: Column(
-                      children: <Widget>[
-                        ...cards.map((card) {
-                          final id = (card['cardId'] as num?)?.toInt() ?? 0;
-                          final isDefault = id == defaultCardId || card['isDefault'] == true;
-                          final masked = (card['maskedPan'] ?? '••••').toString();
-                          return Column(
-                            children: <Widget>[
-                              ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                                leading: Container(
-                                  width: 44,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF3F4F6),
-                                    borderRadius: BorderRadius.circular(7),
-                                    border: Border.all(color: const Color(0xFFD1D5DB)),
-                                  ),
-                                  child: const Icon(Icons.credit_card_rounded, size: 22),
-                                ),
-                                title: Text(masked, style: const TextStyle(fontWeight: FontWeight.w800)),
-                                subtitle: Text(
-                                  isDefault
-                                      ? (widget.lang == 'uz' ? 'Asosiy karta' : 'Основная карта')
-                                      : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта'),
-                                ),
-                                trailing: isDefault
-                                    ? const Icon(Icons.check_circle_rounded, color: Color(0xFFFFD900), size: 29)
-                                    : IconButton(
-                                        icon: const Icon(Icons.radio_button_unchecked_rounded),
-                                        onPressed: () => makeDefault(id),
-                                      ),
-                                onLongPress: () => removeCard(id),
+                  ),
+                  child: Column(
+                    children: <Widget>[
+                      ...cards.asMap().entries.map((entry) {
+                        final card = entry.value;
+                        final id = (card['cardId'] as num?)?.toInt() ?? 0;
+                        final isDefault = id == defaultCardId || card['isDefault'] == true;
+                        final masked = (card['maskedPan'] ?? '••••').toString();
+                        return Column(
+                          children: <Widget>[
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 6,
                               ),
-                              const Divider(height: 1, indent: 16, endIndent: 16),
-                            ],
-                          );
-                        }),
-                        ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-                          leading: Container(
-                            width: 44,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              border: Border.all(color: const Color(0xFF9CA3AF)),
-                              borderRadius: BorderRadius.circular(7),
+                              leading: Container(
+                                width: 48,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: <Color>[
+                                      Color(0xFF08110B),
+                                      Color(0xFF12A53E),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: const Icon(
+                                  Icons.credit_card_rounded,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
+                              ),
+                              title: Text(
+                                masked,
+                                style: TextStyle(
+                                  color: scheme.onSurface,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              subtitle: Text(
+                                isDefault
+                                    ? (widget.lang == 'uz' ? 'Asosiy karta' : 'Основная карта')
+                                    : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта'),
+                                style: TextStyle(color: scheme.onSurfaceVariant),
+                              ),
+                              trailing: isDefault
+                                  ? Container(
+                                      width: 29,
+                                      height: 29,
+                                      decoration: const BoxDecoration(
+                                        color: yangiLime,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.check_rounded,
+                                        color: yangiGraphite,
+                                        size: 20,
+                                      ),
+                                    )
+                                  : IconButton(
+                                      icon: Icon(
+                                        Icons.radio_button_unchecked_rounded,
+                                        color: scheme.outline,
+                                      ),
+                                      onPressed: () => makeDefault(id),
+                                    ),
+                              onLongPress: () => removeCard(id),
                             ),
-                            child: const Icon(Icons.add_rounded),
-                          ),
-                          title: Text(
-                            widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
-                            style: const TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                          trailing: const Icon(Icons.chevron_right_rounded),
-                          onTap: cardBindingAvailable ? addCard : null,
+                            if (entry.key != cards.length - 1)
+                              Divider(
+                                height: 1,
+                                indent: 16,
+                                endIndent: 16,
+                                color: scheme.outlineVariant,
+                              ),
+                          ],
+                        );
+                      }),
+                      if (cards.isNotEmpty)
+                        Divider(
+                          height: 1,
+                          indent: 16,
+                          endIndent: 16,
+                          color: scheme.outlineVariant,
                         ),
-                      ],
-                    ),
-                  ),
-                  if (error != null) ...<Widget>[
-                    const SizedBox(height: 8),
-                    Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                  ],
-                  const SizedBox(height: 14),
-                  Text(
-                    widget.lang == 'uz' ? 'Boshqa to‘lov usullari' : 'Другие способы оплаты',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      leading: const Icon(Icons.payments_rounded, color: Color(0xFF60C83D), size: 34),
-                      title: Text(
-                        widget.lang == 'uz' ? 'Naqd' : 'Наличные',
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
+                        ),
+                        leading: Container(
+                          width: 48,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: softColor,
+                            border: Border.all(color: scheme.outlineVariant),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Icon(Icons.add_rounded, color: scheme.onSurface),
+                        ),
+                        title: Text(
+                          widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
+                          style: TextStyle(
+                            color: cardBindingAvailable
+                                ? scheme.onSurface
+                                : scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        subtitle: !cardBindingAvailable
+                            ? Text(
+                                widget.lang == 'uz'
+                                    ? 'ATMOS kartani bog‘lash o‘chirilgan'
+                                    : 'Привязка ATMOS недоступна',
+                              )
+                            : null,
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: cardBindingAvailable ? addCard : null,
                       ),
-                      trailing: const Icon(Icons.check_circle_rounded, color: Color(0xFFFFD900), size: 31),
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    height: 56,
-                    child: FilledButton(
-                      onPressed: () {
-                        if (widget.onDone != null) {
-                          widget.onDone!();
-                        } else {
-                          Navigator.maybePop(context);
-                        }
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFD900),
-                        foregroundColor: Colors.black,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                      ),
-                      child: Text(
-                        widget.lang == 'uz' ? 'Tayyor' : 'Готово',
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    widget.lang == 'uz'
-                        ? 'Kartalar ATMOS orqali tokenlashtiriladi. Yangi Taxi PAN va CVV ni saqlamaydi.'
-                        : 'Карты токенизируются через ATMOS. Yangi Taxi не хранит PAN и CVV.',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF8B8F97)),
-                  ),
+                ),
+                if (error != null) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text(error!, style: TextStyle(color: scheme.error)),
                 ],
-              ),
-      );
+                const SizedBox(height: 18),
+                Text(
+                  widget.lang == 'uz'
+                      ? 'Boshqa to‘lov usullari'
+                      : 'Другие способы оплаты',
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: panelColor,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: scheme.outlineVariant.withValues(alpha: 0.45),
+                    ),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 9,
+                    ),
+                    leading: Container(
+                      width: 48,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF60C83D),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.payments_rounded,
+                        color: Colors.white,
+                      ),
+                    ),
+                    title: Text(
+                      widget.lang == 'uz' ? 'Naqd' : 'Наличные',
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    trailing: Container(
+                      width: 29,
+                      height: 29,
+                      decoration: const BoxDecoration(
+                        color: yangiLime,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check_rounded,
+                        color: yangiGraphite,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 58,
+                  child: FilledButton(
+                    onPressed: () {
+                      if (widget.onDone != null) {
+                        widget.onDone!();
+                      } else {
+                        Navigator.maybePop(context);
+                      }
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: yangiLime,
+                      foregroundColor: yangiGraphite,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(19),
+                      ),
+                    ),
+                    child: Text(
+                      widget.lang == 'uz' ? 'Tayyor' : 'Готово',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  widget.lang == 'uz'
+                      ? 'Kartalar ATMOS orqali tokenlashtiriladi. Yangi Taxi PAN va CVV ni saqlamaydi.'
+                      : 'Карты токенизируются через ATMOS. Yangi Taxi не хранит PAN и CVV.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
 
 }
 
