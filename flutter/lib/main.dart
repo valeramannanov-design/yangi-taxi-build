@@ -796,12 +796,12 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
   @override
   Widget build(BuildContext context) {
     final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF1F8A4C),
+      seedColor: yangiLime,
       brightness: Brightness.light,
       surface: Colors.white,
     );
     final darkScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF5FCF7B),
+      seedColor: yangiLime,
       brightness: Brightness.dark,
     );
     final resolvedThemeMode = switch (themeSetting) {
@@ -826,7 +826,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
         navigationBarTheme: const NavigationBarThemeData(
           height: 68,
           backgroundColor: Colors.white,
-          indicatorColor: Color(0xFFE5F4EA),
+          indicatorColor: Color(0xFFDFFF9A),
           elevation: 8,
         ),
         cardTheme: const CardThemeData(
@@ -856,7 +856,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
         navigationBarTheme: const NavigationBarThemeData(
           height: 68,
           backgroundColor: Color(0xFF17191C),
-          indicatorColor: Color(0xFF263D2E),
+          indicatorColor: Color(0xFF355100),
           elevation: 8,
         ),
         cardTheme: const CardThemeData(
@@ -2918,7 +2918,7 @@ class _OrderScreenState extends State<OrderScreen> {
                         BoxShadow(color: Color(0x24000000), blurRadius: 16, offset: Offset(0, 4)),
                       ],
                     ),
-                    child: const Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+                    child: const YangiWordmark(compact: true),
                   ),
                   const Spacer(),
                   _roundMapButton(
@@ -2982,7 +2982,7 @@ class _OrderScreenState extends State<OrderScreen> {
                         children: <Widget>[
                           Expanded(
                             child: Text(
-                              widget.lang == 'uz' ? 'Safar tafsilotlari' : 'Детали поездки',
+                              widget.lang == 'uz' ? 'Tarifni tanlang' : 'Выберите тариф',
                               style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, letterSpacing: -0.4),
                             ),
                           ),
@@ -3147,9 +3147,15 @@ class _OrderScreenState extends State<OrderScreen> {
                               width: serviceMode == 'taxi' ? 126 : 164,
                               child: Material(
                                 color: selected
-                                    ? const Color(0xFFFFD900)
+                                    ? yangiLime.withValues(alpha: 0.13)
                                     : Theme.of(context).colorScheme.surfaceContainerHigh,
-                                borderRadius: BorderRadius.circular(22),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                  side: BorderSide(
+                                    color: selected ? yangiGreen : Colors.transparent,
+                                    width: selected ? 1.8 : 0,
+                                  ),
+                                ),
                                 child: InkWell(
                                   onTap: available ? () => selectTariff(key) : null,
                                   borderRadius: BorderRadius.circular(22),
@@ -3319,8 +3325,8 @@ class _OrderScreenState extends State<OrderScreen> {
                                     ? () => scheduleEstimate(delay: Duration.zero)
                                     : createOrder)),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFE500),
-                          foregroundColor: const Color(0xFF111111),
+                          backgroundColor: yangiLime,
+                          foregroundColor: yangiGraphite,
                           disabledBackgroundColor: const Color(0xFFE5E7EB),
                           disabledForegroundColor: const Color(0xFF9CA3AF),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -5245,7 +5251,7 @@ class SettingsScreen extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.info_outline_rounded),
                     title: Text(lang == 'uz' ? 'Ilova haqida' : 'О приложении'),
-                    subtitle: const Text('Yangi Taxi 1.6.2'),
+                    subtitle: const Text('Yangi Taxi 1.7.0'),
                   ),
                 ],
               ),
