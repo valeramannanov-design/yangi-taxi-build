@@ -683,6 +683,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
   bool loading = true;
   bool loggedIn = false;
   String lang = 'ru';
+  String rememberedPhone = '';
 
   @override
   void initState() {
@@ -693,9 +694,19 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
   Future<void> restore() async {
     final savedUrl = await storage.read(key: 'backend_url');
     final savedLang = await storage.read(key: 'lang');
-    final session = await storage.read(key: 'session');
+    final remember = await storage.read(key: 'remember_me');
+    final shouldRemember = remember == 'true';
+    final session = shouldRemember ? await storage.read(key: 'session') : null;
+    final savedPhone = shouldRemember ? await storage.read(key: 'remembered_phone') : null;
     api.setBaseUrl(savedUrl ?? 'demo');
     if (savedLang == 'uz' || savedLang == 'ru') lang = savedLang!;
+    rememberedPhone = savedPhone ?? '';
+
+    if (!shouldRemember) {
+      await storage.delete(key: 'session');
+      await storage.delete(key: 'remembered_phone');
+    }
+
     if (session != null) {
       api.token = session;
       try {
@@ -704,6 +715,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
       } catch (_) {
         api.token = null;
         await storage.delete(key: 'session');
+        await storage.delete(key: 'remember_me');
       }
     }
     if (mounted) setState(() => loading = false);
@@ -719,6 +731,9 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     api.setBaseUrl(value);
     await storage.write(key: 'backend_url', value: api.baseUrl);
     await storage.delete(key: 'session');
+    await storage.delete(key: 'remember_me');
+    await storage.delete(key: 'remembered_phone');
+    rememberedPhone = '';
     loggedIn = false;
     if (mounted) setState(() {});
   }
@@ -738,16 +753,31 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     }
   }
 
-  Future<void> saveToken(String value) async {
+  Future<void> saveToken(String value, bool remember, String phone) async {
     api.token = value;
-    await storage.write(key: 'session', value: value);
+
+    if (remember) {
+      rememberedPhone = phone.trim();
+      await storage.write(key: 'remember_me', value: 'true');
+      await storage.write(key: 'session', value: value);
+      await storage.write(key: 'remembered_phone', value: rememberedPhone);
+    } else {
+      rememberedPhone = '';
+      await storage.delete(key: 'remember_me');
+      await storage.delete(key: 'session');
+      await storage.delete(key: 'remembered_phone');
+    }
+
     await prepareLocationPermission();
     if (mounted) setState(() => loggedIn = true);
   }
 
   Future<void> logout() async {
     api.token = null;
+    rememberedPhone = '';
     await storage.delete(key: 'session');
+    await storage.delete(key: 'remember_me');
+    await storage.delete(key: 'remembered_phone');
     if (mounted) setState(() => loggedIn = false);
   }
 
@@ -796,7 +826,14 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : loggedIn
               ? Shell(api: api, lang: lang, onLang: saveLang, onBackend: saveBackend, onLogout: logout)
-              : LoginScreen(api: api, lang: lang, onLang: saveLang, onBackend: saveBackend, onToken: saveToken),
+              : LoginScreen(
+                  api: api,
+                  lang: lang,
+                  initialPhone: rememberedPhone,
+                  onLang: saveLang,
+                  onBackend: saveBackend,
+                  onToken: saveToken,
+                ),
     );
   }
 }
@@ -844,31 +881,41 @@ class LoginScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.lang,
+    required this.initialPhone,
     required this.onLang,
     required this.onBackend,
     required this.onToken,
   });
   final ApiClient api;
   final String lang;
+  final String initialPhone;
   final ValueChanged<String> onLang;
   final Future<void> Function(String) onBackend;
-  final Future<void> Function(String) onToken;
+  final Future<void> Function(String, bool, String) onToken;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final phone = TextEditingController(text: '+998901234567');
-  final pass = TextEditingController(text: '123456');
+  late final TextEditingController phone;
+  final pass = TextEditingController();
   final name = TextEditingController();
   final smsCode = TextEditingController();
 
   bool register = false;
   bool smsSent = false;
   bool busy = false;
+  bool rememberMe = false;
   String? error;
   String? info;
+
+  @override
+  void initState() {
+    super.initState();
+    phone = TextEditingController(text: widget.initialPhone);
+    rememberMe = widget.initialPhone.trim().isNotEmpty;
+  }
 
   @override
   void dispose() {
@@ -942,7 +989,7 @@ class _LoginScreenState extends State<LoginScreen> {
         'password': pass.text,
         'code': smsCode.text.trim(),
       });
-      await widget.onToken(data['token'].toString());
+      await widget.onToken(data['token'].toString(), rememberMe, phone.text.trim());
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -961,7 +1008,7 @@ class _LoginScreenState extends State<LoginScreen> {
         'phone': phone.text.trim(),
         'password': pass.text,
       });
-      await widget.onToken(data['token'].toString());
+      await widget.onToken(data['token'].toString(), rememberMe, phone.text.trim());
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -1063,6 +1110,24 @@ class _LoginScreenState extends State<LoginScreen> {
                           obscureText: true,
                           onSubmitted: (_) => submit(),
                           decoration: InputDecoration(labelText: tx(widget.lang, 'password')),
+                        ),
+                        const SizedBox(height: 6),
+                        CheckboxListTile(
+                          value: rememberMe,
+                          contentPadding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: Text(
+                            widget.lang == 'uz' ? 'Meni eslab qolish' : 'Запомнить меня',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          subtitle: Text(
+                            widget.lang == 'uz'
+                                ? 'Parol saqlanmaydi — faqat himoyalangan sessiya'
+                                : 'Пароль не сохраняется — только защищённая сессия',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          onChanged: busy || smsSent ? null : (value) => setState(() => rememberMe = value ?? false),
                         ),
                         if (register && smsSent) ...<Widget>[
                           const SizedBox(height: 12),
@@ -1279,7 +1344,12 @@ class _ShellState extends State<Shell> {
                     menuItem(index: 1, icon: Icons.local_taxi_rounded, title: widget.lang == 'uz' ? 'Joriy safar' : 'Текущая поездка'),
                     menuItem(index: 2, icon: Icons.history_rounded, title: widget.lang == 'uz' ? 'Safarlar tarixi' : 'История поездок'),
                     menuSection(widget.lang == 'uz' ? 'TO‘LOV' : 'ОПЛАТА'),
-                    menuItem(index: 3, icon: Icons.credit_card_rounded, title: widget.lang == 'uz' ? 'Kartalar' : 'Карты', subtitle: 'ATMOS'),
+                    menuItem(
+                      index: 3,
+                      icon: Icons.account_balance_wallet_rounded,
+                      title: widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+                      subtitle: widget.lang == 'uz' ? 'Kartalar va naqd' : 'Карты и наличные',
+                    ),
                     menuSection(widget.lang == 'uz' ? 'AKKAUNT' : 'АККАУНТ'),
                     menuItem(index: 5, icon: Icons.person_rounded, title: widget.lang == 'uz' ? 'Profil' : 'Профиль'),
                     menuItem(index: 4, icon: Icons.settings_rounded, title: widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки'),
@@ -2896,55 +2966,141 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> _showPaymentSheet(bool canUseCard) async {
+    await loadCards();
+    if (!mounted) return;
+
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFFF3F3F3),
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              Center(
+                child: Text(
+                  widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+              ),
+              const SizedBox(height: 18),
               Text(
-                widget.lang == 'uz' ? 'To‘lov usuli' : 'Способ оплаты',
-                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 9),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Column(
+                  children: <Widget>[
+                    ...cards.map((card) {
+                      final id = (card['cardId'] as num?)?.toInt() ?? 0;
+                      final selected = paymentMethod == 'card' && selectedCardId == id;
+                      return Column(
+                        children: <Widget>[
+                          ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+                            leading: const Icon(Icons.credit_card_rounded, size: 30),
+                            title: Text(
+                              (card['maskedPan'] ?? 'ATMOS').toString(),
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            subtitle: Text(widget.lang == 'uz' ? 'ATMOS karta' : 'Карта ATMOS'),
+                            trailing: Icon(
+                              selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                              color: selected ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
+                              size: 30,
+                            ),
+                            onTap: () {
+                              setState(() {
+                                selectedCardId = id;
+                                paymentMethod = 'card';
+                              });
+                              if (sheetContext.mounted) Navigator.pop(sheetContext);
+                            },
+                          ),
+                          const Divider(height: 1, indent: 14, endIndent: 14),
+                        ],
+                      );
+                    }),
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      leading: Container(
+                        width: 42,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: const Color(0xFF9CA3AF)),
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                        child: const Icon(Icons.add_rounded),
+                      ),
+                      title: Text(
+                        widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: !canUseCard
+                          ? null
+                          : () async {
+                              Navigator.pop(sheetContext);
+                              await openCardsManager();
+                            },
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 14),
-              ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                tileColor: const Color(0xFFF3F4F6),
-                leading: const Icon(Icons.payments_rounded),
-                title: Text(widget.lang == 'uz' ? 'Naqd' : 'Наличные'),
-                trailing: paymentMethod == 'cash' ? const Icon(Icons.check_circle_rounded) : null,
-                onTap: () {
-                  setState(() => paymentMethod = 'cash');
-                  Navigator.pop(sheetContext);
-                },
+              Text(
+                widget.lang == 'uz' ? 'Boshqa to‘lov usullari' : 'Другие способы оплаты',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
               ),
-              const SizedBox(height: 8),
-              ListTile(
-                enabled: canUseCard,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                tileColor: const Color(0xFFF3F4F6),
-                leading: const Icon(Icons.credit_card_rounded),
-                title: Text(selectedCard == null ? 'ATMOS' : (selectedCard!['maskedPan'] ?? 'ATMOS').toString()),
-                subtitle: Text(
-                  selectedCard == null
-                      ? (widget.lang == 'uz' ? 'Karta qo‘shish' : 'Добавить карту')
-                      : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта'),
+              const SizedBox(height: 9),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
                 ),
-                trailing: paymentMethod == 'card' ? const Icon(Icons.check_circle_rounded) : null,
-                onTap: !canUseCard
-                    ? null
-                    : () async {
-                        if (selectedCard == null) {
-                          Navigator.pop(sheetContext);
-                          await openCardsManager();
-                        } else {
-                          setState(() => paymentMethod = 'card');
-                          if (sheetContext.mounted) Navigator.pop(sheetContext);
-                        }
-                      },
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  leading: const Icon(Icons.payments_rounded, color: Color(0xFF60C83D), size: 32),
+                  title: Text(
+                    widget.lang == 'uz' ? 'Naqd' : 'Наличные',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                  ),
+                  trailing: Icon(
+                    paymentMethod == 'cash' ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                    color: paymentMethod == 'cash' ? const Color(0xFFFFD900) : const Color(0xFFD1D5DB),
+                    size: 30,
+                  ),
+                  onTap: () {
+                    setState(() => paymentMethod = 'cash');
+                    Navigator.pop(sheetContext);
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 56,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFD900),
+                    foregroundColor: Colors.black,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  ),
+                  child: Text(
+                    widget.lang == 'uz' ? 'Tayyor' : 'Готово',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                  ),
+                ),
               ),
             ],
           ),
@@ -4253,147 +4409,152 @@ class _CardsScreenState extends State<CardsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFFF3F3F3),
         appBar: AppBar(
           leading: widget.onMenu == null
               ? null
               : IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
-          title: Text(widget.lang == 'uz' ? 'Kartalar' : 'Карты', style: const TextStyle(fontWeight: FontWeight.w900)),
+          centerTitle: true,
+          title: Text(
+            widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
           actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded))],
         ),
         body: loading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 30),
                 children: <Widget>[
+                  Text(
+                    widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 10),
                   Container(
-                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF3F4F6),
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(22),
                     ),
-                    child: Row(
+                    child: Column(
                       children: <Widget>[
-                        const CircleAvatar(
-                          backgroundColor: Color(0xFFE4F3E9),
-                          child: Icon(Icons.shield_outlined, color: Color(0xFF1F8A4C)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            widget.lang == 'uz'
-                                ? 'Kartalar ATMOS orqali bog‘lanadi. Yangi Taxi PAN va CVVni saqlamaydi.'
-                                : 'Карты привязываются через ATMOS. Yangi Taxi не хранит PAN и CVV.',
+                        ...cards.map((card) {
+                          final id = (card['cardId'] as num?)?.toInt() ?? 0;
+                          final isDefault = id == defaultCardId || card['isDefault'] == true;
+                          final masked = (card['maskedPan'] ?? '••••').toString();
+                          return Column(
+                            children: <Widget>[
+                              ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                leading: Container(
+                                  width: 44,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF3F4F6),
+                                    borderRadius: BorderRadius.circular(7),
+                                    border: Border.all(color: const Color(0xFFD1D5DB)),
+                                  ),
+                                  child: const Icon(Icons.credit_card_rounded, size: 22),
+                                ),
+                                title: Text(masked, style: const TextStyle(fontWeight: FontWeight.w800)),
+                                subtitle: Text(
+                                  isDefault
+                                      ? (widget.lang == 'uz' ? 'Asosiy karta' : 'Основная карта')
+                                      : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта'),
+                                ),
+                                trailing: isDefault
+                                    ? const Icon(Icons.check_circle_rounded, color: Color(0xFFFFD900), size: 29)
+                                    : IconButton(
+                                        icon: const Icon(Icons.radio_button_unchecked_rounded),
+                                        onPressed: () => makeDefault(id),
+                                      ),
+                                onLongPress: () => removeCard(id),
+                              ),
+                              const Divider(height: 1, indent: 16, endIndent: 16),
+                            ],
+                          );
+                        }),
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                          leading: Container(
+                            width: 44,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: const Color(0xFF9CA3AF)),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: const Icon(Icons.add_rounded),
                           ),
+                          title: Text(
+                            widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: cardBindingAvailable ? addCard : null,
                         ),
                       ],
                     ),
                   ),
-                  if (error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                    ),
+                  if (error != null) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  ],
                   const SizedBox(height: 14),
-                  if (cards.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                  Text(
+                    widget.lang == 'uz' ? 'Boshqa to‘lov usullari' : 'Другие способы оплаты',
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      leading: const Icon(Icons.payments_rounded, color: Color(0xFF60C83D), size: 34),
+                      title: Text(
+                        widget.lang == 'uz' ? 'Naqd' : 'Наличные',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                       ),
-                      child: Column(
-                        children: <Widget>[
-                          const Icon(Icons.credit_card_off_outlined, size: 46, color: Color(0xFF9CA3AF)),
-                          const SizedBox(height: 10),
-                          Text(
-                            widget.lang == 'uz' ? 'Hali karta qo‘shilmagan' : 'Пока нет сохранённых карт',
-                            style: const TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ...cards.map((card) {
-                      final id = (card['cardId'] as num?)?.toInt() ?? 0;
-                      final isDefault = id == defaultCardId || card['isDefault'] == true;
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        elevation: 0,
-                        color: const Color(0xFF111827),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Row(
-                                children: <Widget>[
-                                  const Icon(Icons.credit_card_rounded, color: Colors.white),
-                                  const Spacer(),
-                                  if (isDefault)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF1F8A4C),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        widget.lang == 'uz' ? 'Asosiy' : 'Основная',
-                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 24),
-                              Text(
-                                (card['maskedPan'] ?? '•••• •••• •••• ••••').toString(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 20,
-                                  letterSpacing: 1.2,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(formatExpiry((card['expiry'] ?? '').toString()), style: const TextStyle(color: Color(0xFFD1D5DB))),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: <Widget>[
-                                  if (!isDefault)
-                                    TextButton(
-                                      onPressed: () => makeDefault(id),
-                                      child: Text(widget.lang == 'uz' ? 'Asosiy qilish' : 'Сделать основной'),
-                                    ),
-                                  const Spacer(),
-                                  IconButton(
-                                    onPressed: () => removeCard(id),
-                                    icon: const Icon(Icons.delete_outline_rounded),
-                                    color: Colors.white70,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-                  const SizedBox(height: 8),
+                      trailing: const Icon(Icons.check_circle_rounded, color: Color(0xFFFFD900), size: 31),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
                   SizedBox(
-                    height: 54,
-                    child: FilledButton.icon(
-                      onPressed: cardBindingAvailable ? addCard : null,
-                      icon: const Icon(Icons.add_card_rounded),
-                      label: Text(
-                        cardBindingAvailable
-                            ? (widget.lang == 'uz' ? 'Karta qo‘shish' : 'Добавить карту')
-                            : (widget.lang == 'uz' ? 'ATMOS sozlanmagan' : 'ATMOS не настроен'),
+                    height: 56,
+                    child: FilledButton(
+                      onPressed: () {
+                        if (widget.onMenu != null) {
+                          widget.onMenu!();
+                        } else {
+                          Navigator.maybePop(context);
+                        }
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFD900),
+                        foregroundColor: Colors.black,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      ),
+                      child: Text(
+                        widget.lang == 'uz' ? 'Tayyor' : 'Готово',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    widget.lang == 'uz'
+                        ? 'Kartalar ATMOS orqali tokenlashtiriladi. Yangi Taxi PAN va CVV ni saqlamaydi.'
+                        : 'Карты токенизируются через ATMOS. Yangi Taxi не хранит PAN и CVV.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF8B8F97)),
                   ),
                 ],
               ),
       );
+
 }
 
 class SettingsScreen extends StatelessWidget {
