@@ -1825,105 +1825,146 @@ class _TopCarPainter extends CustomPainter {
   final String kind;
   final bool driver;
 
+  Color get bodyColor {
+    if (kind == 'business') return const Color(0xFF111315);
+    if (kind == 'cargo') return const Color(0xFFF1F3F5);
+    return const Color(0xFFF9FAFB);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    final body = Paint()
-      ..color = kind == 'business'
-          ? const Color(0xFF17191C)
-          : const Color(0xFFF7F8F8);
-    final dark = Paint()..color = const Color(0xFF20252A);
-    final glass = Paint()..color = const Color(0xFF2A3138);
-    final lime = Paint()..color = yangiLime;
-    final outline = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8;
+    final sx = size.width / 40.0;
+    final sy = size.height / 58.0;
+    canvas.save();
+    canvas.scale(sx, sy);
 
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(size.width / 2, size.height * 0.54),
-        width: size.width * 0.90,
-        height: size.height * 0.80,
-      ),
-      Paint()..color = const Color(0x22000000),
-    );
-
-    final carRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        size.width * 0.18,
-        size.height * 0.05,
-        size.width * 0.64,
-        size.height * 0.88,
-      ),
-      Radius.circular(size.width * 0.22),
-    );
-    canvas.drawRRect(carRect, body);
-    canvas.drawRRect(carRect, outline);
-
+    final shadow = Paint()
+      ..color = const Color(0x38000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.25,
-          size.height * 0.25,
-          size.width * 0.50,
-          size.height * 0.29,
-        ),
-        Radius.circular(size.width * 0.12),
+        const Rect.fromLTWH(6.5, 4.5, 27, 50),
+        const Radius.circular(12),
       ),
+      shadow,
+    );
+
+    final tire = Paint()..color = const Color(0xFF0F1111);
+    for (final r in const <Rect>[
+      Rect.fromLTWH(4.2, 13, 4.3, 10),
+      Rect.fromLTWH(31.5, 13, 4.3, 10),
+      Rect.fromLTWH(4.2, 37, 4.3, 10),
+      Rect.fromLTWH(31.5, 37, 4.3, 10),
+    ]) {
+      canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(2)), tire);
+    }
+
+    final body = Paint()..color = bodyColor;
+    final edge = Paint()
+      ..color = kind == 'business' ? const Color(0xFF62666B) : const Color(0xFFCFD4D8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.85;
+    final car = Path()
+      ..moveTo(12, 2.6)
+      ..quadraticBezierTo(20, 0.5, 28, 2.6)
+      ..quadraticBezierTo(34, 5.5, 34.5, 15)
+      ..lineTo(33.6, 44.5)
+      ..quadraticBezierTo(32.5, 53.5, 25.8, 56)
+      ..quadraticBezierTo(20, 57.5, 14.2, 56)
+      ..quadraticBezierTo(7.5, 53.5, 6.4, 44.5)
+      ..lineTo(5.5, 15)
+      ..quadraticBezierTo(6, 5.5, 12, 2.6)
+      ..close();
+    canvas.drawPath(car, body);
+    canvas.drawPath(car, edge);
+
+    final mirror = Paint()..color = bodyColor;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(2.7, 18, 4.5, 6), const Radius.circular(2)),
+      mirror,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(32.8, 18, 4.5, 6), const Radius.circular(2)),
+      mirror,
+    );
+
+    final glass = Paint()..color = const Color(0xFF202831);
+    final glassHighlight = Paint()..color = const Color(0xFF56636F);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(10, 10.5, 20, 13), const Radius.circular(5)),
       glass,
     );
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.29,
-          size.height * 0.60,
-          size.width * 0.42,
-          size.height * 0.17,
-        ),
-        Radius.circular(size.width * 0.08),
-      ),
-      dark,
+      RRect.fromRectAndRadius(const Rect.fromLTWH(9.4, 27, 21.2, 15.5), const Radius.circular(4)),
+      glass,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(11.5, 12, 17, 2), const Radius.circular(1)),
+      glassHighlight,
     );
 
+    final roof = Paint()
+      ..color = kind == 'business'
+          ? const Color(0xFF24282D)
+          : const Color(0xFFE8ECEF);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(9.2, 23.5, 21.6, 4.2), const Radius.circular(2)),
+      roof,
+    );
+
+    final lime = Paint()..color = yangiLime;
     if (kind != 'business') {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            size.width * 0.19,
-            size.height * 0.07,
-            size.width * 0.62,
-            size.height * 0.09,
-          ),
-          Radius.circular(size.width * 0.09),
-        ),
+        RRect.fromRectAndRadius(const Rect.fromLTWH(7.3, 5.4, 25.4, 3.2), const Radius.circular(1.6)),
         lime,
       );
     }
-
     if (kind == 'delivery') {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          size.width * 0.43,
-          size.height * 0.10,
-          size.width * 0.28,
-          size.height * 0.22,
-        ),
-        lime,
+      final stripe = Path()
+        ..moveTo(8, 33)
+        ..lineTo(30.8, 26)
+        ..lineTo(31.2, 31)
+        ..lineTo(8.5, 39)
+        ..close();
+      canvas.drawPath(stripe, lime);
+    } else if (kind == 'together') {
+      final dot = Paint()..color = Colors.white;
+      canvas.drawCircle(const Offset(16.4, 6.9), 1.5, dot);
+      canvas.drawCircle(const Offset(23.6, 6.9), 1.5, dot);
+    } else if (kind == 'cargo') {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(7.5, 25, 25, 22), const Radius.circular(3)),
+        Paint()..color = const Color(0xFFF6F7F8),
       );
+      canvas.drawRect(const Rect.fromLTWH(9, 27, 22, 3), lime);
     }
 
-    if (kind == 'together') {
-      canvas.drawCircle(Offset(size.width * 0.43, size.height * 0.16), 2.1, lime);
-      canvas.drawCircle(Offset(size.width * 0.57, size.height * 0.16), 2.1, lime);
-    }
+    final lamp = Paint()..color = const Color(0xFFFFF8D8);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(9, 3.8, 6.2, 2), const Radius.circular(1)),
+      lamp,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(24.8, 3.8, 6.2, 2), const Radius.circular(1)),
+      lamp,
+    );
+    final tail = Paint()..color = const Color(0xFFE7434C);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(8.5, 51.2, 6.4, 2.2), const Radius.circular(1)),
+      tail,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(25.1, 51.2, 6.4, 2.2), const Radius.circular(1)),
+      tail,
+    );
 
     if (driver) {
-      canvas.drawCircle(
-        Offset(size.width * 0.79, size.height * 0.10),
-        size.width * 0.08,
-        lime,
-      );
+      canvas.drawCircle(const Offset(31.8, 7.5), 4.1, Paint()..color = yangiGraphite);
+      canvas.drawCircle(const Offset(31.8, 7.5), 3.1, lime);
+      canvas.drawCircle(const Offset(31.8, 7.5), 1.25, Paint()..color = Colors.white);
     }
+
+    canvas.restore();
   }
 
   @override
@@ -2133,6 +2174,7 @@ class TaxiYandexMap extends StatefulWidget {
     this.nearbyCars = const <NearbyCrew>[],
     this.vehicleKind = 'start',
     this.zoom = 14,
+    this.bottomInsetFraction = 0,
   });
   final ym.Point center;
   final List<ym.Point> route;
@@ -2146,6 +2188,7 @@ class TaxiYandexMap extends StatefulWidget {
   final List<NearbyCrew> nearbyCars;
   final String vehicleKind;
   final double zoom;
+  final double bottomInsetFraction;
 
   @override
   State<TaxiYandexMap> createState() => _TaxiYandexMapState();
@@ -2261,20 +2304,36 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
         ..strokeWidth = 4.5
         ..setStrokeColor(const Color(0xFF18B66A));
       if (focusRoute) {
-        final fit = map.cameraPositionForGeometry(ym.Geometry.fromPolyline(polyline));
-        final minLat = widget.route.map((p) => p.latitude).reduce(math.min);
-        final maxLat = widget.route.map((p) => p.latitude).reduce(math.max);
-        final latSpan = math.max(0.0005, maxLat - minLat);
-        final shiftedTarget = ym.Point(
-          latitude: fit.target.latitude - latSpan * 0.20,
-          longitude: fit.target.longitude,
+        final width = window.width().toDouble();
+        final height = window.height().toDouble();
+        final blocked = widget.bottomInsetFraction.clamp(0.0, 0.78);
+        final visibleHeight = math.max(180.0, height * (1.0 - blocked));
+        final focusRect = width > 0 && height > 0
+            ? ym.ScreenRect(
+                const ym.ScreenPoint(x: 16, y: 84),
+                ym.ScreenPoint(
+                  x: math.max(17.0, width - 16),
+                  y: math.max(170.0, visibleHeight - 12),
+                ),
+              )
+            : null;
+        window.focusRect = focusRect;
+        final fit = map.cameraPositionForGeometry(
+          ym.Geometry.fromPolyline(polyline),
+          focusRect: focusRect,
+          azimuth: 0,
+          tilt: 0,
         );
         map.move(
           ym.CameraPosition(
-            shiftedTarget,
-            zoom: math.max(10.0, fit.zoom - 0.65),
+            fit.target,
+            zoom: math.max(9.5, fit.zoom - 0.25),
             azimuth: 0,
             tilt: 0,
+          ),
+          animation: const ym.Animation(
+            type: ym.AnimationType.Smooth,
+            duration: 0.35,
           ),
         );
       }
@@ -2338,7 +2397,14 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
     }
 
     if (moveCamera && widget.route.length < 2) {
-      map.move(ym.CameraPosition(widget.center, zoom: widget.zoom, azimuth: 0, tilt: 0));
+      window.focusRect = null;
+      map.move(
+        ym.CameraPosition(widget.center, zoom: widget.zoom, azimuth: 0, tilt: 0),
+        animation: const ym.Animation(
+          type: ym.AnimationType.Smooth,
+          duration: 0.25,
+        ),
+      );
     }
   }
 
@@ -3428,6 +3494,7 @@ class _OrderScreenState extends State<OrderScreen> {
               nearbyCars: nearbyCars,
               vehicleKind: selectedTariffKey,
               zoom: destinationReady ? 13.7 : 15,
+              bottomInsetFraction: destinationReady ? 0.54 : 0.42,
             ),
           ),
 
@@ -5243,6 +5310,7 @@ class _RideScreenState extends State<RideScreen> {
               route: routePoints,
               vehicleKind: tariffKey,
               zoom: activeRide ? 13 : 14,
+              bottomInsetFraction: searching ? 0.38 : activeRide ? 0.48 : 0.44,
             ),
           ),
           Positioned(
