@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:yandex_maps_mapkit/init.dart' as yandex_init;
+import 'package:yandex_maps_mapkit/directions.dart' as yd;
 import 'package:yandex_maps_mapkit/mapkit.dart' as ym;
 import 'package:yandex_maps_mapkit/ui_view.dart' as yv;
 import 'package:yandex_maps_mapkit/mapkit_factory.dart' as ym_factory;
@@ -19,6 +20,13 @@ const defaultLat = 41.3111;
 const defaultLon = 69.2797;
 
 const yandexMapKitApiKey = String.fromEnvironment('MAPKIT_API_KEY');
+
+String maskedCardLabel(dynamic value) {
+  final raw = (value ?? '').toString().trim();
+  final match = RegExp(r'(\d{4})(?!.*\d)').firstMatch(raw);
+  if (match == null) return raw.isEmpty ? 'ATMOS' : raw;
+  return '•••• ' + match.group(1)!;
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -2385,11 +2393,16 @@ class _OrderScreenState extends State<OrderScreen> {
   int selectedCardId = 0;
   late final ys.SearchManager locationSearchManager;
   ys.SearchSession? locationSearchSession;
+  yd.DrivingRouter? drivingRouter;
+  yd.DrivingSession? drivingSession;
 
   @override
   void initState() {
     super.initState();
     locationSearchManager = ys.SearchFactory.instance.createSearchManager(ys.SearchManagerType.Online);
+    if (yandexMapKitApiKey.isNotEmpty) {
+      drivingRouter = yd.DirectionsFactory.instance.createDrivingRouter(yd.DrivingRouterType.Combined);
+    }
     loadPaymentConfig();
     loadCards();
     loadTariffCatalog();
@@ -2406,6 +2419,7 @@ class _OrderScreenState extends State<OrderScreen> {
     nearbyCarsTimer?.cancel();
     estimateTimer?.cancel();
     locationSearchSession?.cancel();
+    drivingSession?.cancel();
     super.dispose();
   }
 
@@ -2622,15 +2636,30 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> openCardsManager() async {
+    String? nextMethod;
+    int? nextCardId;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => CardsScreen(api: widget.api, lang: widget.lang),
+        builder: (_) => CardsScreen(
+          api: widget.api,
+          lang: widget.lang,
+          initialPaymentMethod: paymentMethod,
+          initialCardId: selectedCardId,
+          onPaymentChanged: (method, cardId) {
+            nextMethod = method;
+            nextCardId = cardId;
+          },
+        ),
       ),
     );
     await loadCards();
-    if (cards.isNotEmpty && mounted) {
-      setState(() => paymentMethod = 'card');
-    }
+    if (!mounted || nextMethod == null) return;
+    setState(() {
+      paymentMethod = nextMethod!;
+      if (nextMethod == 'card' && nextCardId != null && nextCardId! > 0) {
+        selectedCardId = nextCardId!;
+      }
+    });
   }
 
   Map<String, dynamic>? get selectedTariff {
@@ -2837,7 +2866,7 @@ class _OrderScreenState extends State<OrderScreen> {
     }
 
     if (points.isEmpty) {
-      return <ym.Point>[sourcePoint, destinationPoint];
+      return <ym.Point>[];
     }
 
     if (_distanceBetween(points.first, sourcePoint) > 0.15) {
@@ -3156,6 +3185,71 @@ class _OrderScreenState extends State<OrderScreen> {
     await Geolocator.openAppSettings();
   }
 
+  bool _routeLooksLikeRoadGeometry(List<ym.Point> points) {
+    if (points.length < 4) return false;
+    final direct = _distanceBetween(points.first, points.last);
+    final along = _polylineDistance(points);
+    return direct < 0.05 || along >= direct * 1.001;
+  }
+
+  void _logLiveRoute(Place source, Place destination, List<ym.Point> points, String sourceName) {
+    if (widget.api.isDemo) return;
+    String p(ym.Point x) =>
+        x.latitude.toStringAsFixed(6) + ',' + x.longitude.toStringAsFixed(6);
+    final first = points.take(3).map(p).join(' | ');
+    final last = points.reversed.take(3).toList().reversed.map(p).join(' | ');
+    debugPrint(
+      '[Yangi route] source=' + p(source.point) +
+      ' destination=' + p(destination.point) +
+      ' sourceName=' + sourceName +
+      ' points=' + points.length.toString() +
+      ' first=[' + first + '] last=[' + last + ']',
+    );
+  }
+
+  Future<List<ym.Point>> _buildYandexDrivingRoute(
+    Place source,
+    Place destination,
+  ) async {
+    final router = drivingRouter;
+    if (router == null) return <ym.Point>[];
+
+    final completer = Completer<List<ym.Point>>();
+    drivingSession?.cancel();
+
+    final listener = yd.DrivingSessionRouteListener(
+      onDrivingRoutes: (routes) {
+        if (completer.isCompleted) return;
+        if (routes.isEmpty) {
+          completer.complete(<ym.Point>[]);
+          return;
+        }
+        completer.complete(routes.first.geometry.points);
+      },
+      onDrivingRoutesError: (_) {
+        if (!completer.isCompleted) completer.complete(<ym.Point>[]);
+      },
+    );
+
+    drivingSession = router.requestRoutes(
+      const yd.DrivingOptions(routesCount: 1),
+      const yd.DrivingVehicleOptions(),
+      listener,
+      points: <ym.RequestPoint>[
+        ym.RequestPoint(source.point, ym.RequestPointType.Waypoint, null, null, null),
+        ym.RequestPoint(destination.point, ym.RequestPointType.Waypoint, null, null, null),
+      ],
+    );
+
+    return completer.future.timeout(
+      const Duration(seconds: 12),
+      onTimeout: () {
+        drivingSession?.cancel();
+        return <ym.Point>[];
+      },
+    );
+  }
+
   Future<void> estimate({int? generation}) async {
     if (from == null || to == null) return;
     final currentGeneration = generation ?? ++estimateGeneration;
@@ -3176,7 +3270,21 @@ class _OrderScreenState extends State<OrderScreen> {
       if (currentGeneration != estimateGeneration || !mounted) return;
 
       final mapData = data['route'];
-      final points = _normalizeRoutePoints(mapData, source, destination);
+      var points = _normalizeRoutePoints(mapData, source, destination);
+      _logLiveRoute(source, destination, points, 'TaxiMaster');
+
+      if (!widget.api.isDemo && !_routeLooksLikeRoadGeometry(points)) {
+        final roadPoints = await _buildYandexDrivingRoute(source, destination);
+        if (currentGeneration != estimateGeneration || !mounted) return;
+        if (_routeLooksLikeRoadGeometry(roadPoints)) {
+          points = roadPoints;
+          _logLiveRoute(source, destination, points, 'YandexDrivingRouter');
+        } else {
+          // LIVE must never draw an invented or straight-line route.
+          points = <ym.Point>[];
+          _logLiveRoute(source, destination, points, 'unavailable');
+        }
+      }
 
       final rawOptions = data['options'];
       final options = _validateEstimatedTariffs(rawOptions);
@@ -3853,7 +3961,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                     Expanded(
                                       child: Text(
                                         paymentMethod == 'card'
-                                            ? (selectedCard?['maskedPan'] ?? 'ATMOS').toString()
+                                            ? maskedCardLabel(selectedCard?['maskedPan'])
                                             : (widget.lang == 'uz' ? 'Naqd' : 'Наличные'),
                                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
                                       ),
@@ -4262,7 +4370,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                   child: const Icon(Icons.credit_card_rounded, color: Colors.white, size: 23),
                                 ),
                                 title: Text(
-                                  (card['maskedPan'] ?? 'ATMOS').toString(),
+                                  maskedCardLabel(card['maskedPan']),
                                   style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
                                 ),
                                 subtitle: Text(
@@ -6063,11 +6171,17 @@ class CardsScreen extends StatefulWidget {
     required this.lang,
     this.onMenu,
     this.onDone,
+    this.initialPaymentMethod,
+    this.initialCardId,
+    this.onPaymentChanged,
   });
   final ApiClient api;
   final String lang;
   final VoidCallback? onMenu;
   final VoidCallback? onDone;
+  final String? initialPaymentMethod;
+  final int? initialCardId;
+  final void Function(String method, int cardId)? onPaymentChanged;
 
   @override
   State<CardsScreen> createState() => _CardsScreenState();
@@ -6078,6 +6192,9 @@ class _CardsScreenState extends State<CardsScreen> {
   bool cardBindingAvailable = false;
   List<Map<String, dynamic>> cards = <Map<String, dynamic>>[];
   int defaultCardId = 0;
+  String selectedMethod = 'cash';
+  int selectedPaymentCardId = 0;
+  bool selectionInitialized = false;
   String? error;
 
   @override
@@ -6100,6 +6217,21 @@ class _CardsScreenState extends State<CardsScreen> {
           cards = list;
           defaultCardId = (map['defaultCardId'] as num?)?.toInt() ?? 0;
           cardBindingAvailable = map['cardBindingAvailable'] == true;
+          if (!selectionInitialized) {
+            final initialId = widget.initialCardId ?? 0;
+            selectedPaymentCardId = list.any((card) => (card['cardId'] as num?)?.toInt() == initialId)
+                ? initialId
+                : defaultCardId;
+            selectedMethod = widget.initialPaymentMethod == 'card' && selectedPaymentCardId > 0
+                ? 'card'
+                : (widget.initialPaymentMethod == 'cash'
+                    ? 'cash'
+                    : (selectedPaymentCardId > 0 ? 'card' : 'cash'));
+            selectionInitialized = true;
+          } else if (!list.any((card) => (card['cardId'] as num?)?.toInt() == selectedPaymentCardId)) {
+            selectedPaymentCardId = defaultCardId;
+            if (selectedPaymentCardId <= 0) selectedMethod = 'cash';
+          }
           loading = false;
         });
       }
@@ -6270,6 +6402,12 @@ class _CardsScreenState extends State<CardsScreen> {
   }
 
   Future<void> makeDefault(int id) async {
+    if (mounted) {
+      setState(() {
+        selectedMethod = 'card';
+        selectedPaymentCardId = id;
+      });
+    }
     try {
       await widget.api.post('/api/cards/' + id.toString() + '/default', const <String, dynamic>{});
       await load();
@@ -6347,12 +6485,13 @@ class _CardsScreenState extends State<CardsScreen> {
                       ...cards.asMap().entries.map((entry) {
                         final card = entry.value;
                         final id = (card['cardId'] as num?)?.toInt() ?? 0;
+                        final isSelected = selectedMethod == 'card' && id == selectedPaymentCardId;
                         final isDefault = id == defaultCardId || card['isDefault'] == true;
-                        final masked = (card['maskedPan'] ?? '••••').toString();
+                        final masked = maskedCardLabel(card['maskedPan']);
                         return Column(
                           children: <Widget>[
                             Material(
-                              color: isDefault ? selectedFill : Colors.transparent,
+                              color: isSelected ? selectedFill : Colors.transparent,
                               borderRadius: BorderRadius.circular(18),
                               child: ListTile(
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
@@ -6377,12 +6516,12 @@ class _CardsScreenState extends State<CardsScreen> {
                                       : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта'),
                                   style: TextStyle(color: scheme.onSurfaceVariant),
                                 ),
-                                trailing: isDefault
-                                    ? const Icon(Icons.check_circle_rounded, color: yangiLime, size: 30)
-                                    : IconButton(
-                                        icon: Icon(Icons.radio_button_unchecked_rounded, color: scheme.outline),
-                                        onPressed: () => makeDefault(id),
-                                      ),
+                                trailing: Icon(
+                                  isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                  color: isSelected ? yangiLime : scheme.outline,
+                                  size: 30,
+                                ),
+                                onTap: () => makeDefault(id),
                                 onLongPress: () => removeCard(id),
                               ),
                             ),
@@ -6427,7 +6566,7 @@ class _CardsScreenState extends State<CardsScreen> {
                 const SizedBox(height: 10),
                 Container(
                   decoration: BoxDecoration(
-                    color: selectedFill,
+                    color: selectedMethod == 'cash' ? selectedFill : scheme.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.65)),
                   ),
@@ -6450,7 +6589,14 @@ class _CardsScreenState extends State<CardsScreen> {
                       widget.lang == 'uz' ? 'Barcha safarlarda mavjud' : 'Доступно для всех поездок',
                       style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
-                    trailing: Icon(Icons.payments_outlined, color: scheme.onSurfaceVariant),
+                    trailing: Icon(
+                      selectedMethod == 'cash'
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      color: selectedMethod == 'cash' ? yangiLime : scheme.outline,
+                      size: 30,
+                    ),
+                    onTap: () => setState(() => selectedMethod = 'cash'),
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -6458,6 +6604,7 @@ class _CardsScreenState extends State<CardsScreen> {
                   height: 56,
                   child: FilledButton(
                     onPressed: () {
+                      widget.onPaymentChanged?.call(selectedMethod, selectedPaymentCardId);
                       if (widget.onDone != null) {
                         widget.onDone!();
                       } else {
