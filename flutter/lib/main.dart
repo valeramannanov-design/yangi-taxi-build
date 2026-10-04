@@ -6908,27 +6908,62 @@ class _RideScreenState extends State<RideScreen> {
 
                     const SizedBox(height: 10),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(18),
+                        color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: scheme.outlineVariant.withValues(alpha: 0.65),
+                        ),
                       ),
                       child: Row(
                         children: <Widget>[
                           Container(
-                            width: 13,
-                            height: 13,
-                            decoration: const BoxDecoration(color: yangiGreen, shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              activeRide && destination.isNotEmpty ? destination : source,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: yangiLime.withValues(alpha: dark ? 0.14 : 0.18),
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            child: Icon(
+                              activeRide
+                                  ? Icons.flag_rounded
+                                  : Icons.location_on_rounded,
+                              color: dark ? yangiLime : yangiGreen,
+                              size: 21,
                             ),
                           ),
+                          const SizedBox(width: 11),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  activeRide
+                                      ? (widget.lang == 'uz' ? 'Yakuniy manzil' : 'Конечная точка')
+                                      : (widget.lang == 'uz' ? 'Olib ketish joyi' : 'Точка подачи'),
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  activeRide && destination.isNotEmpty
+                                      ? destination
+                                      : source,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
                         ],
                       ),
                     ),
@@ -6937,45 +6972,24 @@ class _RideScreenState extends State<RideScreen> {
                       const SizedBox(height: 10),
                       Row(
                         children: <Widget>[
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: driverPhone.isEmpty ? null : callDriver,
-                              icon: const Icon(Icons.call_rounded),
-                              label: Text(widget.lang == 'uz' ? 'Qo‘ng‘iroq' : 'Позвонить'),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(48),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              ),
-                            ),
+                          tripAction(
+                            Icons.share_rounded,
+                            widget.lang == 'uz' ? 'Safarni ulashish' : 'Поделиться\nпоездкой',
+                            onTap: shareTrip,
                           ),
                           const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: driverPhone.isEmpty ? null : messageDriver,
-                              icon: const Icon(Icons.chat_bubble_outline_rounded),
-                              label: Text(widget.lang == 'uz' ? 'Yozish' : 'Написать'),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(48),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              ),
-                            ),
+                          tripAction(
+                            Icons.shield_outlined,
+                            widget.lang == 'uz' ? 'Xavfsizlik' : 'Безопасность',
+                            onTap: showSafety,
+                          ),
+                          const SizedBox(width: 8),
+                          tripAction(
+                            Icons.more_horiz_rounded,
+                            widget.lang == 'uz' ? 'Yordam' : 'Помощь',
+                            onTap: showHelp,
                           ),
                         ],
-                      ),
-                    ],
-
-                    if (activeRide) ...<Widget>[
-                      const SizedBox(height: 10),
-                      FilledButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(Icons.shield_rounded),
-                        label: Text(widget.lang == 'uz' ? 'Safar xavfsizligi' : 'Безопасность поездки'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: yangiLime,
-                          foregroundColor: yangiGraphite,
-                          minimumSize: const Size.fromHeight(52),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
-                        ),
                       ),
                     ],
 
