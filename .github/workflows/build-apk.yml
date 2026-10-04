@@ -80,8 +80,16 @@ jobs:
             --dart-define=BACKEND_URL="${BACKEND_URL:-demo}"
       - name: Prepare artifact
         run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.8.4-live-tariff-verification.apk
+      - name: Prepare backend package
+        run: |
+          zip -r Yangi-Taxi-backend-v1.8.4-live.zip backend -x "backend/.env"
       - uses: actions/upload-artifact@v4
         with:
           name: Yangi-Taxi-v1.8.4-live-tariff-verification-apk
           path: Yangi-Taxi-v1.8.4-live-tariff-verification.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Yangi-Taxi-backend-v1.8.4-live
+          path: Yangi-Taxi-backend-v1.8.4-live.zip
           if-no-files-found: error
