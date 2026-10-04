@@ -7721,6 +7721,216 @@ class _RideScreenState extends State<RideScreen> {
   }
 }
 
+Future<void> showDriverRatingDialog(
+  BuildContext context,
+  ApiClient api,
+  String lang,
+  int orderId, {
+  String driverName = '',
+}) async {
+  int rating = 5;
+  final selectedTags = <String>{};
+  final comment = TextEditingController();
+
+  String ratingText(int value) {
+    if (lang == 'uz') {
+      return switch (value) {
+        1 => 'Yaxshi emas',
+        2 => 'Qoniqarsiz',
+        3 => 'Yaxshi',
+        4 => 'Juda yaxshi',
+        _ => 'A’lo',
+      };
+    }
+    return switch (value) {
+      1 => 'Не понравилось',
+      2 => 'Можно лучше',
+      3 => 'Хорошо',
+      4 => 'Очень хорошо',
+      _ => 'Отлично',
+    };
+  }
+
+  final tags = <MapEntry<String, String>>[
+    MapEntry<String, String>('clean', lang == 'uz' ? 'Toza' : 'Чисто'),
+    MapEntry<String, String>('polite', lang == 'uz' ? 'Xushmuomala' : 'Вежливо'),
+    MapEntry<String, String>('safe', lang == 'uz' ? 'Xavfsiz' : 'Безопасно'),
+    MapEntry<String, String>('comfortable', lang == 'uz' ? 'Qulay' : 'Комфортно'),
+  ];
+
+  final submit = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) => StatefulBuilder(
+      builder: (context, setSheetState) {
+        final scheme = Theme.of(context).colorScheme;
+        final dark = Theme.of(context).brightness == Brightness.dark;
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+          child: Container(
+            decoration: BoxDecoration(
+              color: dark ? const Color(0xFF101314) : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: scheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    width: 62,
+                    height: 62,
+                    decoration: BoxDecoration(
+                      color: yangiLime.withValues(alpha: 0.20),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.check_rounded, size: 34, color: yangiGreen),
+                  ),
+                  const SizedBox(height: 13),
+                  Text(
+                    lang == 'uz' ? 'Safarni baholang' : 'Оцените поездку',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.55,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    driverName.trim().isEmpty
+                        ? (lang == 'uz'
+                            ? 'Fikringiz Yangi Taxi xizmatini yaxshilaydi'
+                            : 'Ваш отзыв помогает улучшать Yangi Taxi')
+                        : (lang == 'uz'
+                            ? driverName.trim() + ' bilan safar'
+                            : 'Поездка с ' + driverName.trim()),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
+                  ),
+                  const SizedBox(height: 17),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List<Widget>.generate(
+                      5,
+                      (index) => IconButton(
+                        onPressed: () => setSheetState(() => rating = index + 1),
+                        iconSize: 38,
+                        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                        icon: Icon(
+                          index < rating ? Icons.star_rounded : Icons.star_outline_rounded,
+                          color: index < rating ? const Color(0xFFFFB300) : scheme.outline,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    ratingText(rating),
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 17),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: tags.map((tag) {
+                        final selected = selectedTags.contains(tag.key);
+                        return ChoiceChip(
+                          selected: selected,
+                          showCheckmark: false,
+                          selectedColor: yangiLime,
+                          label: Text(
+                            tag.value,
+                            style: TextStyle(
+                              color: selected ? yangiGraphite : scheme.onSurface,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          onSelected: (_) => setSheetState(() {
+                            if (selected) {
+                              selectedTags.remove(tag.key);
+                            } else {
+                              selectedTags.add(tag.key);
+                            }
+                          }),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: comment,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      hintText: lang == 'uz'
+                          ? 'Izoh yozing (ixtiyoriy)'
+                          : 'Напишите отзыв (необязательно)',
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(sheetContext, true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF101719),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+                    ),
+                    child: Text(lang == 'uz' ? 'Tayyor' : 'Готово'),
+                  ),
+                  const SizedBox(height: 6),
+                  TextButton(
+                    onPressed: () => Navigator.pop(sheetContext, false),
+                    child: Text(lang == 'uz' ? 'Keyinroq' : 'Позже'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+
+  if (submit != true) {
+    comment.dispose();
+    return;
+  }
+
+  try {
+    await api.post('/api/orders/' + orderId.toString() + '/rating', <String, dynamic>{
+      'rating': rating,
+      'tags': selectedTags.toList(),
+      'comment': comment.text.trim(),
+    });
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(lang == 'uz' ? 'Bahoyingiz yuborildi' : 'Спасибо! Оценка отправлена'),
+        ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  } finally {
+    comment.dispose();
+  }
+}
+
+
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, required this.api, required this.lang, required this.onMenu});
   final ApiClient api;
