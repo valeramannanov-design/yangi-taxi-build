@@ -6905,7 +6905,16 @@ class _RideScreenState extends State<RideScreen> {
   @override
   void didUpdateWidget(covariant RideScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.orderId != widget.orderId) refresh();
+    if (oldWidget.orderId != widget.orderId) {
+      setState(() {
+        order = null;
+        driver = null;
+        error = null;
+        roadRoute = <ym.Point>[];
+        loading = true;
+      });
+      refresh();
+    }
   }
 
   @override
@@ -7081,10 +7090,34 @@ class _RideScreenState extends State<RideScreen> {
         }
       }
     } catch (e) {
-      if (mounted) setState(() {
-        loading = false;
-        error = e.toString();
-      });
+      final message = e.toString().trim();
+      final normalized = message.toLowerCase();
+      final orderMissing = normalized.contains('order not found') ||
+          normalized.contains('заказ не найден') ||
+          normalized == 'not found';
+
+      if (mounted) {
+        if (orderMissing) {
+          setState(() {
+            order = <String, dynamic>{
+              ...?order,
+              'order_id': widget.orderId ?? order?['order_id'] ?? 0,
+              'state_kind': 'aborted',
+            };
+            driver = null;
+            roadRoute = <ym.Point>[];
+            lastRouteStart = null;
+            lastRouteEnd = null;
+            loading = false;
+            error = null;
+          });
+        } else {
+          setState(() {
+            loading = false;
+            error = message;
+          });
+        }
+      }
     }
   }
 
@@ -7277,7 +7310,7 @@ class _RideScreenState extends State<RideScreen> {
     }
 
     final o = order!;
-    final state = (o['state_kind'] ?? '').toString();
+    final rawState = (o['state_kind'] ?? '').toString();
     final pickup = point(o['source_lat'], o['source_lon']);
     final destinationPoint = point(o['destination_lat'], o['destination_lon']);
     final center = driver ?? pickup ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
@@ -7289,6 +7322,13 @@ class _RideScreenState extends State<RideScreen> {
     final driverName = (o['driver_name'] ?? '').toString().trim();
     final driverPhone = (o['driver_phone'] ?? o['phone'] ?? '').toString().trim();
     final rating = (o['driver_rating'] ?? o['rating'] ?? '').toString().trim();
+    final crewId = int.tryParse((o['crew_id'] ?? '').toString()) ?? 0;
+    final hasAssignedCrew =
+        crewId > 0 || driver != null || driverName.isNotEmpty || driverPhone.isNotEmpty;
+    final state = ((rawState == 'driver_assigned' || rawState == 'car_at_place') &&
+            !hasAssignedCrew)
+        ? 'new_order'
+        : rawState;
     final tariffKey = (o['tariff_key'] ?? 'start').toString();
     final source = (o['source'] ?? '').toString().trim();
     final destination = (o['destination'] ?? '').toString().trim();
@@ -7352,7 +7392,7 @@ class _RideScreenState extends State<RideScreen> {
       if (atPlace) return widget.lang == 'uz' ? 'Mashina yetib keldi' : 'Машина подъехала';
       if (activeRide) return widget.lang == 'uz' ? 'Yo‘lda' : 'В пути';
       if (finished) return widget.lang == 'uz' ? 'Safar tugadi' : 'Поездка завершена';
-      if (aborted) return widget.lang == 'uz' ? 'Buyurtma bekor qilindi' : 'Заказ отменён';
+      if (aborted) return widget.lang == 'uz' ? 'Buyurtma bekor qilindi' : 'Заказ отменен';
       return stateLabel(state);
     }
 
@@ -7380,6 +7420,11 @@ class _RideScreenState extends State<RideScreen> {
             : parts.join(' • ');
       }
       if (finished) return widget.lang == 'uz' ? 'Yangi Taxi bilan safaringiz uchun rahmat' : 'Спасибо, что выбрали Yangi Taxi';
+      if (aborted) {
+        return widget.lang == 'uz'
+            ? 'Bu buyurtma endi faol emas'
+            : 'Этот заказ больше не активен';
+      }
       return widget.lang == 'uz' ? 'Safar faol emas' : 'Поездка больше не активна';
     }
 
@@ -7421,14 +7466,17 @@ class _RideScreenState extends State<RideScreen> {
                   const SizedBox(height: 3),
                   Row(
                     children: <Widget>[
-                      const Icon(Icons.star_rounded, size: 16, color: Color(0xFFFFB300)),
-                      const SizedBox(width: 3),
-                      Text(
-                        rating.isEmpty ? '4.9' : rating,
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
-                      ),
-                      if (car.isNotEmpty) ...<Widget>[
+                      if (rating.isNotEmpty) ...<Widget>[
+                        const Icon(Icons.star_rounded, size: 16, color: Color(0xFFFFB300)),
+                        const SizedBox(width: 3),
+                        Text(
+                          rating,
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                        ),
+                      ],
+                      if (rating.isNotEmpty && car.isNotEmpty)
                         Text('  •  ', style: TextStyle(color: scheme.onSurfaceVariant)),
+                      if (car.isNotEmpty)
                         Flexible(
                           child: Text(
                             car,
@@ -7437,7 +7485,6 @@ class _RideScreenState extends State<RideScreen> {
                             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11.5),
                           ),
                         ),
-                      ],
                     ],
                   ),
                   if (number.isNotEmpty) ...<Widget>[
@@ -7459,9 +7506,9 @@ class _RideScreenState extends State<RideScreen> {
               ),
             ),
             SizedBox(
-              width: 86,
-              height: 52,
-              child: _TariffVehicleArt(kind: tariffKey, selected: false, available: true),
+              width: 112,
+              height: 62,
+              child: _DriverAssignedVehicleArt(kind: tariffKey),
             ),
           ],
         ),
@@ -7606,14 +7653,44 @@ class _RideScreenState extends State<RideScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text(title(), style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 7),
-            Text(subtitle(), style: TextStyle(color: scheme.onSurfaceVariant)),
+            Center(
+              child: Container(
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer.withValues(alpha: 0.70),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.close_rounded, color: scheme.error, size: 34),
+              ),
+            ),
             const SizedBox(height: 14),
-            FilledButton(
-              onPressed: refresh,
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-              child: Text(widget.lang == 'uz' ? 'Yangilash' : 'Обновить'),
+            Text(
+              title(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.6,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              subtitle(),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
+            ),
+            const SizedBox(height: 17),
+            FilledButton.icon(
+              onPressed: widget.onMenu,
+              icon: const Icon(Icons.add_road_rounded),
+              label: Text(widget.lang == 'uz' ? 'Yangi safar' : 'Новая поездка'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF101719),
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+              ),
             ),
           ],
         );
@@ -7672,8 +7749,10 @@ class _RideScreenState extends State<RideScreen> {
                 ],
               ),
             ),
-          driverBlock(),
-          const SizedBox(height: 10),
+          if (hasAssignedCrew) ...<Widget>[
+            driverBlock(),
+            const SizedBox(height: 10),
+          ],
           Row(
             children: <Widget>[
               actionButton(Icons.call_rounded, widget.lang == 'uz' ? 'Qo‘ng‘iroq' : 'Позвонить', driverPhone.isEmpty ? null : callDriver),
