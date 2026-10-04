@@ -828,11 +828,36 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     final scheme = ColorScheme.fromSeed(
       seedColor: yangiLime,
       brightness: Brightness.light,
-      surface: Colors.white,
+      surface: const Color(0xFFF7F8F8),
+    ).copyWith(
+      primary: yangiGraphite,
+      onPrimary: Colors.white,
+      secondary: yangiGreen,
+      surface: const Color(0xFFF7F8F8),
+      surfaceContainerLowest: Colors.white,
+      surfaceContainerLow: const Color(0xFFF1F3F3),
+      surfaceContainer: const Color(0xFFEBEEEE),
+      surfaceContainerHigh: const Color(0xFFE6E9E9),
+      surfaceContainerHighest: const Color(0xFFDDE1E1),
+      outline: const Color(0xFF9BA2A2),
+      outlineVariant: const Color(0xFFD0D5D5),
     );
     final darkScheme = ColorScheme.fromSeed(
       seedColor: yangiLime,
       brightness: Brightness.dark,
+      surface: const Color(0xFF0B0D0E),
+    ).copyWith(
+      primary: yangiLime,
+      onPrimary: yangiGraphite,
+      secondary: yangiGreen,
+      surface: const Color(0xFF0B0D0E),
+      surfaceContainerLowest: const Color(0xFF090B0C),
+      surfaceContainerLow: const Color(0xFF111415),
+      surfaceContainer: const Color(0xFF151819),
+      surfaceContainerHigh: const Color(0xFF1A1E1F),
+      surfaceContainerHighest: const Color(0xFF222627),
+      outline: const Color(0xFF747B7D),
+      outlineVariant: const Color(0xFF303638),
     );
     final resolvedThemeMode = switch (themeSetting) {
       'light' => ThemeMode.light,
@@ -846,23 +871,24 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
       theme: ThemeData(
         colorScheme: scheme,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF4F5F7),
+        scaffoldBackgroundColor: const Color(0xFFF7F8F8),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
+          backgroundColor: Color(0xFFF7F8F8),
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           centerTitle: false,
         ),
         navigationBarTheme: const NavigationBarThemeData(
           height: 68,
-          backgroundColor: Colors.white,
+          backgroundColor: Color(0xFFF7F8F8),
           indicatorColor: Color(0xFFDFFF9A),
-          elevation: 8,
+          elevation: 0,
         ),
         cardTheme: const CardThemeData(
           elevation: 0,
           margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(20))),
+          color: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(22))),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
@@ -877,23 +903,23 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
       darkTheme: ThemeData(
         colorScheme: darkScheme,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFF111315),
+        scaffoldBackgroundColor: const Color(0xFF0B0D0E),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF17191C),
+          backgroundColor: Color(0xFF0B0D0E),
           surfaceTintColor: Colors.transparent,
           elevation: 0,
         ),
         navigationBarTheme: const NavigationBarThemeData(
           height: 68,
-          backgroundColor: Color(0xFF17191C),
-          indicatorColor: Color(0xFF355100),
-          elevation: 8,
+          backgroundColor: Color(0xFF0B0D0E),
+          indicatorColor: Color(0xFF2E4A00),
+          elevation: 0,
         ),
         cardTheme: const CardThemeData(
           elevation: 0,
           margin: EdgeInsets.zero,
-          color: Color(0xFF1B1E21),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(20))),
+          color: Color(0xFF151819),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(22))),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
