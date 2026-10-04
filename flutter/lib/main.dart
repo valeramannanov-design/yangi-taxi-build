@@ -2943,6 +2943,55 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
   }
 }
 
+class _TariffSpecPill extends StatelessWidget {
+  const _TariffSpecPill({
+    required this.icon,
+    required this.value,
+    required this.selected,
+  });
+
+  final IconData icon;
+  final String value;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final foreground = selected
+        ? const Color(0xFFD5DADB)
+        : scheme.onSurfaceVariant;
+
+    return Container(
+      height: 27,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: selected
+            ? Colors.white.withValues(alpha: 0.08)
+            : (dark
+                ? Colors.white.withValues(alpha: 0.05)
+                : const Color(0xFFF3F5F5)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 14, color: foreground),
+          const SizedBox(width: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class OrderScreen extends StatefulWidget {
   const OrderScreen({
     super.key,
@@ -4825,7 +4874,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
                           if (estimating && destinationReady)
                             SizedBox(
-                              height: 226,
+                              height: 258,
                               child: Center(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
@@ -4846,244 +4895,371 @@ class _OrderScreenState extends State<OrderScreen> {
                               ),
                             )
                           else
-                            SizedBox(
-                              height: 214,
-                              child: ListView.separated(
-                                padding: const EdgeInsets.fromLTRB(2, 0, 14, 0),
-                                clipBehavior: Clip.hardEdge,
-                                physics: const BouncingScrollPhysics(),
-                                scrollDirection: Axis.horizontal,
-                                itemCount: tariffs.length,
-                                separatorBuilder: (_, __) => const SizedBox(width: 10),
-                                itemBuilder: (context, index) {
-                                  final option = tariffs[index];
-                                  final key = (option['key'] ?? '').toString();
-                                  final available = option['available'] == true;
-                                  final isSelected = available && key == selectedTariffKey;
-                                  final price = (option['cost'] as num?)?.toDouble();
-                                  final title = widget.lang == 'uz'
-                                      ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
-                                      : (option['nameRu'] ?? key).toString();
-                                  final saving =
-                                      (option['effectiveSavingPercentVsStart'] as num?)?.toDouble();
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final cardWidth = math.min(
+                                  218.0,
+                                  math.max(172.0, (constraints.maxWidth - 12) / 2),
+                                );
+                                return SizedBox(
+                                  height: 258,
+                                  child: ListView.separated(
+                                    padding: const EdgeInsets.fromLTRB(2, 2, 14, 8),
+                                    clipBehavior: Clip.none,
+                                    physics: const BouncingScrollPhysics(),
+                                    scrollDirection: Axis.horizontal,
+                                    itemCount: tariffs.length,
+                                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                                    itemBuilder: (context, index) {
+                                      final option = tariffs[index];
+                                      final key = (option['key'] ?? '').toString();
+                                      final available = option['available'] == true;
+                                      final isSelected =
+                                          available && key == selectedTariffKey;
+                                      final price =
+                                          (option['cost'] as num?)?.toDouble();
+                                      final title = widget.lang == 'uz'
+                                          ? (option['nameUz'] ??
+                                                  option['nameRu'] ??
+                                                  key)
+                                              .toString()
+                                          : (option['nameRu'] ?? key).toString();
+                                      final saving =
+                                          (option['effectiveSavingPercentVsStart']
+                                                  as num?)
+                                              ?.toDouble();
 
-                                  return SizedBox(
-                                    width: 158,
-                                    child: Opacity(
-                                      opacity: available ? 1 : 0.52,
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 180),
-                                        decoration: BoxDecoration(
-                                          color: isSelected
-                                              ? const Color(0xFF151819)
-                                              : (dark ? const Color(0xFF191D1E) : Colors.white),
-                                          borderRadius: BorderRadius.circular(24),
-                                          border: Border.all(
-                                            color: isSelected
-                                                ? yangiLime
-                                                : (dark
-                                                    ? const Color(0xFF2A3031)
-                                                    : const Color(0x12000000)),
-                                            width: isSelected ? 2 : 1,
-                                          ),
-                                          boxShadow: isSelected
-                                              ? <BoxShadow>[
-                                                  BoxShadow(
-                                                    color: yangiLime.withValues(alpha: 0.15),
-                                                    blurRadius: 22,
-                                                    offset: const Offset(0, 8),
-                                                  ),
-                                                ]
-                                              : (dark
-                                                  ? null
-                                                  : const <BoxShadow>[
+                                      final cardBackground = isSelected
+                                          ? const Color(0xFF101719)
+                                          : (dark
+                                              ? const Color(0xFF171B1C)
+                                              : Colors.white);
+                                      final primaryText = isSelected
+                                          ? Colors.white
+                                          : scheme.onSurface;
+                                      final secondaryText = isSelected
+                                          ? const Color(0xFFC4C9CA)
+                                          : scheme.onSurfaceVariant;
+
+                                      return SizedBox(
+                                        width: cardWidth,
+                                        child: Opacity(
+                                          opacity: available ? 1 : 0.48,
+                                          child: AnimatedContainer(
+                                            duration:
+                                                const Duration(milliseconds: 220),
+                                            curve: Curves.easeOutCubic,
+                                            decoration: BoxDecoration(
+                                              color: cardBackground,
+                                              borderRadius:
+                                                  BorderRadius.circular(26),
+                                              border: Border.all(
+                                                color: isSelected
+                                                    ? yangiLime
+                                                    : (dark
+                                                        ? const Color(0xFF343A3C)
+                                                        : const Color(0xFFE3E6E6)),
+                                                width: isSelected ? 2.6 : 1.2,
+                                              ),
+                                              boxShadow: isSelected
+                                                  ? <BoxShadow>[
                                                       BoxShadow(
-                                                        color: Color(0x0E000000),
-                                                        blurRadius: 16,
-                                                        offset: Offset(0, 6),
+                                                        color: yangiLime
+                                                            .withValues(alpha: 0.14),
+                                                        blurRadius: 24,
+                                                        spreadRadius: 1,
+                                                        offset:
+                                                            const Offset(0, 9),
                                                       ),
-                                                    ]),
-                                        ),
-                                        child: Material(
-                                          color: Colors.transparent,
-                                          borderRadius: BorderRadius.circular(22),
-                                          clipBehavior: Clip.antiAlias,
-                                          child: InkWell(
-                                            onTap: available ? () => selectTariff(key) : null,
-                                            child: Padding(
-                                              padding: const EdgeInsets.fromLTRB(11, 9, 11, 11),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: <Widget>[
-                                                  SizedBox(
-                                                    height: 66,
-                                                    child: Stack(
-                                                      children: <Widget>[
-                                                        Align(
-                                                          alignment: Alignment.center,
-                                                          child: Image.asset(
-                                                            tariffAsset(key),
-                                                            height: 58,
-                                                            fit: BoxFit.contain,
-                                                            filterQuality: FilterQuality.high,
-                                                            errorBuilder: (_, __, ___) => Icon(
-                                                              tariffIcon(key),
-                                                              size: 46,
-                                                              color: scheme.onSurfaceVariant,
-                                                            ),
+                                                    ]
+                                                  : (dark
+                                                      ? const <BoxShadow>[]
+                                                      : const <BoxShadow>[
+                                                          BoxShadow(
+                                                            color:
+                                                                Color(0x10000000),
+                                                            blurRadius: 18,
+                                                            offset:
+                                                                Offset(0, 7),
                                                           ),
-                                                        ),
-                                                        Positioned(
-                                                          top: 0,
-                                                          right: 0,
-                                                          child: Container(
-                                                            width: 24,
-                                                            height: 24,
-                                                            decoration: BoxDecoration(
-                                                              color: isSelected
-                                                                  ? yangiLime
-                                                                  : Colors.transparent,
-                                                              shape: BoxShape.circle,
-                                                              border: Border.all(
-                                                                color: isSelected
-                                                                    ? yangiLime
-                                                                    : scheme.outline,
-                                                                width: 1.5,
-                                                              ),
-                                                            ),
-                                                            child: isSelected
-                                                                ? const Icon(
-                                                                    Icons.check_rounded,
-                                                                    size: 16,
-                                                                    color: yangiGraphite,
-                                                                  )
-                                                                : null,
-                                                          ),
-                                                        ),
-                                                        if (saving != null && saving > 0)
-                                                          Positioned(
-                                                            left: 0,
-                                                            top: 0,
-                                                            child: Container(
-                                                              padding: const EdgeInsets.symmetric(
-                                                                horizontal: 6,
-                                                                vertical: 3,
-                                                              ),
-                                                              decoration: BoxDecoration(
-                                                                color: yangiLime,
-                                                                borderRadius: BorderRadius.circular(8),
-                                                              ),
-                                                              child: Text(
-                                                                '−' + saving.round().toString() + '%',
-                                                                style: const TextStyle(
-                                                                  color: yangiGraphite,
-                                                                  fontSize: 10,
-                                                                  fontWeight: FontWeight.w900,
+                                                        ]),
+                                            ),
+                                            child: Material(
+                                              color: Colors.transparent,
+                                              borderRadius:
+                                                  BorderRadius.circular(25),
+                                              clipBehavior: Clip.antiAlias,
+                                              child: InkWell(
+                                                onTap: available
+                                                    ? () => selectTariff(key)
+                                                    : null,
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.fromLTRB(
+                                                    14,
+                                                    12,
+                                                    14,
+                                                    13,
+                                                  ),
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment.start,
+                                                    children: <Widget>[
+                                                      SizedBox(
+                                                        height: 88,
+                                                        child: Stack(
+                                                          clipBehavior: Clip.none,
+                                                          children: <Widget>[
+                                                            Center(
+                                                              child: SizedBox(
+                                                                width: 92,
+                                                                height: 86,
+                                                                child:
+                                                                    _TariffVehicleArt(
+                                                                  kind: key,
+                                                                  selected:
+                                                                      isSelected,
+                                                                  available:
+                                                                      available,
                                                                 ),
                                                               ),
                                                             ),
+                                                            Positioned(
+                                                              right: 0,
+                                                              top: 0,
+                                                              child:
+                                                                  AnimatedContainer(
+                                                                duration:
+                                                                    const Duration(
+                                                                        milliseconds:
+                                                                            180),
+                                                                width: 31,
+                                                                height: 31,
+                                                                decoration:
+                                                                    BoxDecoration(
+                                                                  color: isSelected
+                                                                      ? yangiLime
+                                                                      : Colors
+                                                                          .transparent,
+                                                                  shape: BoxShape
+                                                                      .circle,
+                                                                  border:
+                                                                      Border.all(
+                                                                    color: isSelected
+                                                                        ? yangiLime
+                                                                        : secondaryText
+                                                                            .withValues(
+                                                                                alpha:
+                                                                                    0.65),
+                                                                    width: 2,
+                                                                  ),
+                                                                ),
+                                                                child: isSelected
+                                                                    ? const Icon(
+                                                                        Icons
+                                                                            .check_rounded,
+                                                                        size:
+                                                                            20,
+                                                                        color:
+                                                                            yangiGraphite,
+                                                                      )
+                                                                    : null,
+                                                              ),
+                                                            ),
+                                                            if (saving != null &&
+                                                                saving > 0)
+                                                              Positioned(
+                                                                left: 0,
+                                                                top: 0,
+                                                                child:
+                                                                    Container(
+                                                                  padding:
+                                                                      const EdgeInsets
+                                                                          .symmetric(
+                                                                    horizontal:
+                                                                        8,
+                                                                    vertical: 5,
+                                                                  ),
+                                                                  decoration:
+                                                                      BoxDecoration(
+                                                                    color:
+                                                                        yangiLime,
+                                                                    borderRadius:
+                                                                        BorderRadius
+                                                                            .circular(
+                                                                                10),
+                                                                  ),
+                                                                  child: Text(
+                                                                    '−' +
+                                                                        saving
+                                                                            .round()
+                                                                            .toString() +
+                                                                        '%',
+                                                                    style:
+                                                                        const TextStyle(
+                                                                      color:
+                                                                          yangiGraphite,
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w900,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 3),
+                                                      Text(
+                                                        title,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
+                                                          color: primaryText,
+                                                          fontSize: 20,
+                                                          height: 1,
+                                                          fontWeight:
+                                                              FontWeight.w900,
+                                                          letterSpacing: -0.55,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 9),
+                                                      Row(
+                                                        children: <Widget>[
+                                                          _TariffSpecPill(
+                                                            icon: Icons
+                                                                .person_rounded,
+                                                            value:
+                                                                tariffPassengers(
+                                                                        key)
+                                                                    .toString(),
+                                                            selected:
+                                                                isSelected,
                                                           ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    title,
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      color: isSelected ? Colors.white : scheme.onSurface,
-                                                      fontSize: 16,
-                                                      fontWeight: FontWeight.w900,
-                                                      letterSpacing: -0.3,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    children: <Widget>[
-                                                      Icon(
-                                                        Icons.person_rounded,
-                                                        size: 14,
-                                                        color: scheme.onSurfaceVariant,
+                                                          const SizedBox(
+                                                              width: 7),
+                                                          _TariffSpecPill(
+                                                            icon: key ==
+                                                                        'delivery' ||
+                                                                    key ==
+                                                                        'cargo'
+                                                                ? Icons
+                                                                    .inventory_2_outlined
+                                                                : Icons
+                                                                    .luggage_rounded,
+                                                            value:
+                                                                tariffBaggage(
+                                                                        key)
+                                                                    .toString(),
+                                                            selected:
+                                                                isSelected,
+                                                          ),
+                                                        ],
                                                       ),
-                                                      const SizedBox(width: 2),
+                                                      const SizedBox(height: 9),
                                                       Text(
-                                                        tariffPassengers(key).toString(),
+                                                        tariffDescription(key),
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
                                                         style: TextStyle(
-                                                          fontSize: 11,
-                                                          color: isSelected ? const Color(0xFFBFC5C6) : scheme.onSurfaceVariant,
-                                                          fontWeight: FontWeight.w700,
+                                                          height: 1.18,
+                                                          fontSize: 11.5,
+                                                          color:
+                                                              secondaryText,
+                                                          fontWeight:
+                                                              FontWeight.w500,
                                                         ),
                                                       ),
-                                                      const SizedBox(width: 9),
-                                                      Icon(
-                                                        key == 'delivery' || key == 'cargo'
-                                                            ? Icons.inventory_2_outlined
-                                                            : Icons.luggage_rounded,
-                                                        size: 13,
-                                                        color: scheme.onSurfaceVariant,
+                                                      const Spacer(),
+                                                      Row(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .end,
+                                                        children: <Widget>[
+                                                          Expanded(
+                                                            child: Text(
+                                                              !available
+                                                                  ? (widget.lang ==
+                                                                          'uz'
+                                                                      ? 'Mavjud emas'
+                                                                      : 'Недоступен')
+                                                                  : price !=
+                                                                          null
+                                                                      ? moneyLabel(
+                                                                          price)
+                                                                      : (widget.lang ==
+                                                                              'uz'
+                                                                          ? 'Yo‘nalishdan keyin'
+                                                                          : 'После маршрута'),
+                                                              maxLines: 1,
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                              style: TextStyle(
+                                                                fontSize: 17,
+                                                                height: 1,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w900,
+                                                                letterSpacing:
+                                                                    -0.25,
+                                                                color: available
+                                                                    ? (isSelected
+                                                                        ? yangiLime
+                                                                        : primaryText)
+                                                                    : secondaryText,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          if (isSelected)
+                                                            const Icon(
+                                                              Icons
+                                                                  .arrow_forward_rounded,
+                                                              size: 20,
+                                                              color: yangiLime,
+                                                            ),
+                                                        ],
                                                       ),
-                                                      const SizedBox(width: 2),
-                                                      Text(
-                                                        tariffBaggage(key).toString(),
-                                                        style: TextStyle(
-                                                          fontSize: 11,
-                                                          color: isSelected ? const Color(0xFFBFC5C6) : scheme.onSurfaceVariant,
-                                                          fontWeight: FontWeight.w700,
+                                                      if (destinationReady &&
+                                                          routeMinutes != null)
+                                                        Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .only(top: 5),
+                                                          child: Text(
+                                                            '~ ' +
+                                                                routeMinutes!
+                                                                    .toString() +
+                                                                (widget.lang ==
+                                                                        'uz'
+                                                                    ? ' daq'
+                                                                    : ' мин'),
+                                                            style: TextStyle(
+                                                              fontSize: 10.5,
+                                                              color:
+                                                                  secondaryText,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                            ),
+                                                          ),
                                                         ),
-                                                      ),
                                                     ],
                                                   ),
-                                                  const SizedBox(height: 5),
-                                                  Text(
-                                                    tariffDescription(key),
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      height: 1.15,
-                                                      fontSize: 10.5,
-                                                      color: isSelected ? const Color(0xFFBFC5C6) : scheme.onSurfaceVariant,
-                                                    ),
-                                                  ),
-                                                  const Spacer(),
-                                                  Text(
-                                                    !available
-                                                        ? (widget.lang == 'uz'
-                                                            ? 'Mavjud emas'
-                                                            : 'Недоступен')
-                                                        : price != null
-                                                            ? moneyLabel(price)
-                                                            : (widget.lang == 'uz'
-                                                                ? 'Yo‘nalishdan keyin'
-                                                                : 'После маршрута'),
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.w900,
-                                                      color: available
-                                                          ? (isSelected ? yangiLime : scheme.onSurface)
-                                                          : scheme.onSurfaceVariant,
-                                                    ),
-                                                  ),
-                                                  if (destinationReady && routeMinutes != null)
-                                                    Text(
-                                                      '~ ' + routeMinutes!.toString() + ' мин',
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: scheme.onSurfaceVariant,
-                                                        fontWeight: FontWeight.w700,
-                                                      ),
-                                                    ),
-                                                ],
+                                                ),
                                               ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
+                                      );
+                                    },
+                                  ),
+                                );
+                              },
                             ),
 
                           const SizedBox(height: 10),
