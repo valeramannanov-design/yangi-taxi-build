@@ -62,7 +62,9 @@ jobs:
               gradle.write_text(g)
           PY
       - name: Check backend syntax
-        run: node --check backend/server.mjs
+        run: |
+          node --check backend/server.mjs
+          node --check backend/live-check.mjs
       - name: Get packages
         working-directory: flutter
         run: flutter pub get
