@@ -7374,15 +7374,89 @@ class _RideScreenState extends State<RideScreen> {
 
                     if (finished) ...<Widget>[
                       const SizedBox(height: 12),
-                      if (cost != null)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      Container(
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(
+                          color: yangiLime.withValues(alpha: dark ? 0.10 : 0.16),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: yangiLime.withValues(alpha: dark ? 0.24 : 0.36),
+                          ),
+                        ),
+                        child: Column(
                           children: <Widget>[
-                            Text(widget.lang == 'uz' ? 'Jami' : 'Итого', style: const TextStyle(fontWeight: FontWeight.w800)),
-                            Text(cost.toString() + ' so‘m', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                            Row(
+                              children: <Widget>[
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    color: yangiLime.withValues(alpha: dark ? 0.18 : 0.32),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.check_rounded,
+                                    color: dark ? yangiLime : yangiGreen,
+                                  ),
+                                ),
+                                const SizedBox(width: 11),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        widget.lang == 'uz'
+                                            ? 'Safar muvaffaqiyatli yakunlandi'
+                                            : 'Поездка успешно завершена',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        widget.lang == 'uz'
+                                            ? 'Yangi Taxi bilan safar qilganingiz uchun rahmat'
+                                            : 'Спасибо, что выбрали Yangi Taxi',
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (cost != null) ...<Widget>[
+                              const SizedBox(height: 13),
+                              Divider(
+                                height: 1,
+                                color: scheme.outlineVariant.withValues(alpha: 0.60),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: <Widget>[
+                                  Text(
+                                    widget.lang == 'uz' ? 'Jami' : 'Итого',
+                                    style: const TextStyle(fontWeight: FontWeight.w800),
+                                  ),
+                                  Text(
+                                    cost.toString() + ' so‘m',
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
-                      const SizedBox(height: 12),
+                      ),
+                      const SizedBox(height: 10),
                       FilledButton.icon(
                         onPressed: () => showDriverRatingDialog(
                           context,
@@ -7391,13 +7465,19 @@ class _RideScreenState extends State<RideScreen> {
                           (o['order_id'] as num).toInt(),
                           driverName: driverName,
                         ),
-                        icon: const Icon(Icons.star_outline_rounded),
-                        label: Text(widget.lang == 'uz' ? 'Haydovchini baholash' : 'Оценить водителя'),
+                        icon: const Icon(Icons.star_rounded),
+                        label: Text(
+                          widget.lang == 'uz'
+                              ? 'Haydovchini baholash'
+                              : 'Оценить водителя',
+                        ),
                         style: FilledButton.styleFrom(
                           backgroundColor: yangiLime,
                           foregroundColor: yangiGraphite,
-                          minimumSize: const Size.fromHeight(52),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+                          minimumSize: const Size.fromHeight(54),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
                         ),
                       ),
                     ],
@@ -7421,58 +7501,219 @@ Future<void> showDriverRatingDialog(
   String driverName = '',
 }) async {
   int rating = 5;
+  final selectedTags = <String>{};
   final comment = TextEditingController();
-  final submit = await showDialog<bool>(
+
+  String ratingText(int value) {
+    if (lang == 'uz') {
+      return switch (value) {
+        1 => 'Yaxshi emas',
+        2 => 'Qoniqarsiz',
+        3 => 'Yaxshi',
+        4 => 'Juda yaxshi',
+        _ => 'A’lo',
+      };
+    }
+    return switch (value) {
+      1 => 'Не понравилось',
+      2 => 'Можно лучше',
+      3 => 'Хорошо',
+      4 => 'Очень хорошо',
+      _ => 'Отлично',
+    };
+  }
+
+  final tags = <MapEntry<String, String>>[
+    MapEntry<String, String>('clean', lang == 'uz' ? 'Toza' : 'Чисто'),
+    MapEntry<String, String>('polite', lang == 'uz' ? 'Xushmuomala' : 'Вежливо'),
+    MapEntry<String, String>('safe', lang == 'uz' ? 'Xavfsiz' : 'Безопасно'),
+    MapEntry<String, String>('comfortable', lang == 'uz' ? 'Qulay' : 'Комфортно'),
+  ];
+
+  final submit = await showModalBottomSheet<bool>(
     context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        title: Text(lang == 'uz' ? 'Safarni baholang' : 'Оцените поездку'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (driverName.trim().isNotEmpty) ...<Widget>[
-              Text(driverName, style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
-            ],
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List<Widget>.generate(
-                5,
-                (i) => IconButton(
-                  onPressed: () => setDialogState(() => rating = i + 1),
-                  iconSize: 36,
-                  icon: Icon(i < rating ? Icons.star : Icons.star_border),
-                  color: const Color(0xFFFFB300),
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) => StatefulBuilder(
+      builder: (context, setSheetState) {
+        final theme = Theme.of(context);
+        final scheme = theme.colorScheme;
+        final dark = theme.brightness == Brightness.dark;
+
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: dark ? const Color(0xFF0C0E0F) : const Color(0xFFF9FAFA),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+              border: Border(
+                top: BorderSide(
+                  color: dark ? const Color(0xFF292E30) : const Color(0x14000000),
                 ),
               ),
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: comment,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: lang == 'uz' ? 'Izoh' : 'Комментарий',
-                hintText: lang == 'uz'
-                    ? 'Haydovchi va safar haqida fikringiz'
-                    : 'Что понравилось или можно улучшить',
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 9, 16, 22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: scheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: yangiLime.withValues(alpha: dark ? 0.16 : 0.24),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.check_rounded,
+                      size: 33,
+                      color: dark ? yangiLime : yangiGreen,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    lang == 'uz' ? 'Safarni baholang' : 'Оцените поездку',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    driverName.trim().isEmpty
+                        ? (lang == 'uz'
+                            ? 'Fikringiz Yangi Taxi xizmatini yaxshilaydi'
+                            : 'Ваш отзыв помогает улучшать Yangi Taxi')
+                        : (lang == 'uz'
+                            ? driverName.trim() + ' bilan safar'
+                            : 'Поездка с ' + driverName.trim()),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List<Widget>.generate(
+                      5,
+                      (i) => IconButton(
+                        onPressed: () => setSheetState(() => rating = i + 1),
+                        iconSize: 39,
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                        constraints: const BoxConstraints(minWidth: 46, minHeight: 46),
+                        icon: Icon(
+                          i < rating ? Icons.star_rounded : Icons.star_outline_rounded,
+                        ),
+                        color: i < rating ? const Color(0xFFFFB300) : scheme.outline,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    ratingText(rating),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      lang == 'uz' ? 'Nima yoqdi?' : 'Что понравилось?',
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: tags.map((tag) {
+                        final selected = selectedTags.contains(tag.key);
+                        return ChoiceChip(
+                          selected: selected,
+                          showCheckmark: false,
+                          label: Text(
+                            tag.value,
+                            style: TextStyle(
+                              color: selected ? yangiGraphite : scheme.onSurface,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          selectedColor: yangiLime,
+                          backgroundColor: scheme.surfaceContainerHigh,
+                          side: BorderSide(
+                            color: selected
+                                ? yangiLime
+                                : scheme.outlineVariant.withValues(alpha: 0.8),
+                          ),
+                          onSelected: (_) => setSheetState(() {
+                            if (selected) {
+                              selectedTags.remove(tag.key);
+                            } else {
+                              selectedTags.add(tag.key);
+                            }
+                          }),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: comment,
+                    maxLines: 3,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: InputDecoration(
+                      labelText: lang == 'uz' ? 'Izoh' : 'Комментарий',
+                      hintText: lang == 'uz'
+                          ? 'Haydovchi va safar haqida fikringiz'
+                          : 'Что понравилось или можно улучшить',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.pop(sheetContext, true),
+                    icon: const Icon(Icons.star_rounded),
+                    label: Text(lang == 'uz' ? 'Bahoni yuborish' : 'Отправить оценку'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: yangiLime,
+                      foregroundColor: yangiGraphite,
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  TextButton(
+                    onPressed: () => Navigator.pop(sheetContext, false),
+                    child: Text(lang == 'uz' ? 'Keyinroq' : 'Позже'),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(lang == 'uz' ? 'Keyinroq' : 'Позже'),
           ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            icon: const Icon(Icons.send),
-            label: Text(lang == 'uz' ? 'Yuborish' : 'Отправить'),
-          ),
-        ],
-      ),
+        );
+      },
     ),
   );
+
   if (submit != true) {
     comment.dispose();
     return;
@@ -7481,12 +7722,16 @@ Future<void> showDriverRatingDialog(
   try {
     await api.post('/api/orders/' + orderId.toString() + '/rating', <String, dynamic>{
       'rating': rating,
-      'tags': <String>[],
+      'tags': selectedTags.toList(),
       'comment': comment.text.trim(),
     });
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(lang == 'uz' ? 'Bahoyingiz yuborildi' : 'Спасибо! Оценка отправлена')),
+        SnackBar(
+          content: Text(
+            lang == 'uz' ? 'Bahoyingiz yuborildi' : 'Спасибо! Оценка отправлена',
+          ),
+        ),
       );
     }
   } catch (e) {
@@ -7521,215 +7766,361 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> load() async {
     try {
       final data = await widget.api.get('/api/orders/history');
-      if (mounted) setState(() {
-        orders = data as List;
-        loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          orders = data as List;
+          loading = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => loading = false);
     }
   }
 
+  String stateTitle(String state) {
+    if (state == 'finished') return widget.lang == 'uz' ? 'Tugallangan' : 'Завершена';
+    if (state == 'aborted') return widget.lang == 'uz' ? 'Bekor qilingan' : 'Отменена';
+    if (state == 'client_inside') return widget.lang == 'uz' ? 'Yo‘lda' : 'В пути';
+    if (state == 'car_at_place') return widget.lang == 'uz' ? 'Mashina keldi' : 'Машина приехала';
+    if (state == 'driver_assigned') return widget.lang == 'uz' ? 'Haydovchi tayinlandi' : 'Водитель назначен';
+    return widget.lang == 'uz' ? 'Buyurtma' : 'Заказ';
+  }
+
+  IconData stateIcon(String state) {
+    if (state == 'finished') return Icons.check_rounded;
+    if (state == 'aborted') return Icons.close_rounded;
+    if (state == 'client_inside') return Icons.navigation_rounded;
+    if (state == 'car_at_place') return Icons.location_on_rounded;
+    return Icons.local_taxi_rounded;
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          leading: IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
-          centerTitle: true,
-          title: const YangiWordmark(compact: true),
-          actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded))],
-        ),
-        body: loading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: load,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            widget.lang == 'uz' ? 'Safarlar tarixi' : 'История поездок',
-                            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.7),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: yangiLime.withValues(alpha: 0.18),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Text(
-                            orders.length.toString(),
-                            style: const TextStyle(fontWeight: FontWeight.w900, color: yangiGraphite),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    if (orders.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(28),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: Column(
-                          children: <Widget>[
-                            const Icon(Icons.route_outlined, size: 54),
-                            const SizedBox(height: 10),
-                            Text(widget.lang == 'uz' ? 'Hali safarlar yo‘q' : 'Поездок пока нет'),
-                          ],
-                        ),
-                      )
-                    else
-                      ...orders.map((raw) {
-                        final o = Map<String, dynamic>.from(raw as Map);
-                        final state = (o['state_kind'] ?? '').toString();
-                        final orderId = (o['order_id'] as num?)?.toInt() ?? 0;
-                        final tariffKey = (o['tariff_key'] ?? 'start').toString();
-                        final source = (o['source'] ?? '').toString();
-                        final destination = (o['destination'] ?? '').toString();
-                        final total = o['total_cost'];
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(13),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(22),
-                            boxShadow: const <BoxShadow>[
-                              BoxShadow(color: Color(0x10000000), blurRadius: 16, offset: Offset(0, 5)),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      appBar: AppBar(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
+        centerTitle: true,
+        title: const YangiWordmark(compact: true),
+        actions: <Widget>[
+          IconButton(
+            onPressed: load,
+            tooltip: widget.lang == 'uz' ? 'Yangilash' : 'Обновить',
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final horizontal = constraints.maxWidth >= 720 ? 24.0 : 14.0;
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 820),
+                    child: RefreshIndicator(
+                      onRefresh: load,
+                      child: ListView(
+                        padding: EdgeInsets.fromLTRB(horizontal, 12, horizontal, 30),
+                        children: <Widget>[
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: <Widget>[
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      widget.lang == 'uz' ? 'Safarlar tarixi' : 'История поездок',
+                                      style: const TextStyle(
+                                        fontSize: 28,
+                                        height: 1.0,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -0.8,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 7),
+                                    Text(
+                                      widget.lang == 'uz'
+                                          ? 'Yakunlangan va bekor qilingan safarlar'
+                                          : 'Все завершённые и отменённые поездки',
+                                      style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: yangiLime.withValues(alpha: dark ? 0.16 : 0.22),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: yangiLime.withValues(alpha: dark ? 0.30 : 0.42),
+                                  ),
+                                ),
+                                child: Text(
+                                  orders.length.toString(),
+                                  style: TextStyle(
+                                    color: dark ? yangiLime : yangiGraphite,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
-                          child: Column(
-                            children: <Widget>[
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                          const SizedBox(height: 18),
+                          if (orders.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.fromLTRB(24, 30, 24, 32),
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(28),
+                                border: Border.all(
+                                  color: scheme.outlineVariant.withValues(alpha: 0.65),
+                                ),
+                              ),
+                              child: Column(
                                 children: <Widget>[
-                                  SizedBox(
-                                    width: 100,
-                                    height: 58,
-                                    child: _TariffVehicleArt(
-                                      kind: tariffKey,
-                                      selected: false,
-                                      available: true,
+                                  Container(
+                                    width: 70,
+                                    height: 70,
+                                    decoration: BoxDecoration(
+                                      color: yangiLime.withValues(alpha: dark ? 0.14 : 0.22),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.route_rounded,
+                                      size: 34,
+                                      color: dark ? yangiLime : yangiGreen,
                                     ),
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    widget.lang == 'uz' ? 'Hali safarlar yo‘q' : 'Поездок пока нет',
+                                    style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    widget.lang == 'uz'
+                                        ? 'Birinchi safaringiz shu yerda paydo bo‘ladi'
+                                        : 'Первая поездка появится здесь после завершения',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: scheme.onSurfaceVariant),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            ...orders.map((raw) {
+                              final o = Map<String, dynamic>.from(raw as Map);
+                              final state = (o['state_kind'] ?? '').toString();
+                              final orderId = (o['order_id'] as num?)?.toInt() ?? 0;
+                              final tariffKey = (o['tariff_key'] ?? 'start').toString();
+                              final source = (o['source'] ?? '').toString();
+                              final destination = (o['destination'] ?? '').toString();
+                              final total = o['total_cost'];
+                              final isFinished = state == 'finished';
+                              final statusColor = isFinished
+                                  ? yangiLime
+                                  : state == 'aborted'
+                                      ? scheme.error
+                                      : scheme.onSurfaceVariant;
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: scheme.surfaceContainerLow,
+                                  borderRadius: BorderRadius.circular(26),
+                                  border: Border.all(
+                                    color: scheme.outlineVariant.withValues(alpha: 0.62),
+                                  ),
+                                  boxShadow: dark
+                                      ? const <BoxShadow>[]
+                                      : const <BoxShadow>[
+                                          BoxShadow(
+                                            color: Color(0x10000000),
+                                            blurRadius: 18,
+                                            offset: Offset(0, 7),
+                                          ),
+                                        ],
+                                ),
+                                child: Column(
+                                  children: <Widget>[
+                                    Row(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: <Widget>[
-                                        Row(
-                                          children: <Widget>[
-                                            Expanded(
-                                              child: Text(
-                                                '#' + orderId.toString(),
-                                                style: const TextStyle(fontWeight: FontWeight.w900),
-                                              ),
-                                            ),
-                                            if (total != null)
-                                              Text(
-                                                total.toString() + ' so‘m',
-                                                style: const TextStyle(fontWeight: FontWeight.w900),
-                                              ),
-                                          ],
+                                        Container(
+                                          width: 108,
+                                          height: 70,
+                                          padding: const EdgeInsets.all(5),
+                                          decoration: BoxDecoration(
+                                            color: scheme.surfaceContainerHigh,
+                                            borderRadius: BorderRadius.circular(19),
+                                          ),
+                                          child: _TariffVehicleArt(
+                                            kind: tariffKey,
+                                            selected: false,
+                                            available: true,
+                                          ),
                                         ),
-                                        const SizedBox(height: 5),
-                                        Row(
-                                          children: <Widget>[
-                                            Container(
-                                              width: 10,
-                                              height: 10,
-                                              decoration: const BoxDecoration(color: yangiGreen, shape: BoxShape.circle),
-                                            ),
-                                            const SizedBox(width: 7),
-                                            Expanded(
-                                              child: Text(
-                                                source,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: <Widget>[
+                                              Row(
+                                                children: <Widget>[
+                                                  Expanded(
+                                                    child: Text(
+                                                      '#$orderId',
+                                                      style: const TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight: FontWeight.w900,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (total != null)
+                                                    Text(
+                                                      '$total so‘m',
+                                                      style: const TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight: FontWeight.w900,
+                                                      ),
+                                                    ),
+                                                ],
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 5),
-                                        Row(
-                                          children: <Widget>[
-                                            Container(
-                                              width: 10,
-                                              height: 10,
-                                              decoration: BoxDecoration(
-                                                color: destination.isEmpty ? const Color(0xFF9CA3AF) : const Color(0xFFFF4B36),
-                                                shape: BoxShape.circle,
+                                              const SizedBox(height: 8),
+                                              Row(
+                                                children: <Widget>[
+                                                  Container(
+                                                    width: 9,
+                                                    height: 9,
+                                                    decoration: const BoxDecoration(
+                                                      color: yangiGreen,
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 7),
+                                                  Expanded(
+                                                    child: Text(
+                                                      source.isEmpty ? '—' : source,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        fontSize: 12.5,
+                                                        fontWeight: FontWeight.w800,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                            ),
-                                            const SizedBox(width: 7),
-                                            Expanded(
-                                              child: Text(
-                                                destination.isEmpty
-                                                    ? (widget.lang == 'uz' ? 'Manzil ko‘rsatilmagan' : 'Без конечного адреса')
-                                                    : destination,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                                ),
+                                              const SizedBox(height: 7),
+                                              Row(
+                                                children: <Widget>[
+                                                  Container(
+                                                    width: 9,
+                                                    height: 9,
+                                                    decoration: BoxDecoration(
+                                                      color: destination.isEmpty
+                                                          ? scheme.outline
+                                                          : const Color(0xFFFF4B36),
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 7),
+                                                  Expanded(
+                                                    child: Text(
+                                                      destination.isEmpty
+                                                          ? (widget.lang == 'uz'
+                                                              ? 'Manzil ko‘rsatilmagan'
+                                                              : 'Без конечного адреса')
+                                                          : destination,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: 12.5,
+                                                        color: scheme.onSurfaceVariant,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: <Widget>[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                                    decoration: BoxDecoration(
-                                      color: state == 'finished'
-                                          ? yangiLime.withValues(alpha: 0.18)
-                                          : Theme.of(context).colorScheme.surfaceContainerHigh,
-                                      borderRadius: BorderRadius.circular(11),
+                                    const SizedBox(height: 12),
+                                    Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.60)),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: <Widget>[
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: statusColor.withValues(alpha: dark ? 0.13 : 0.12),
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(
+                                              color: statusColor.withValues(alpha: 0.26),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: <Widget>[
+                                              Icon(stateIcon(state), size: 15, color: statusColor),
+                                              const SizedBox(width: 5),
+                                              Text(
+                                                stateTitle(state),
+                                                style: TextStyle(
+                                                  color: statusColor,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        if (isFinished && orderId > 0)
+                                          TextButton.icon(
+                                            onPressed: () => showDriverRatingDialog(
+                                              context,
+                                              widget.api,
+                                              widget.lang,
+                                              orderId,
+                                              driverName: (o['driver_name'] ?? '').toString(),
+                                            ),
+                                            icon: const Icon(Icons.star_rounded, size: 18),
+                                            label: Text(widget.lang == 'uz' ? 'Baholash' : 'Оценить'),
+                                          ),
+                                      ],
                                     ),
-                                    child: Text(
-                                      state == 'finished'
-                                          ? (widget.lang == 'uz' ? 'Tugallangan' : 'Завершена')
-                                          : state == 'aborted'
-                                              ? (widget.lang == 'uz' ? 'Bekor qilingan' : 'Отменена')
-                                              : state,
-                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  if (state == 'finished' && orderId > 0)
-                                    TextButton.icon(
-                                      onPressed: () => showDriverRatingDialog(
-                                        context,
-                                        widget.api,
-                                        widget.lang,
-                                        orderId,
-                                        driverName: (o['driver_name'] ?? '').toString(),
-                                      ),
-                                      icon: const Icon(Icons.star_outline_rounded, size: 18),
-                                      label: Text(widget.lang == 'uz' ? 'Baholash' : 'Оценить'),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                  ],
-                ),
-              ),
-      );
-
+                                  ],
+                                ),
+                              );
+                            }),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
 }
 
 class CardsScreen extends StatefulWidget {
@@ -8235,109 +8626,338 @@ class SettingsScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          leading: IconButton(onPressed: onMenu, icon: const Icon(Icons.menu_rounded)),
-          title: Text(lang == 'uz' ? 'Sozlamalar' : 'Настройки', style: const TextStyle(fontWeight: FontWeight.w900)),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-          children: <Widget>[
-            Text(lang == 'uz' ? 'ILOVA' : 'ПРИЛОЖЕНИЕ', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF8B8F97))),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 0,
-              child: Column(
-                children: <Widget>[
-                  ListTile(
-                    leading: const Icon(Icons.language_rounded),
-                    title: const Text('Язык / Til'),
-                    trailing: SegmentedButton<String>(
-                      segments: const <ButtonSegment<String>>[
-                        ButtonSegment<String>(value: 'ru', label: Text('RU')),
-                        ButtonSegment<String>(value: 'uz', label: Text('UZ')),
-                      ],
-                      selected: <String>{lang},
-                      onSelectionChanged: (x) => onLang(x.first),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.brightness_6_rounded),
-                    title: Text(lang == 'uz' ? 'Mavzu' : 'Тема'),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: SegmentedButton<String>(
-                        segments: <ButtonSegment<String>>[
-                          ButtonSegment<String>(
-                            value: 'system',
-                            icon: const Icon(Icons.phone_android_rounded, size: 17),
-                            label: Text(lang == 'uz' ? 'Tizim' : 'Система'),
-                          ),
-                          ButtonSegment<String>(
-                            value: 'light',
-                            icon: const Icon(Icons.light_mode_rounded, size: 17),
-                            label: Text(lang == 'uz' ? 'Yorug‘' : 'Светлая'),
-                          ),
-                          ButtonSegment<String>(
-                            value: 'dark',
-                            icon: const Icon(Icons.dark_mode_rounded, size: 17),
-                            label: Text(lang == 'uz' ? 'Qorong‘i' : 'Тёмная'),
-                          ),
-                        ],
-                        selected: <String>{themeSetting},
-                        onSelectionChanged: (x) => onTheme(x.first),
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.my_location_rounded),
-                    title: Text(lang == 'uz' ? 'Geolokatsiya' : 'Геолокация'),
-                    subtitle: Text(lang == 'uz' ? 'Ruxsat va GPS sozlamalari' : 'Разрешения и настройки GPS'),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: locationSettings,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(lang == 'uz' ? 'XIZMAT' : 'СЕРВИС', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF8B8F97))),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 0,
-              child: Column(
-                children: <Widget>[
-                  ListTile(
-                    leading: const Icon(Icons.support_agent_rounded),
-                    title: Text(lang == 'uz' ? 'Yordam' : 'Поддержка'),
-                    subtitle: Text(lang == 'uz' ? 'Yangi Taxi yordam markazi' : 'Центр поддержки Yangi Taxi'),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.info_outline_rounded),
-                    title: Text(lang == 'uz' ? 'Ilova haqida' : 'О приложении'),
-                    subtitle: const Text('Yangi Taxi 1.9.0'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(lang == 'uz' ? 'DIAGNOSTIKA' : 'ДИАГНОСТИКА', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF8B8F97))),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 0,
-              child: ListTile(
-                leading: Icon(api.isDemo ? Icons.science_outlined : Icons.dns_outlined),
-                title: const Text('Backend'),
-                subtitle: Text(api.baseUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => backendDialog(context, api, onBackend),
-              ),
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+
+    Widget sectionTitle(String text) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 2, bottom: 8),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.8,
+            color: scheme.onSurfaceVariant,
+          ),
         ),
       );
+    }
+
+    Widget leadingIcon(IconData icon) {
+      return Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: yangiLime.withValues(alpha: dark ? 0.14 : 0.22),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(
+          icon,
+          size: 21,
+          color: dark ? yangiLime : yangiGraphite,
+        ),
+      );
+    }
+
+    Widget premiumCard(Widget child) {
+      return Container(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.65),
+          ),
+        ),
+        child: child,
+      );
+    }
+
+    Widget themeChip(String value, IconData icon, String label) {
+      final selected = themeSetting == value;
+      return ChoiceChip(
+        selected: selected,
+        showCheckmark: false,
+        avatar: Icon(
+          icon,
+          size: 17,
+          color: selected
+              ? yangiGraphite
+              : scheme.onSurfaceVariant,
+        ),
+        label: Text(
+          label,
+          style: TextStyle(
+            color: selected ? yangiGraphite : scheme.onSurface,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        selectedColor: yangiLime,
+        backgroundColor: scheme.surfaceContainerHigh,
+        side: BorderSide(
+          color: selected
+              ? yangiLime
+              : scheme.outlineVariant.withValues(alpha: 0.8),
+        ),
+        onSelected: (_) => onTheme(value),
+      );
+    }
+
+    Widget languageChip(String value, String label) {
+      final selected = lang == value;
+      return ChoiceChip(
+        selected: selected,
+        showCheckmark: false,
+        label: Text(
+          label,
+          style: TextStyle(
+            color: selected ? yangiGraphite : scheme.onSurface,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        selectedColor: yangiLime,
+        backgroundColor: scheme.surfaceContainerHigh,
+        side: BorderSide(
+          color: selected
+              ? yangiLime
+              : scheme.outlineVariant.withValues(alpha: 0.8),
+        ),
+        onSelected: (_) => onLang(value),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      appBar: AppBar(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(onPressed: onMenu, icon: const Icon(Icons.menu_rounded)),
+        centerTitle: true,
+        title: const YangiWordmark(compact: true),
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final horizontal = constraints.maxWidth >= 720 ? 24.0 : 14.0;
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 820),
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(horizontal, 12, horizontal, 30),
+                children: <Widget>[
+                  Text(
+                    lang == 'uz' ? 'Sozlamalar' : 'Настройки',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      height: 1.0,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    lang == 'uz'
+                        ? 'Ilovani o‘zingizga moslang'
+                        : 'Настройте приложение под себя',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  sectionTitle(lang == 'uz' ? 'ILOVA' : 'ПРИЛОЖЕНИЕ'),
+                  premiumCard(
+                    Column(
+                      children: <Widget>[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              leadingIcon(Icons.language_rounded),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      lang == 'uz' ? 'Ilova tili' : 'Язык приложения',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      lang == 'uz'
+                                          ? 'Ruscha yoki o‘zbekcha interfeys'
+                                          : 'Русский или узбекский интерфейс',
+                                      style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: <Widget>[
+                                        languageChip('ru', 'RU'),
+                                        languageChip('uz', 'UZ'),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Divider(height: 1, indent: 14, endIndent: 14, color: scheme.outlineVariant),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              leadingIcon(Icons.brightness_6_rounded),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      lang == 'uz' ? 'Mavzu' : 'Тема',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      lang == 'uz'
+                                          ? 'Tizim, yorug‘ yoki qorong‘i'
+                                          : 'Системная, светлая или тёмная',
+                                      style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: <Widget>[
+                                        themeChip(
+                                          'system',
+                                          Icons.phone_android_rounded,
+                                          lang == 'uz' ? 'Tizim' : 'Система',
+                                        ),
+                                        themeChip(
+                                          'light',
+                                          Icons.light_mode_rounded,
+                                          lang == 'uz' ? 'Yorug‘' : 'Светлая',
+                                        ),
+                                        themeChip(
+                                          'dark',
+                                          Icons.dark_mode_rounded,
+                                          lang == 'uz' ? 'Qorong‘i' : 'Тёмная',
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Divider(height: 1, indent: 14, endIndent: 14, color: scheme.outlineVariant),
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          leading: leadingIcon(Icons.my_location_rounded),
+                          title: Text(
+                            lang == 'uz' ? 'Geolokatsiya' : 'Геолокация',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: Text(
+                            lang == 'uz'
+                                ? 'Ruxsat va GPS sozlamalari'
+                                : 'Разрешения и настройки GPS',
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: locationSettings,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+                  sectionTitle(lang == 'uz' ? 'XIZMAT' : 'СЕРВИС'),
+                  premiumCard(
+                    Column(
+                      children: <Widget>[
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          leading: leadingIcon(Icons.support_agent_rounded),
+                          title: Text(
+                            lang == 'uz' ? 'Yordam' : 'Поддержка',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: Text(
+                            lang == 'uz'
+                                ? 'Yangi Taxi yordam markazi'
+                                : 'Центр поддержки Yangi Taxi',
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                        ),
+                        Divider(height: 1, indent: 14, endIndent: 14, color: scheme.outlineVariant),
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          leading: leadingIcon(Icons.info_outline_rounded),
+                          title: Text(
+                            lang == 'uz' ? 'Ilova haqida' : 'О приложении',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: const Text('Yangi Taxi 1.9.0'),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: yangiLime.withValues(alpha: dark ? 0.14 : 0.20),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              'v1.9.0',
+                              style: TextStyle(
+                                color: dark ? yangiLime : yangiGraphite,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+                  sectionTitle(lang == 'uz' ? 'DIAGNOSTIKA' : 'ДИАГНОСТИКА'),
+                  premiumCard(
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                      leading: leadingIcon(api.isDemo ? Icons.science_outlined : Icons.dns_outlined),
+                      title: const Text('Backend', style: TextStyle(fontWeight: FontWeight.w900)),
+                      subtitle: Text(
+                        api.baseUrl,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => backendDialog(context, api, onBackend),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
 class ProfileScreen extends StatefulWidget {
@@ -8596,7 +9216,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: const <BoxShadow>[
                         BoxShadow(color: Color(0x11000000), blurRadius: 18, offset: Offset(0, 6)),
@@ -8637,7 +9257,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   width: 25,
                                   height: 25,
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surface,
+                                    color: Theme.of(context).colorScheme.surfaceContainerLow,
                                     shape: BoxShape.circle,
                                     border: Border.all(color: yangiLime, width: 2),
                                   ),
@@ -8723,7 +9343,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   Container(
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: recent.isEmpty
@@ -8806,7 +9426,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 9),
                   Container(
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: Column(
@@ -8838,7 +9458,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 9),
                   Container(
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: Column(
