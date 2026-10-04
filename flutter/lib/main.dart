@@ -9213,9 +9213,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: load,
-              child: ListView(
+          : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 820),
+                child: RefreshIndicator(
+                  onRefresh: load,
+                  child: ListView(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
                 children: <Widget>[
                   Container(
@@ -9539,5 +9542,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
+          ),
+        ),
     );
   }}
