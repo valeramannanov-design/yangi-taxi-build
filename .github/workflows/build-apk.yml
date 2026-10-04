@@ -51,7 +51,18 @@ jobs:
               g = gradle_kts.read_text()
               g = g.replace('minSdk = flutter.minSdkVersion', 'minSdk = 26')
               g = g.replace('applicationId = "uz.yangi.yangi_taxi"', 'applicationId = "uz.yangi.yangi_taxi.design"')
-              signing = '    signingConfigs {\\n        create("preview") {\\n            keyAlias = "yangiPreview"\\n            keyPassword = "yangi-preview-2026"\\n            storeFile = file("yangi-preview.jks")\\n            storePassword = "yangi-preview-2026"\\n        }\\n    }\\n\\n'
+              signing = chr(10).join([
+                  '    signingConfigs {',
+                  '        create("preview") {',
+                  '            keyAlias = "yangiPreview"',
+                  '            keyPassword = "yangi-preview-2026"',
+                  '            storeFile = file("yangi-preview.jks")',
+                  '            storePassword = "yangi-preview-2026"',
+                  '        }',
+                  '    }',
+                  '',
+                  '',
+              ])
               if 'create("preview")' not in g:
                   g = g.replace('    buildTypes {', signing + '    buildTypes {', 1)
               g = g.replace('signingConfig = signingConfigs.getByName("debug")', 'signingConfig = signingConfigs.getByName("preview")')
@@ -64,7 +75,18 @@ jobs:
               g = gradle.read_text()
               g = g.replace('minSdkVersion flutter.minSdkVersion', 'minSdkVersion 26')
               g = g.replace('applicationId "uz.yangi.yangi_taxi"', 'applicationId "uz.yangi.yangi_taxi.design"')
-              signing = "    signingConfigs {\\n        preview {\\n            keyAlias 'yangiPreview'\\n            keyPassword 'yangi-preview-2026'\\n            storeFile file('yangi-preview.jks')\\n            storePassword 'yangi-preview-2026'\\n        }\\n    }\\n\\n"
+              signing = chr(10).join([
+                  '    signingConfigs {',
+                  '        preview {',
+                  "            keyAlias 'yangiPreview'",
+                  "            keyPassword 'yangi-preview-2026'",
+                  "            storeFile file('yangi-preview.jks')",
+                  "            storePassword 'yangi-preview-2026'",
+                  '        }',
+                  '    }',
+                  '',
+                  '',
+              ])
               if 'preview {' not in g:
                   g = g.replace('    buildTypes {', signing + '    buildTypes {', 1)
               g = g.replace('signingConfig signingConfigs.debug', 'signingConfig signingConfigs.preview')
