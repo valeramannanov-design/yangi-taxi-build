@@ -9447,7 +9447,7 @@ class SettingsScreen extends StatelessWidget {
                             lang == 'uz' ? 'Ilova haqida' : 'О приложении',
                             style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
-                          subtitle: const Text('Yangi Taxi 1.9.2'),
+                          subtitle: const Text('Yangi Taxi 1.9.3'),
                           trailing: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                             decoration: BoxDecoration(
@@ -9455,7 +9455,7 @@ class SettingsScreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              'v1.9.2',
+                              'v1.9.3',
                               style: TextStyle(
                                 color: dark ? yangiLime : yangiGraphite,
                                 fontSize: 11,
