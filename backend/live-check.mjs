@@ -145,7 +145,9 @@ function tmTime(date = new Date()) {
 }
 
 function n(name) {
-  const value = Number(process.env[name] || '');
+  const raw = String(process.env[name] || '').trim();
+  if (!raw) return null;
+  const value = Number(raw);
   return Number.isFinite(value) ? value : null;
 }
 
