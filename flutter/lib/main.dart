@@ -6252,31 +6252,51 @@ class _RideScreenState extends State<RideScreen> {
               child: Row(
                 children: <Widget>[
                   Material(
-                    color: Theme.of(context).colorScheme.surface,
-                    elevation: 5,
-                    shape: const CircleBorder(),
+                    color: dark
+                        ? const Color(0xE6111314)
+                        : Colors.white.withValues(alpha: 0.96),
+                    elevation: dark ? 0 : 5,
+                    shape: CircleBorder(
+                      side: BorderSide(
+                        color: dark ? const Color(0xFF303638) : const Color(0x16000000),
+                      ),
+                    ),
                     child: IconButton(
                       onPressed: widget.onMenu,
-                      icon: const Icon(Icons.menu_rounded),
+                      icon: const Icon(Icons.arrow_back_rounded),
                     ),
                   ),
                   const Spacer(),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(18),
+                      color: const Color(0xF20A0C0D),
+                      borderRadius: BorderRadius.circular(21),
+                      border: Border.all(color: const Color(0xFF2A2F30)),
                       boxShadow: const <BoxShadow>[
-                        BoxShadow(color: Color(0x22000000), blurRadius: 14, offset: Offset(0, 4)),
+                        BoxShadow(
+                          color: Color(0x42000000),
+                          blurRadius: 20,
+                          offset: Offset(0, 7),
+                        ),
                       ],
                     ),
-                    child: const YangiWordmark(compact: true),
+                    child: const YangiWordmark(
+                      compact: true,
+                      onDarkSurface: true,
+                    ),
                   ),
                   const Spacer(),
                   Material(
-                    color: Theme.of(context).colorScheme.surface,
-                    elevation: 5,
-                    shape: const CircleBorder(),
+                    color: dark
+                        ? const Color(0xE6111314)
+                        : Colors.white.withValues(alpha: 0.96),
+                    elevation: dark ? 0 : 5,
+                    shape: CircleBorder(
+                      side: BorderSide(
+                        color: dark ? const Color(0xFF303638) : const Color(0x16000000),
+                      ),
+                    ),
                     child: IconButton(
                       onPressed: refresh,
                       icon: const Icon(Icons.my_location_rounded),
@@ -6308,17 +6328,22 @@ class _RideScreenState extends State<RideScreen> {
               ),
             ),
           DraggableScrollableSheet(
-            initialChildSize: searching ? 0.38 : activeRide ? 0.48 : 0.44,
-            minChildSize: 0.30,
-            maxChildSize: 0.72,
+            initialChildSize: searching ? 0.40 : activeRide ? 0.56 : 0.52,
+            minChildSize: 0.34,
+            maxChildSize: 0.82,
             snap: true,
             builder: (context, scrollController) {
               return Container(
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+                  color: dark ? const Color(0xFF0C0E0F) : const Color(0xFFF9FAFA),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                  border: Border(
+                    top: BorderSide(
+                      color: dark ? const Color(0xFF292E30) : const Color(0x14000000),
+                    ),
+                  ),
                   boxShadow: const <BoxShadow>[
-                    BoxShadow(color: Color(0x26000000), blurRadius: 24, offset: Offset(0, -8)),
+                    BoxShadow(color: Color(0x48000000), blurRadius: 32, offset: Offset(0, -10)),
                   ],
                 ),
                 child: ListView(
