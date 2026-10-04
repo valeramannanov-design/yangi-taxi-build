@@ -1980,6 +1980,33 @@ class _ShellState extends State<Shell> {
   final GlobalKey<ScaffoldState> shellKey = GlobalKey<ScaffoldState>();
   int tab = 0;
   int? activeId;
+  int orderFormGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    restoreActiveOrder();
+  }
+
+  Future<void> restoreActiveOrder() async {
+    try {
+      final data = await widget.api.get('/api/orders/current');
+      if (!mounted || data is! List || data.isEmpty) return;
+
+      final raw = data.first;
+      if (raw is! Map) return;
+      final rawId = raw['order_id'];
+      final id = rawId is num ? rawId.toInt() : int.tryParse(rawId?.toString() ?? '');
+      if (id == null || id <= 0) return;
+
+      setState(() {
+        activeId = id;
+        tab = 1;
+      });
+    } catch (_) {
+      // A failed restore must not block the home screen.
+    }
+  }
 
   void openMenu() => shellKey.currentState?.openDrawer();
 
@@ -1991,6 +2018,18 @@ class _ShellState extends State<Shell> {
     if (mounted && tab != value) {
       setState(() => tab = value);
     }
+  }
+
+  void startNewTrip() {
+    final scaffold = shellKey.currentState;
+    if (scaffold?.isDrawerOpen == true) {
+      scaffold!.closeDrawer();
+    }
+    if (!mounted) return;
+    setState(() {
+      orderFormGeneration += 1;
+      tab = 0;
+    });
   }
 
   void orderCreated(int id) {
@@ -2078,7 +2117,7 @@ class _ShellState extends State<Shell> {
                   )
                 : const SizedBox(key: ValueKey<String>('idle'), width: 20),
           ),
-          onTap: () => selectTab(index),
+          onTap: () => index == 0 ? startNewTrip() : selectTab(index),
         ),
       ),
     );
@@ -2088,6 +2127,7 @@ class _ShellState extends State<Shell> {
   Widget build(BuildContext context) {
     final pages = <Widget>[
       OrderScreen(
+        key: ValueKey<int>(orderFormGeneration),
         api: widget.api,
         lang: widget.lang,
         onOrder: orderCreated,
@@ -8562,6 +8602,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  String historyState(Map<dynamic, dynamic> raw) {
+    final value =
+        raw['state_kind'] ??
+        raw['state_type'] ??
+        raw['state'] ??
+        raw['status'] ??
+        '';
+    final state = value.toString().trim().toLowerCase();
+    if (state.contains('finish') ||
+        state.contains('complet') ||
+        state == 'done') {
+      return 'finished';
+    }
+    if (state.contains('abort') ||
+        state.contains('cancel')) {
+      return 'aborted';
+    }
+    return state;
+  }
+
   String stateTitle(String state) {
     if (state == 'finished') return widget.lang == 'uz' ? 'Tugallangan' : 'Завершена';
     if (state == 'aborted') return widget.lang == 'uz' ? 'Bekor qilingan' : 'Отменена';
@@ -8586,7 +8646,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     final filtered = orders.where((raw) {
       if (raw is! Map) return false;
-      final state = (raw['state_kind'] ?? '').toString();
+      final state = historyState(raw);
       if (filter == 'finished') return state == 'finished';
       if (filter == 'aborted') return state == 'aborted';
       return true;
@@ -8696,7 +8756,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       else
                         ...filtered.map((raw) {
                           final o = Map<String, dynamic>.from(raw as Map);
-                          final state = (o['state_kind'] ?? '').toString();
+                          final state = historyState(o);
                           final tariffKey = (o['tariff_key'] ?? 'start').toString();
                           final source = (o['source'] ?? '').toString().trim();
                           final destination = (o['destination'] ?? '').toString().trim();
