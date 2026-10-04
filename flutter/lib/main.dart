@@ -6116,6 +6116,108 @@ class _RideScreenState extends State<RideScreen> {
       await launchUrl(Uri(scheme: 'sms', path: driverPhone));
     }
 
+    Future<void> shareTrip() async {
+      final text = <String>[
+        'Yangi Taxi',
+        if (driverName.isNotEmpty) (widget.lang == 'uz' ? 'Haydovchi: ' : 'Водитель: ') + driverName,
+        if (car.isNotEmpty) car + (number.isEmpty ? '' : ' • ' + number),
+        if (destination.isNotEmpty) (widget.lang == 'uz' ? 'Manzil: ' : 'Куда: ') + destination,
+      ].join('\n');
+      await Clipboard.setData(ClipboardData(text: text));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.lang == 'uz'
+                ? 'Safar ma’lumotlari nusxalandi'
+                : 'Данные поездки скопированы — можно отправить близким',
+          ),
+        ),
+      );
+    }
+
+    Future<void> showSafety() async {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  widget.lang == 'uz' ? 'Safar xavfsizligi' : 'Безопасность поездки',
+                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  leading: const Icon(Icons.share_rounded),
+                  title: Text(widget.lang == 'uz' ? 'Safarni ulashish' : 'Поделиться поездкой'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    shareTrip();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.emergency_rounded),
+                  title: Text(widget.lang == 'uz' ? '112 ga qo‘ng‘iroq qilish' : 'Позвонить 112'),
+                  subtitle: Text(
+                    widget.lang == 'uz'
+                        ? 'Favqulodda vaziyatlar uchun'
+                        : 'Только для экстренных ситуаций',
+                  ),
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    await launchUrl(Uri(scheme: 'tel', path: '112'));
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Future<void> showHelp() async {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  widget.lang == 'uz' ? 'Safar bo‘yicha yordam' : 'Помощь по поездке',
+                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  leading: const Icon(Icons.refresh_rounded),
+                  title: Text(widget.lang == 'uz' ? 'Safarni yangilash' : 'Обновить поездку'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    refresh();
+                  },
+                ),
+                if (driverPhone.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(Icons.call_rounded),
+                    title: Text(widget.lang == 'uz' ? 'Haydovchiga qo‘ng‘iroq' : 'Позвонить водителю'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      callDriver();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     Widget metric(IconData icon, String value, String label) {
       return Expanded(
         child: Container(
