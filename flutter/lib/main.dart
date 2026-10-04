@@ -1027,6 +1027,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool smsSent = false;
   bool busy = false;
   bool rememberMe = false;
+  bool passwordVisible = false;
   String? error;
   String? info;
 
@@ -1118,6 +1119,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> login() async {
+    if (phone.text.trim().isEmpty || pass.text.isEmpty) {
+      setState(() {
+        error = widget.lang == 'uz'
+            ? 'Telefon va parolni kiriting'
+            : 'Введите телефон и пароль';
+        info = null;
+      });
+      return;
+    }
+
     setState(() {
       busy = true;
       error = null;
@@ -1150,8 +1161,23 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.all(22),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 440),
-                child: Card(
-                  elevation: 0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
+                    ),
+                    boxShadow: Theme.of(context).brightness == Brightness.dark
+                        ? const <BoxShadow>[]
+                        : const <BoxShadow>[
+                            BoxShadow(
+                              color: Color(0x12000000),
+                              blurRadius: 28,
+                              offset: Offset(0, 10),
+                            ),
+                          ],
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(22),
                     child: Column(
@@ -1185,27 +1211,87 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: Chip(
-                                avatar: Icon(widget.api.isDemo ? Icons.science_outlined : Icons.cloud_done_outlined, size: 18),
-                                label: Text(
-                                  widget.api.isDemo ? tx(widget.lang, 'demo') : widget.api.baseUrl,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              Row(
+                                children: <Widget>[
+                                  Icon(
+                                    widget.api.isDemo ? Icons.science_outlined : Icons.cloud_done_outlined,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      widget.api.isDemo ? tx(widget.lang, 'demo') : widget.api.baseUrl,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            SegmentedButton<String>(
-                              segments: const <ButtonSegment<String>>[
-                                ButtonSegment<String>(value: 'ru', label: Text('RU')),
-                                ButtonSegment<String>(value: 'uz', label: Text('UZ')),
-                              ],
-                              selected: <String>{widget.lang},
-                              onSelectionChanged: busy ? null : (x) => widget.onLang(x.first),
-                            ),
-                          ],
+                              const SizedBox(height: 9),
+                              Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: Text(
+                                      widget.lang == 'uz' ? 'Ilova tili' : 'Язык приложения',
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  SegmentedButton<String>(
+                                    segments: const <ButtonSegment<String>>[
+                                      ButtonSegment<String>(value: 'ru', label: Text('RU')),
+                                      ButtonSegment<String>(value: 'uz', label: Text('UZ')),
+                                    ],
+                                    selected: <String>{widget.lang},
+                                    onSelectionChanged: busy ? null : (x) => widget.onLang(x.first),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          register
+                              ? (widget.lang == 'uz' ? 'Yangi akkaunt' : 'Новый аккаунт')
+                              : (widget.lang == 'uz' ? 'Xush kelibsiz' : 'С возвращением'),
+                          style: const TextStyle(
+                            fontSize: 24,
+                            height: 1.0,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.6,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          register
+                              ? (widget.lang == 'uz'
+                                  ? 'Telefon raqamingizni SMS orqali tasdiqlang'
+                                  : 'Подтвердите номер телефона по SMS')
+                              : (widget.lang == 'uz'
+                                  ? 'Safarni davom ettirish uchun tizimga kiring'
+                                  : 'Войдите, чтобы продолжить поездки'),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                         const SizedBox(height: 18),
                         if (register) ...<Widget>[
@@ -1226,9 +1312,25 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextField(
                           controller: pass,
                           enabled: !smsSent && !busy,
-                          obscureText: true,
+                          obscureText: !passwordVisible,
                           onSubmitted: (_) => submit(),
-                          decoration: InputDecoration(labelText: tx(widget.lang, 'password')),
+                          decoration: InputDecoration(
+                            labelText: tx(widget.lang, 'password'),
+                            prefixIcon: const Icon(Icons.lock_outline_rounded),
+                            suffixIcon: IconButton(
+                              onPressed: busy || smsSent
+                                  ? null
+                                  : () => setState(() => passwordVisible = !passwordVisible),
+                              tooltip: passwordVisible
+                                  ? (widget.lang == 'uz' ? 'Parolni yashirish' : 'Скрыть пароль')
+                                  : (widget.lang == 'uz' ? 'Parolni ko‘rsatish' : 'Показать пароль'),
+                              icon: Icon(
+                                passwordVisible
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                              ),
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 6),
                         CheckboxListTile(
