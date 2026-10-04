@@ -8492,17 +8492,42 @@ class _HistoryScreenState extends State<HistoryScreen> {
       return out.reversed.join() + (widget.lang == 'uz' ? ' so‘m' : ' сум');
     }
 
+    String tripTime(Map<String, dynamic> o) {
+      for (final key in <String>[
+        'finish_time',
+        'start_time',
+        'order_time',
+        'source_time',
+        'time',
+      ]) {
+        final raw = (o[key] ?? '').toString().trim();
+        if (raw.isEmpty) continue;
+        if (raw.length >= 12 && RegExp(r'^\d+$').hasMatch(raw)) {
+          try {
+            final h = int.parse(raw.substring(8, 10));
+            final m = int.parse(raw.substring(10, 12));
+            return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+          } catch (_) {}
+        }
+        final parsed = DateTime.tryParse(raw);
+        if (parsed != null) {
+          return '${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+        }
+      }
+      return '';
+    }
+
     Widget filterButton(String key, String label) {
       final selected = filter == key;
       return Expanded(
         child: Material(
           color: selected
-              ? (dark ? const Color(0xFFF2F4F4) : const Color(0xFF101719))
+              ? yangiLime
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(12),
           child: InkWell(
             onTap: () => setState(() => filter = key),
-            borderRadius: BorderRadius.circular(11),
+            borderRadius: BorderRadius.circular(12),
             child: SizedBox(
               height: 38,
               child: Center(
@@ -8510,10 +8535,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   label,
                   style: TextStyle(
                     color: selected
-                        ? (dark ? yangiGraphite : Colors.white)
+                        ? yangiGraphite
                         : scheme.onSurfaceVariant,
                     fontSize: 11.5,
-                    fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                    fontWeight: selected
+                        ? FontWeight.w900
+                        : FontWeight.w700,
                   ),
                 ),
               ),
@@ -8524,58 +8551,86 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
 
     return Scaffold(
-      backgroundColor: dark ? const Color(0xFF0B0D0E) : Colors.white,
+      backgroundColor:
+          dark ? const Color(0xFF0B0D0E) : const Color(0xFFF7F9F9),
       appBar: AppBar(
-        backgroundColor: dark ? const Color(0xFF0B0D0E) : Colors.white,
+        backgroundColor:
+            dark ? const Color(0xFF0B0D0E) : const Color(0xFFF7F9F9),
         surfaceTintColor: Colors.transparent,
+        centerTitle: true,
         leading: IconButton(
           onPressed: widget.onMenu,
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
         ),
-        centerTitle: true,
         title: Text(
-          widget.lang == 'uz' ? 'Mening safarlarim' : 'Мои поездки',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          widget.lang == 'uz' ? 'Safarlar tarixi' : 'История поездок',
+          style: const TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w900,
+          ),
         ),
-        actions: <Widget>[
-          IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
-        ],
       ),
       body: loading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2.3))
+          ? const Center(
+              child: CircularProgressIndicator(strokeWidth: 2.3),
+            )
           : Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 720),
                 child: RefreshIndicator(
                   onRefresh: load,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(15, 8, 15, 30),
+                    padding: const EdgeInsets.fromLTRB(14, 6, 14, 30),
                     children: <Widget>[
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: dark ? const Color(0xFF181B1C) : const Color(0xFFF1F2F3),
+                          color: dark
+                              ? const Color(0xFF171B1C)
+                              : const Color(0xFFEEF1F1),
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Row(
                           children: <Widget>[
-                            filterButton('all', widget.lang == 'uz' ? 'Barchasi' : 'Все'),
-                            filterButton('finished', widget.lang == 'uz' ? 'Tugallangan' : 'Завершённые'),
-                            filterButton('aborted', widget.lang == 'uz' ? 'Bekor' : 'Отменённые'),
+                            filterButton(
+                              'all',
+                              widget.lang == 'uz' ? 'Barchasi' : 'Все',
+                            ),
+                            filterButton(
+                              'finished',
+                              widget.lang == 'uz'
+                                  ? 'Tugallangan'
+                                  : 'Завершённые',
+                            ),
+                            filterButton(
+                              'aborted',
+                              widget.lang == 'uz'
+                                  ? 'Bekor'
+                                  : 'Отменённые',
+                            ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 17),
+                      const SizedBox(height: 15),
                       if (filtered.isEmpty)
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 70),
+                          padding: const EdgeInsets.symmetric(vertical: 80),
                           child: Column(
                             children: <Widget>[
-                              Icon(Icons.route_rounded, size: 54, color: scheme.outline),
+                              Icon(
+                                Icons.route_rounded,
+                                size: 54,
+                                color: scheme.outline,
+                              ),
                               const SizedBox(height: 13),
                               Text(
-                                widget.lang == 'uz' ? 'Safarlar topilmadi' : 'Поездок не найдено',
-                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                                widget.lang == 'uz'
+                                    ? 'Safarlar topilmadi'
+                                    : 'Поездок не найдено',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
                             ],
                           ),
@@ -8583,98 +8638,253 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       else
                         ...filtered.map((raw) {
                           final o = Map<String, dynamic>.from(raw as Map);
-                          final state = (o['state_kind'] ?? '').toString();
-                          final tariffKey = (o['tariff_key'] ?? 'start').toString();
-                          final source = (o['source'] ?? '').toString().trim();
-                          final destination = (o['destination'] ?? '').toString().trim();
+                          final state =
+                              (o['state_kind'] ?? '').toString();
+                          final tariffKey =
+                              (o['tariff_key'] ?? 'start').toString();
+                          final source =
+                              (o['source'] ?? '').toString().trim();
+                          final destination =
+                              (o['destination'] ?? '').toString().trim();
                           final total = o['total_cost'];
-                          final orderId = (o['order_id'] as num?)?.toInt() ?? 0;
+                          final orderId =
+                              (o['order_id'] as num?)?.toInt() ?? 0;
+                          final time = tripTime(o);
                           final finished = state == 'finished';
+                          final cancelled = state == 'aborted';
 
                           return Container(
                             margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.fromLTRB(13, 12, 10, 12),
-                            decoration: BoxDecoration(
-                              color: dark ? const Color(0xFF151819) : Colors.white,
-                              borderRadius: BorderRadius.circular(19),
-                              border: Border.all(
-                                color: dark ? const Color(0xFF2A3031) : const Color(0xFFE8EAEA),
-                              ),
+                            padding: const EdgeInsets.fromLTRB(
+                              10,
+                              10,
+                              10,
+                              9,
                             ),
-                            child: Row(
+                            decoration: BoxDecoration(
+                              color: dark
+                                  ? const Color(0xFF151819)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: dark
+                                    ? const Color(0xFF2A3031)
+                                    : const Color(0xFFE7EAEA),
+                              ),
+                              boxShadow: dark
+                                  ? const <BoxShadow>[]
+                                  : const <BoxShadow>[
+                                      BoxShadow(
+                                        color: Color(0x0A000000),
+                                        blurRadius: 12,
+                                        offset: Offset(0, 4),
+                                      ),
+                                    ],
+                            ),
+                            child: Column(
                               children: <Widget>[
-                                SizedBox(
-                                  width: 72,
-                                  height: 52,
-                                  child: _TariffVehicleArt(
-                                    kind: tariffKey,
-                                    selected: false,
-                                    available: true,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      Text(
-                                        source.isEmpty
-                                            ? (widget.lang == 'uz' ? 'Jo‘nash nuqtasi' : 'Точка отправления')
-                                            : source,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                                Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    SizedBox(
+                                      width: 92,
+                                      height: 66,
+                                      child: _TariffVehicleArt(
+                                        kind: tariffKey,
+                                        selected: false,
+                                        available: true,
                                       ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        destination.isEmpty
-                                            ? (widget.lang == 'uz' ? 'Manzil ko‘rsatilmagan' : 'Без конечного адреса')
-                                            : destination,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: scheme.onSurfaceVariant,
-                                          fontSize: 10.5,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 7),
-                                      Row(
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
                                         children: <Widget>[
-                                          Text(
-                                            money(total),
-                                            style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w900),
+                                          Row(
+                                            children: <Widget>[
+                                              const Icon(
+                                                Icons.circle,
+                                                size: 10,
+                                                color: yangiLime,
+                                              ),
+                                              const SizedBox(width: 7),
+                                              Expanded(
+                                                child: Text(
+                                                  source.isEmpty
+                                                      ? (widget.lang == 'uz'
+                                                          ? 'Jo‘nash nuqtasi'
+                                                          : 'Точка отправления')
+                                                      : source,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight:
+                                                        FontWeight.w800,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                          const SizedBox(width: 8),
-                                          Icon(
-                                            finished ? Icons.star_rounded : stateIcon(state),
-                                            size: 15,
-                                            color: finished ? const Color(0xFFFFB300) : scheme.onSurfaceVariant,
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            children: <Widget>[
+                                              Container(
+                                                width: 10,
+                                                height: 10,
+                                                decoration:
+                                                    BoxDecoration(
+                                                  color:
+                                                      scheme.onSurface,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          3),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 7),
+                                              Expanded(
+                                                child: Text(
+                                                  destination.isEmpty
+                                                      ? (widget.lang == 'uz'
+                                                          ? 'Manzil ko‘rsatilmagan'
+                                                          : 'Без конечного адреса')
+                                                      : destination,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: scheme
+                                                        .onSurfaceVariant,
+                                                    fontSize: 10.5,
+                                                    fontWeight:
+                                                        FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                          const SizedBox(width: 3),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: <Widget>[
+                                        Text(
+                                          money(total),
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                        if (time.isNotEmpty) ...<Widget>[
+                                          const SizedBox(height: 5),
                                           Text(
-                                            finished ? '5.0' : stateTitle(state),
+                                            time,
                                             style: TextStyle(
+                                              color:
+                                                  scheme.onSurfaceVariant,
+                                              fontSize: 9.5,
+                                              fontWeight:
+                                                  FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Divider(
+                                  height: 1,
+                                  color: scheme.outlineVariant,
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: Row(
+                                        children: <Widget>[
+                                          Icon(
+                                            cancelled
+                                                ? Icons.close_rounded
+                                                : finished
+                                                    ? Icons
+                                                        .check_circle_rounded
+                                                    : Icons
+                                                        .navigation_rounded,
+                                            size: 16,
+                                            color: cancelled
+                                                ? scheme.error
+                                                : yangiGreen,
+                                          ),
+                                          const SizedBox(width: 5),
+                                          Text(
+                                            stateTitle(state),
+                                            style: TextStyle(
+                                              color:
+                                                  scheme.onSurfaceVariant,
                                               fontSize: 10.5,
-                                              color: scheme.onSurfaceVariant,
-                                              fontWeight: FontWeight.w700,
+                                              fontWeight:
+                                                  FontWeight.w700,
                                             ),
                                           ),
                                         ],
                                       ),
-                                    ],
-                                  ),
-                                ),
-                                IconButton(
-                                  onPressed: finished && orderId > 0
-                                      ? () => showDriverRatingDialog(
-                                            context,
-                                            widget.api,
-                                            widget.lang,
-                                            orderId,
-                                            driverName: (o['driver_name'] ?? '').toString(),
-                                          )
-                                      : null,
-                                  icon: const Icon(Icons.chevron_right_rounded),
+                                    ),
+                                    if (finished && orderId > 0)
+                                      TextButton.icon(
+                                        onPressed: () =>
+                                            showDriverRatingDialog(
+                                          context,
+                                          widget.api,
+                                          widget.lang,
+                                          orderId,
+                                          driverName:
+                                              (o['driver_name'] ?? '')
+                                                  .toString(),
+                                        ),
+                                        icon: const Icon(
+                                          Icons.star_outline_rounded,
+                                          size: 17,
+                                        ),
+                                        label: Text(
+                                          widget.lang == 'uz'
+                                              ? 'Baholash'
+                                              : 'Оценить',
+                                        ),
+                                      ),
+                                    const SizedBox(width: 4),
+                                    FilledButton.tonalIcon(
+                                      onPressed: widget.onMenu,
+                                      icon: const Icon(
+                                        Icons.refresh_rounded,
+                                        size: 16,
+                                      ),
+                                      label: Text(
+                                        widget.lang == 'uz'
+                                            ? 'Qayta'
+                                            : 'Повторить',
+                                      ),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor:
+                                            yangiLime.withValues(
+                                                alpha: 0.15),
+                                        foregroundColor:
+                                            dark
+                                                ? yangiLime
+                                                : yangiGraphite,
+                                        minimumSize:
+                                            const Size(0, 38),
+                                        padding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
