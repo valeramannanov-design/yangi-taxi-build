@@ -9156,6 +9156,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
     final name = (me?['name'] ?? 'Yangi Taxi').toString().trim();
     final address = (me?['address'] ?? '').toString().trim();
     final recent = orders.take(3).toList();
@@ -9173,10 +9176,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: yangiLime.withValues(alpha: 0.18),
+            color: yangiLime.withValues(alpha: dark ? 0.14 : 0.18),
             borderRadius: BorderRadius.circular(13),
           ),
-          child: Icon(icon, color: yangiGraphite, size: 21),
+          child: Icon(icon, color: dark ? yangiLime : yangiGraphite, size: 21),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
         subtitle: subtitle == null ? null : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -9405,7 +9408,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           ),
                                           if (total != null)
                                             Text(
-                                              total.toString() + ' so‘m',
+                                              total.toString() + (widget.lang == 'uz' ? ' so‘m' : ' сум'),
                                               style: const TextStyle(fontWeight: FontWeight.w900),
                                             ),
                                         ],
