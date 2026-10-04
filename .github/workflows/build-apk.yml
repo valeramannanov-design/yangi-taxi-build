@@ -1,4 +1,4 @@
-name: Build Yangi Taxi v1.8.5 APK
+name: Build Yangi Taxi v1.9.0 APK
 
 on:
   workflow_dispatch:
@@ -79,17 +79,17 @@ jobs:
             --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY" \
             --dart-define=BACKEND_URL="${BACKEND_URL:-demo}"
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.8.5-editable-route-addresses.apk
+        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.9.0-premium-ui.apk
       - name: Prepare backend package
         run: |
-          zip -r Yangi-Taxi-backend-v1.8.5-live.zip backend -x "backend/.env"
+          zip -r Yangi-Taxi-backend-v1.9.0-live.zip backend -x "backend/.env"
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-v1.8.5-editable-route-addresses-apk
-          path: Yangi-Taxi-v1.8.5-editable-route-addresses.apk
+          name: Yangi-Taxi-v1.9.0-premium-ui-apk
+          path: Yangi-Taxi-v1.9.0-premium-ui.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-backend-v1.8.5-live
-          path: Yangi-Taxi-backend-v1.8.5-live.zip
+          name: Yangi-Taxi-backend-v1.9.0-live
+          path: Yangi-Taxi-backend-v1.9.0-live.zip
           if-no-files-found: error
