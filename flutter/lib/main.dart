@@ -1781,7 +1781,8 @@ class _MapPinMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fill = pickup ? yangiGreen : const Color(0xFFE92319);
+    final fill = pickup ? yangiGreen : yangiGraphite;
+    final markerAccent = pickup ? yangiGreen : yangiLime;
     final hasLabel = label.trim().isNotEmpty;
 
     Widget pin() => SizedBox(
@@ -1809,7 +1810,7 @@ class _MapPinMarker extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: fill,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3),
+                    border: Border.all(color: pickup ? Colors.white : yangiLime, width: 3),
                     boxShadow: const <BoxShadow>[
                       BoxShadow(color: Color(0x30000000), blurRadius: 7, offset: Offset(0, 3)),
                     ],
@@ -1818,12 +1819,15 @@ class _MapPinMarker extends StatelessWidget {
                     child: Container(
                       width: 11,
                       height: 11,
-                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      decoration: BoxDecoration(
+                        color: pickup ? Colors.white : yangiLime,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
                 ),
               ),
-              Positioned(top: 41, child: Container(width: 4, height: 14, color: fill)),
+              Positioned(top: 41, child: Container(width: 4, height: 14, color: markerAccent)),
               Positioned(
                 top: 53,
                 child: Container(
@@ -1832,7 +1836,7 @@ class _MapPinMarker extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
-                    border: Border.all(color: fill, width: 3),
+                    border: Border.all(color: markerAccent, width: 3),
                   ),
                 ),
               ),
@@ -1860,7 +1864,7 @@ class _MapPinMarker extends StatelessWidget {
           Container(
             width: 10,
             height: 10,
-            decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: markerAccent, shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
           Expanded(
