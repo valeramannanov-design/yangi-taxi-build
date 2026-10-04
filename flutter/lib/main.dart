@@ -3936,7 +3936,7 @@ class _OrderScreenState extends State<OrderScreen> {
                           ),
                           const SizedBox(height: 12),
                           Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: <Widget>[
                               Expanded(
                                 child: Container(
@@ -4033,6 +4033,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                     borderRadius: BorderRadius.circular(20),
                                     child: SizedBox(
                                       width: 48,
+                                      height: 133,
                                       child: Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: <Widget>[
