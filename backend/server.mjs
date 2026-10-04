@@ -621,7 +621,17 @@ async function realRoute(req, res, path, url) {
   const session = auth(req);
 
   if (req.method === 'GET' && path === '/api/me') {
-    const data = await tmGet('get_client_info', { client_id: session.clientId });
+    let data;
+    try {
+      data = await tmGet('get_client_info', { client_id: session.clientId });
+    } catch (error) {
+      if (Number(error.tmCode) === 100) {
+        const e = new Error('Session client not found');
+        e.statusCode = 401;
+        throw e;
+      }
+      throw error;
+    }
     try {
       const photo = await tmGet('get_client_info', {
         client_id: session.clientId,
