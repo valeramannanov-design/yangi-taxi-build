@@ -1934,110 +1934,83 @@ class _ShellState extends State<Shell> {
             ),
           ),
           child: SafeArea(
-          child: Column(
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
-                child: Row(
-                  children: <Widget>[
-                    Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: yangiLime,
-                        borderRadius: BorderRadius.circular(15),
+            child: Column(
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 12, 8),
+                  child: Row(
+                    children: <Widget>[
+                      const Expanded(child: YangiWordmark(compact: true)),
+                      IconButton(
+                        onPressed: () => shellKey.currentState?.closeDrawer(),
+                        icon: const Icon(Icons.close_rounded),
                       ),
-                      child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          const YangiWordmark(compact: true),
-                          const SizedBox(height: 3),
-                          Text(
-                            widget.lang == 'uz' ? 'Harakat sizga yaqinroq' : 'Движение ближе к вам',
-                            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
-                          ),
-                        ],
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: theme.colorScheme.outlineVariant),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    children: <Widget>[
+                      menuItem(
+                        index: 5,
+                        icon: Icons.person_outline_rounded,
+                        title: widget.lang == 'uz' ? 'Profil' : 'Профиль',
+                      ),
+                      menuItem(
+                        index: 0,
+                        icon: Icons.add_road_rounded,
+                        title: widget.lang == 'uz' ? 'Yangi safar' : 'Новая поездка',
+                      ),
+                      menuItem(
+                        index: 1,
+                        icon: Icons.local_taxi_outlined,
+                        title: widget.lang == 'uz' ? 'Joriy safar' : 'Текущая поездка',
+                      ),
+                      menuItem(
+                        index: 2,
+                        icon: Icons.receipt_long_outlined,
+                        title: widget.lang == 'uz' ? 'Mening safarlarim' : 'Мои поездки',
+                      ),
+                      menuItem(
+                        index: 3,
+                        icon: Icons.credit_card_rounded,
+                        title: widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+                      ),
+                      menuItem(
+                        index: 4,
+                        icon: Icons.settings_outlined,
+                        title: widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки',
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: theme.colorScheme.outlineVariant),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    leading: Icon(Icons.logout_rounded, color: theme.colorScheme.error),
+                    title: Text(
+                      widget.lang == 'uz' ? 'Chiqish' : 'Выйти',
+                      style: TextStyle(
+                        color: theme.colorScheme.error,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                  ],
+                    onTap: widget.onLogout,
+                  ),
                 ),
-              ),
-              Divider(height: 18, color: theme.colorScheme.outlineVariant),
-              Expanded(
-                child: ListView(
-                  padding: EdgeInsets.zero,
-                  children: <Widget>[
-                    menuSection(widget.lang == 'uz' ? 'SAFARLAR' : 'ПОЕЗДКИ'),
-                    menuItem(index: 0, icon: Icons.route_rounded, title: widget.lang == 'uz' ? 'Yangi buyurtma' : 'Новая поездка'),
-                    menuItem(index: 1, icon: Icons.local_taxi_rounded, title: widget.lang == 'uz' ? 'Joriy safar' : 'Текущая поездка'),
-                    menuItem(index: 2, icon: Icons.history_rounded, title: widget.lang == 'uz' ? 'Safarlar tarixi' : 'История поездок'),
-                    menuSection(widget.lang == 'uz' ? 'TO‘LOV' : 'ОПЛАТА'),
-                    menuItem(
-                      index: 3,
-                      icon: Icons.account_balance_wallet_rounded,
-                      title: widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
-                      subtitle: widget.lang == 'uz' ? 'Kartalar va naqd' : 'Карты и наличные',
-                    ),
-                    menuSection(widget.lang == 'uz' ? 'AKKAUNT' : 'АККАУНТ'),
-                    menuItem(index: 5, icon: Icons.person_rounded, title: widget.lang == 'uz' ? 'Profil' : 'Профиль'),
-                    menuItem(index: 4, icon: Icons.settings_rounded, title: widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки'),
-                  ],
-                ),
-              ),
-              Divider(height: 1, color: theme.colorScheme.outlineVariant),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: ListTile(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  leading: const Icon(Icons.logout_rounded),
-                  title: Text(widget.lang == 'uz' ? 'Chiqish' : 'Выйти'),
-                  onTap: widget.onLogout,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         ),
       ),
       body: IndexedStack(index: tab, children: pages),
-      bottomNavigationBar: (tab == 2 || tab == 5) ? NavigationBar(
-        selectedIndex: tab == 2 ? 2 : 3,
-        onDestinationSelected: (index) {
-          final target = switch (index) {
-            0 => 0,
-            1 => 1,
-            2 => 2,
-            _ => 5,
-          };
-          if (mounted) setState(() => tab = target);
-        },
-        destinations: <NavigationDestination>[
-          NavigationDestination(
-            icon: const Icon(Icons.home_outlined),
-            selectedIcon: const Icon(Icons.home_rounded),
-            label: widget.lang == 'uz' ? 'Asosiy' : 'Главная',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.local_taxi_outlined),
-            selectedIcon: const Icon(Icons.local_taxi_rounded),
-            label: widget.lang == 'uz' ? 'Safar' : 'Поездка',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.history_rounded),
-            selectedIcon: const Icon(Icons.history_toggle_off_rounded),
-            label: widget.lang == 'uz' ? 'Tarix' : 'История',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.person_outline_rounded),
-            selectedIcon: const Icon(Icons.person_rounded),
-            label: widget.lang == 'uz' ? 'Profil' : 'Профиль',
-          ),
-        ],
-      ) : null,
+      bottomNavigationBar: null,
     );
   }
 }
