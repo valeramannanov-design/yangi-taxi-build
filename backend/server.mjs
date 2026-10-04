@@ -110,7 +110,8 @@ function normalizePhone(value) {
     e.statusCode = 400;
     throw e;
   }
-  return '+' + digits;
+  // TaxiMaster stores/validates phone values as digits; UI may still accept +, spaces and dashes.
+  return digits;
 }
 
 function b64url(value) {
