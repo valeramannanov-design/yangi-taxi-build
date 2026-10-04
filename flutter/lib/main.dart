@@ -7038,19 +7038,31 @@ class _RideScreenState extends State<RideScreen> {
     final dark = theme.brightness == Brightness.dark;
 
     if (loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(
+          child: SizedBox.square(
+            dimension: 28,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          ),
+        ),
+      );
     }
 
     if (order == null) {
       return Scaffold(
+        backgroundColor: scheme.surface,
         body: SafeArea(
           child: Column(
             children: <Widget>[
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                 child: Row(
                   children: <Widget>[
-                    IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
+                    _rideCircleButton(
+                      icon: Icons.menu_rounded,
+                      onTap: widget.onMenu,
+                      tooltip: widget.lang == 'uz' ? 'Menyu' : 'Меню',
+                    ),
                     const Spacer(),
                     const YangiWordmark(compact: true),
                     const Spacer(),
@@ -7059,16 +7071,25 @@ class _RideScreenState extends State<RideScreen> {
                 ),
               ),
               const Spacer(),
-              Icon(Icons.local_taxi_outlined, size: 64, color: Theme.of(context).colorScheme.outline),
-              const SizedBox(height: 14),
+              Container(
+                width: 86,
+                height: 86,
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHigh,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.local_taxi_rounded, size: 42, color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 18),
               Text(
                 widget.lang == 'uz' ? 'Faol safar yo‘q' : 'Нет активной поездки',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 7),
               Text(
-                widget.lang == 'uz' ? 'Yangi buyurtma bering' : 'Создайте новый заказ на главном экране',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                widget.lang == 'uz' ? 'Yangi safarni asosiy ekrandan buyurtma qiling' : 'Закажите новую поездку на главном экране',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
               ),
               const Spacer(),
             ],
@@ -7079,21 +7100,22 @@ class _RideScreenState extends State<RideScreen> {
 
     final o = order!;
     final state = (o['state_kind'] ?? '').toString();
-    final from = point(o['source_lat'], o['source_lon']);
-    final to = point(o['destination_lat'], o['destination_lon']);
-    final center = driver ?? from ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
+    final pickup = point(o['source_lat'], o['source_lon']);
+    final destinationPoint = point(o['destination_lat'], o['destination_lon']);
+    final center = driver ?? pickup ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
     final car = <String>[
       o['car_mark']?.toString() ?? '',
       o['car_model']?.toString() ?? '',
-    ].where((x) => x.isNotEmpty).join(' ');
-    final number = (o['car_number'] ?? '').toString();
+    ].where((x) => x.trim().isNotEmpty).join(' ');
+    final number = (o['car_number'] ?? '').toString().trim();
     final driverName = (o['driver_name'] ?? '').toString().trim();
     final driverPhone = (o['driver_phone'] ?? o['phone'] ?? '').toString().trim();
-    final rating = (o['driver_rating'] ?? o['rating'] ?? '').toString();
+    final rating = (o['driver_rating'] ?? o['rating'] ?? '').toString().trim();
     final tariffKey = (o['tariff_key'] ?? 'start').toString();
+    final source = (o['source'] ?? '').toString().trim();
+    final destination = (o['destination'] ?? '').toString().trim();
     final cost = o['total_cost'];
-    final source = (o['source'] ?? '').toString();
-    final destination = (o['destination'] ?? '').toString();
+    final orderId = (o['order_id'] as num?)?.toInt() ?? widget.orderId ?? 0;
 
     final searching = state == 'new_order';
     final driverAssigned = state == 'driver_assigned';
@@ -7102,41 +7124,23 @@ class _RideScreenState extends State<RideScreen> {
     final finished = state == 'finished';
     final aborted = state == 'aborted';
 
-    String tariffTitle(String key) {
-      if (widget.lang == 'uz') {
-        return switch (key) {
-          'together' => 'Birga',
-          'comfort' => 'Komfort',
-          'business' => 'Biznes',
-          'delivery' => 'Yetkazib berish',
-          'cargo' => 'Yuk tashish',
-          _ => 'Start',
-        };
-      }
-      return switch (key) {
-        'together' => 'Вместе',
-        'comfort' => 'Комфорт',
-        'business' => 'Бизнес',
-        'delivery' => 'Доставка',
-        'cargo' => 'Грузовой',
-        _ => 'Старт',
-      };
-    }
-
-    String mainTitle() {
-      if (searching) return widget.lang == 'uz' ? 'Eng yaqin haydovchini qidiryapmiz' : 'Ищем ближайшего водителя';
-      if (driverAssigned) return widget.lang == 'uz' ? 'Haydovchi siz tomon yo‘lda' : 'Водитель уже в пути';
-      if (atPlace) return widget.lang == 'uz' ? 'Mashina yetib keldi' : 'Машина уже на месте';
-      if (activeRide) return widget.lang == 'uz' ? 'Yo‘lda' : 'В пути';
-      if (finished) return widget.lang == 'uz' ? 'Safar tugadi' : 'Поездка завершена';
-      if (aborted) return widget.lang == 'uz' ? 'Buyurtma bekor qilindi' : 'Заказ отменён';
-      return stateLabel(state);
-    }
-
     final etaRaw = o['eta_minutes'] ?? o['driver_eta_min'] ?? o['arrival_minutes'];
     final eta = etaRaw == null ? '' : etaRaw.toString();
     final distanceRaw = o['distance_km'] ?? o['driver_distance_km'] ?? o['remaining_distance_km'];
     final distance = distanceRaw == null ? '' : distanceRaw.toString();
+
+    String money(dynamic raw) {
+      final value = double.tryParse(raw?.toString() ?? '');
+      if (value == null) return '—';
+      final plain = value.round().toString();
+      final chars = plain.split('').reversed.toList();
+      final out = <String>[];
+      for (var i = 0; i < chars.length; i++) {
+        if (i > 0 && i % 3 == 0) out.add(' ');
+        out.add(chars[i]);
+      }
+      return out.reversed.join() + (widget.lang == 'uz' ? ' so‘m' : ' сум');
+    }
 
     Future<void> callDriver() async {
       if (driverPhone.isEmpty) return;
@@ -7159,1262 +7163,561 @@ class _RideScreenState extends State<RideScreen> {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            widget.lang == 'uz'
-                ? 'Safar ma’lumotlari nusxalandi'
-                : 'Данные поездки скопированы — можно отправить близким',
-          ),
+          content: Text(widget.lang == 'uz' ? 'Safar ma’lumoti nusxalandi' : 'Данные поездки скопированы'),
         ),
       );
     }
 
-    Future<void> showSafety() async {
-      await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (sheetContext) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  widget.lang == 'uz' ? 'Safar xavfsizligi' : 'Безопасность поездки',
-                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+    String title() {
+      if (searching) return widget.lang == 'uz' ? 'Mashina qidiryapmiz…' : 'Ищем машину…';
+      if (driverAssigned) return widget.lang == 'uz' ? 'Haydovchi tayinlandi' : 'Водитель назначен';
+      if (atPlace) return widget.lang == 'uz' ? 'Mashina yetib keldi' : 'Машина подъехала';
+      if (activeRide) return widget.lang == 'uz' ? 'Yo‘lda' : 'В пути';
+      if (finished) return widget.lang == 'uz' ? 'Safar tugadi' : 'Поездка завершена';
+      if (aborted) return widget.lang == 'uz' ? 'Buyurtma bekor qilindi' : 'Заказ отменён';
+      return stateLabel(state);
+    }
+
+    String subtitle() {
+      if (searching) {
+        return widget.lang == 'uz'
+            ? 'Odatda yaqin haydovchini topish bir daqiqagacha vaqt oladi'
+            : 'Обычно это занимает до 1 минуты';
+      }
+      if (driverAssigned) {
+        return eta.isEmpty
+            ? (widget.lang == 'uz' ? 'Mashina siz tomon yo‘lda' : 'Машина уже едет к вам')
+            : (widget.lang == 'uz' ? 'Mashina taxminan $eta daqiqada' : 'Машина будет примерно через $eta мин');
+      }
+      if (atPlace) {
+        return widget.lang == 'uz' ? 'Haydovchi sizni kutmoqda' : 'Водитель ожидает вас';
+      }
+      if (activeRide) {
+        final parts = <String>[
+          if (eta.isNotEmpty) (widget.lang == 'uz' ? '$eta daq' : '$eta мин'),
+          if (distance.isNotEmpty) '$distance км',
+        ];
+        return parts.isEmpty
+            ? (widget.lang == 'uz' ? 'Manzil tomon ketmoqdasiz' : 'Едем к месту назначения')
+            : parts.join(' • ');
+      }
+      if (finished) return widget.lang == 'uz' ? 'Yangi Taxi bilan safaringiz uchun rahmat' : 'Спасибо, что выбрали Yangi Taxi';
+      return widget.lang == 'uz' ? 'Safar faol emas' : 'Поездка больше не активна';
+    }
+
+    Widget driverBlock() {
+      final initial = driverName.isEmpty ? 'Y' : driverName.characters.first.toUpperCase();
+      return Container(
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: dark ? const Color(0xFF171A1B) : const Color(0xFFF5F6F6),
+          borderRadius: BorderRadius.circular(21),
+        ),
+        child: Row(
+          children: <Widget>[
+            CircleAvatar(
+              radius: 27,
+              backgroundColor: yangiLime,
+              child: Text(
+                initial,
+                style: const TextStyle(
+                  color: yangiGraphite,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
                 ),
-                const SizedBox(height: 10),
-                ListTile(
-                  leading: const Icon(Icons.share_rounded),
-                  title: Text(widget.lang == 'uz' ? 'Safarni ulashish' : 'Поделиться поездкой'),
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    shareTrip();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.emergency_rounded),
-                  title: Text(widget.lang == 'uz' ? '112 ga qo‘ng‘iroq qilish' : 'Позвонить 112'),
-                  subtitle: Text(
-                    widget.lang == 'uz'
-                        ? 'Favqulodda vaziyatlar uchun'
-                        : 'Только для экстренных ситуаций',
-                  ),
-                  onTap: () async {
-                    Navigator.pop(sheetContext);
-                    await launchUrl(Uri(scheme: 'tel', path: '112'));
-                  },
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
-      );
-    }
-
-    Future<void> showHelp() async {
-      await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (sheetContext) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  widget.lang == 'uz' ? 'Safar bo‘yicha yordam' : 'Помощь по поездке',
-                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 10),
-                ListTile(
-                  leading: const Icon(Icons.refresh_rounded),
-                  title: Text(widget.lang == 'uz' ? 'Safarni yangilash' : 'Обновить поездку'),
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    refresh();
-                  },
-                ),
-                if (driverPhone.isNotEmpty)
-                  ListTile(
-                    leading: const Icon(Icons.call_rounded),
-                    title: Text(widget.lang == 'uz' ? 'Haydovchiga qo‘ng‘iroq' : 'Позвонить водителю'),
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      callDriver();
-                    },
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    driverName.isEmpty
+                        ? (widget.lang == 'uz' ? 'Yangi Taxi haydovchisi' : 'Водитель Yangi Taxi')
+                        : driverName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900),
                   ),
-              ],
+                  const SizedBox(height: 3),
+                  Row(
+                    children: <Widget>[
+                      const Icon(Icons.star_rounded, size: 16, color: Color(0xFFFFB300)),
+                      const SizedBox(width: 3),
+                      Text(
+                        rating.isEmpty ? '4.9' : rating,
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                      ),
+                      if (car.isNotEmpty) ...<Widget>[
+                        Text('  •  ', style: TextStyle(color: scheme.onSurfaceVariant)),
+                        Flexible(
+                          child: Text(
+                            car,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11.5),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (number.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: dark ? const Color(0xFF242829) : Colors.white,
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(color: scheme.outlineVariant),
+                      ),
+                      child: Text(
+                        number,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
+            SizedBox(
+              width: 86,
+              height: 52,
+              child: _TariffVehicleArt(kind: tariffKey, selected: false, available: true),
+            ),
+          ],
         ),
       );
     }
 
-    Widget metric(IconData icon, String value, String label) {
+    Widget actionButton(IconData icon, String label, VoidCallback? onTap, {bool danger = false}) {
       return Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: scheme.outlineVariant.withValues(alpha: 0.6),
+        child: Material(
+          color: danger
+              ? scheme.errorContainer.withValues(alpha: 0.72)
+              : (dark ? const Color(0xFF171A1B) : const Color(0xFFF5F6F6)),
+          borderRadius: BorderRadius.circular(17),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(17),
+            child: SizedBox(
+              height: 62,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Icon(icon, size: 20, color: danger ? scheme.error : scheme.onSurface),
+                  const SizedBox(height: 5),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      color: danger ? scheme.error : scheme.onSurface,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          child: Row(
+        ),
+      );
+    }
+
+    Widget bodyPanel() {
+      if (searching) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(title(), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.7)),
+            const SizedBox(height: 6),
+            Text(subtitle(), style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5)),
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: const LinearProgressIndicator(
+                minHeight: 7,
+                backgroundColor: Color(0xFFE9ECEC),
+                color: yangiLime,
+              ),
+            ),
+            const SizedBox(height: 17),
+            _rideProgressRow(
+              active: true,
+              label: widget.lang == 'uz' ? 'Eng yaqin haydovchilarni qidiryapmiz' : 'Ищем ближайших водителей',
+            ),
+            _rideProgressRow(
+              active: false,
+              label: widget.lang == 'uz' ? 'So‘rov yuborilmoqda' : 'Отправляем запросы',
+            ),
+            _rideProgressRow(
+              active: false,
+              label: widget.lang == 'uz' ? 'Javobni kutyapmiz' : 'Ждём ответ',
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton(
+              onPressed: cancel,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: Text(widget.lang == 'uz' ? 'Buyurtmani bekor qilish' : 'Отменить заказ'),
+            ),
+          ],
+        );
+      }
+
+      if (finished) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Center(
+              child: Container(
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  color: yangiLime.withValues(alpha: 0.20),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_rounded, color: yangiGreen, size: 36),
+              ),
+            ),
+            const SizedBox(height: 13),
+            Text(
+              title(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -0.55),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              money(cost),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: -0.9),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              car.isEmpty ? subtitle() : car + (number.isEmpty ? '' : ' • ' + number),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+            ),
+            const SizedBox(height: 17),
+            FilledButton.icon(
+              onPressed: orderId <= 0
+                  ? null
+                  : () => showDriverRatingDialog(
+                        context,
+                        widget.api,
+                        widget.lang,
+                        orderId,
+                        driverName: driverName,
+                      ),
+              icon: const Icon(Icons.star_rounded),
+              label: Text(widget.lang == 'uz' ? 'Haydovchini baholash' : 'Оценить поездку'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF101719),
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+              ),
+            ),
+          ],
+        );
+      }
+
+      if (aborted) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(title(), style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 7),
+            Text(subtitle(), style: TextStyle(color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: refresh,
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              child: Text(widget.lang == 'uz' ? 'Yangilash' : 'Обновить'),
+            ),
+          ],
+        );
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Icon(icon, size: 21, color: scheme.onSurface),
-              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      value.isEmpty ? '—' : value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w900),
+                      title(),
+                      style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -0.6),
                     ),
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: scheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    const SizedBox(height: 5),
+                    Text(subtitle(), style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5)),
                   ],
                 ),
               ),
+              if (atPlace)
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFF101719), width: 3),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    eta.isEmpty ? '2\nмин' : '$eta\nмин',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, height: 1.0),
+                  ),
+                ),
             ],
           ),
-        ),
-      );
-    }
-
-    Widget roundAction(
-      IconData icon,
-      String tooltip,
-      VoidCallback? onTap,
-    ) {
-      return Tooltip(
-        message: tooltip,
-        child: Material(
-          color: scheme.surfaceContainerHigh,
-          shape: CircleBorder(
-            side: BorderSide(
-              color: scheme.outlineVariant.withValues(alpha: 0.75),
-            ),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            customBorder: const CircleBorder(),
-            child: SizedBox(
-              width: 52,
-              height: 52,
-              child: Icon(icon, size: 23),
-            ),
-          ),
-        ),
-      );
-    }
-
-    Widget tripAction(
-      IconData icon,
-      String label, {
-      VoidCallback? onTap,
-    }) {
-      return Expanded(
-        child: Material(
-          color: scheme.surfaceContainerLow,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(
-              color: scheme.outlineVariant.withValues(alpha: 0.65),
-            ),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(18),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
+          const SizedBox(height: 14),
+          if (activeRide)
+            Container(
+              padding: const EdgeInsets.fromLTRB(13, 12, 13, 12),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: dark ? const Color(0xFF171A1B) : const Color(0xFFF5F6F6),
+                borderRadius: BorderRadius.circular(20),
+              ),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Icon(icon, size: 24),
-                  const SizedBox(height: 6),
-                  Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+                  _rideAddressLine(true, source.isEmpty ? (widget.lang == 'uz' ? 'Jo‘nash nuqtasi' : 'Точка отправления') : source),
+                  const SizedBox(height: 9),
+                  _rideAddressLine(false, destination.isEmpty ? (widget.lang == 'uz' ? 'Manzil' : 'Место назначения') : destination),
                 ],
               ),
             ),
+          driverBlock(),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              actionButton(Icons.call_rounded, widget.lang == 'uz' ? 'Qo‘ng‘iroq' : 'Позвонить', driverPhone.isEmpty ? null : callDriver),
+              const SizedBox(width: 8),
+              actionButton(Icons.chat_bubble_rounded, widget.lang == 'uz' ? 'Chat' : 'Чат', driverPhone.isEmpty ? null : messageDriver),
+              const SizedBox(width: 8),
+              if (activeRide)
+                actionButton(Icons.shield_rounded, widget.lang == 'uz' ? 'Xavfsizlik' : 'Безопасность', shareTrip)
+              else
+                actionButton(Icons.close_rounded, widget.lang == 'uz' ? 'Bekor' : 'Отмена', cancel, danger: true),
+            ],
           ),
-        ),
+          if (activeRide) ...<Widget>[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: shareTrip,
+              icon: const Icon(Icons.ios_share_rounded),
+              label: Text(widget.lang == 'uz' ? 'Safarni ulashish' : 'Поделиться поездкой'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+          ],
+        ],
       );
     }
 
+    final showMap = !finished && !aborted;
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: dark ? const Color(0xFF0C0E0F) : Colors.white,
       body: Stack(
         children: <Widget>[
-          Positioned.fill(
-            child: TaxiYandexMap(
-              center: center,
-              from: from,
-              to: to,
-              driver: driver,
-              route: roadRoute,
-              vehicleKind: tariffKey,
-              zoom: activeRide ? 13 : 14,
-            ),
-          ),
-          Positioned(
-            top: 10,
-            left: 12,
-            right: 12,
-            child: SafeArea(
-              bottom: false,
-              child: Row(
-                children: <Widget>[
-                  Material(
-                    color: dark
-                        ? const Color(0xE6111314)
-                        : Colors.white.withValues(alpha: 0.96),
-                    elevation: dark ? 0 : 5,
-                    shape: CircleBorder(
-                      side: BorderSide(
-                        color: dark ? const Color(0xFF303638) : const Color(0x16000000),
-                      ),
-                    ),
-                    child: IconButton(
-                      onPressed: widget.onMenu,
-                      tooltip: widget.lang == 'uz' ? 'Menyu' : 'Меню',
-                      icon: const Icon(Icons.menu_rounded),
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xF20A0C0D),
-                      borderRadius: BorderRadius.circular(21),
-                      border: Border.all(color: const Color(0xFF2A2F30)),
-                      boxShadow: const <BoxShadow>[
-                        BoxShadow(
-                          color: Color(0x42000000),
-                          blurRadius: 20,
-                          offset: Offset(0, 7),
-                        ),
-                      ],
-                    ),
-                    child: const YangiWordmark(
-                      compact: true,
-                      onDarkSurface: true,
-                    ),
-                  ),
-                  const Spacer(),
-                  Material(
-                    color: dark
-                        ? const Color(0xE6111314)
-                        : Colors.white.withValues(alpha: 0.96),
-                    elevation: dark ? 0 : 5,
-                    shape: CircleBorder(
-                      side: BorderSide(
-                        color: dark ? const Color(0xFF303638) : const Color(0x16000000),
-                      ),
-                    ),
-                    child: IconButton(
-                      onPressed: refresh,
-                      icon: const Icon(Icons.my_location_rounded),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (searching)
+          if (showMap)
             Positioned.fill(
-              child: IgnorePointer(
-                child: Center(
-                  child: Container(
-                    width: 190,
-                    height: 190,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: <Color>[
-                          yangiLime.withValues(alpha: 0.32),
-                          yangiLime.withValues(alpha: 0.11),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
+              bottom: 300,
+              child: TaxiYandexMap(
+                center: center,
+                route: roadRoute,
+                from: pickup,
+                to: destinationPoint,
+                fromLabel: source,
+                toLabel: destination,
+                fromCaption: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
+                toCaption: widget.lang == 'uz' ? 'Qayerga' : 'Куда',
+                driver: driver,
+                vehicleKind: tariffKey,
+                zoom: activeRide ? 13.5 : 14.2,
+              ),
+            ),
+          if (showMap)
+            Positioned(
+              left: 14,
+              top: 10,
+              child: SafeArea(
+                child: _rideCircleButton(
+                  icon: Icons.arrow_back_rounded,
+                  onTap: widget.onMenu,
+                  tooltip: widget.lang == 'uz' ? 'Menyu' : 'Меню',
+                ),
+              ),
+            ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: SafeArea(
+              top: false,
+              child: Container(
+                width: double.infinity,
+                constraints: BoxConstraints(
+                  maxWidth: 720,
+                  maxHeight: showMap ? MediaQuery.sizeOf(context).height * 0.56 : double.infinity,
+                ),
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  10,
+                  18,
+                  math.max(18, MediaQuery.paddingOf(context).bottom + 10),
+                ),
+                decoration: BoxDecoration(
+                  color: dark ? const Color(0xFF101314) : Colors.white,
+                  borderRadius: showMap
+                      ? const BorderRadius.vertical(top: Radius.circular(30))
+                      : BorderRadius.zero,
+                  boxShadow: showMap
+                      ? const <BoxShadow>[
+                          BoxShadow(color: Color(0x28000000), blurRadius: 28, offset: Offset(0, -7)),
+                        ]
+                      : null,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      if (showMap) ...<Widget>[
+                        Center(
+                          child: Container(
+                            width: 42,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD5D9DA),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (error != null) ...<Widget>[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: scheme.errorContainer,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Text(error!, style: TextStyle(color: scheme.onErrorContainer)),
+                        ),
+                      ],
+                      bodyPanel(),
+                    ],
                   ),
                 ),
               ),
             ),
-          DraggableScrollableSheet(
-            initialChildSize: searching ? 0.40 : activeRide ? 0.56 : 0.52,
-            minChildSize: 0.34,
-            maxChildSize: 0.82,
-            snap: true,
-            builder: (context, scrollController) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: dark ? const Color(0xFF0C0E0F) : const Color(0xFFF9FAFA),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                  border: Border(
-                    top: BorderSide(
-                      color: dark ? const Color(0xFF292E30) : const Color(0x14000000),
-                    ),
-                  ),
-                  boxShadow: const <BoxShadow>[
-                    BoxShadow(color: Color(0x48000000), blurRadius: 32, offset: Offset(0, -10)),
-                  ],
-                ),
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 9, 16, 24),
-                  children: <Widget>[
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: <Widget>[
-                        Container(
-                          width: 46,
-                          height: 46,
-                          decoration: BoxDecoration(
-                            color: searching ? yangiLime.withValues(alpha: 0.22) : yangiLime,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            searching
-                                ? Icons.radar_rounded
-                                : activeRide
-                                    ? Icons.navigation_rounded
-                                    : finished
-                                        ? Icons.check_rounded
-                                        : aborted
-                                            ? Icons.close_rounded
-                                            : Icons.local_taxi_rounded,
-                            color: yangiGraphite,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                mainTitle(),
-                                style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -0.5),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                searching
-                                    ? (widget.lang == 'uz' ? 'Odatda bu 1–3 daqiqa davom etadi' : 'Обычно это занимает 1–3 минуты')
-                                    : atPlace
-                                        ? (widget.lang == 'uz' ? 'Haydovchi sizni kutmoqda' : 'Водитель ожидает вас')
-                                        : activeRide
-                                            ? (widget.lang == 'uz' ? 'Manzilga qarab harakatlanmoqdamiz' : 'Движемся к месту назначения')
-                                            : driverAssigned
-                                                ? (widget.lang == 'uz' ? 'Mashina siz tomon harakatlanmoqda' : 'Машина направляется к вам')
-                                                : '',
-                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-
-                    if ((driverAssigned || atPlace || activeRide) && !finished) ...<Widget>[
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: scheme.outlineVariant.withValues(alpha: 0.55),
-                          ),
-                        ),
-                        child: Column(
-                          children: <Widget>[
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                final progress = activeRide
-                                    ? 0.78
-                                    : atPlace
-                                        ? 0.62
-                                        : 0.38;
-                                final usable = math.max(0.0, constraints.maxWidth - 42);
-                                return SizedBox(
-                                  height: 32,
-                                  child: Stack(
-                                    alignment: Alignment.centerLeft,
-                                    children: <Widget>[
-                                      Positioned(
-                                        left: 14,
-                                        right: 14,
-                                        child: Container(
-                                          height: 5,
-                                          decoration: BoxDecoration(
-                                            color: scheme.outlineVariant,
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        left: 14,
-                                        width: usable * progress,
-                                        child: Container(
-                                          height: 5,
-                                          decoration: BoxDecoration(
-                                            color: yangiLime,
-                                            borderRadius: BorderRadius.circular(20),
-                                            boxShadow: <BoxShadow>[
-                                              BoxShadow(
-                                                color: yangiLime.withValues(alpha: 0.35),
-                                                blurRadius: 10,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        left: 0,
-                                        child: Container(
-                                          width: 28,
-                                          height: 28,
-                                          decoration: BoxDecoration(
-                                            color: yangiLime,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: yangiGraphite,
-                                              width: 5,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        left: 14 + math.max(0.0, usable * progress - 15),
-                                        child: Container(
-                                          width: 34,
-                                          height: 24,
-                                          decoration: BoxDecoration(
-                                            color: dark
-                                                ? const Color(0xFF202425)
-                                                : Colors.white,
-                                            borderRadius: BorderRadius.circular(8),
-                                            boxShadow: const <BoxShadow>[
-                                              BoxShadow(
-                                                color: Color(0x33000000),
-                                                blurRadius: 8,
-                                              ),
-                                            ],
-                                          ),
-                                          child: const Icon(
-                                            Icons.local_taxi_rounded,
-                                            size: 18,
-                                            color: yangiGreen,
-                                          ),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        right: 0,
-                                        child: Container(
-                                          width: 28,
-                                          height: 28,
-                                          decoration: BoxDecoration(
-                                            color: scheme.surface,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: scheme.outline,
-                                              width: 4,
-                                            ),
-                                          ),
-                                          child: const Icon(
-                                            Icons.stop_rounded,
-                                            size: 13,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: <Widget>[
-                                Text(
-                                  driverAssigned
-                                      ? (widget.lang == 'uz' ? 'Haydovchi yo‘lda' : 'Водитель едет к вам')
-                                      : atPlace
-                                          ? (widget.lang == 'uz' ? 'Mashina keldi' : 'Машина подана')
-                                          : (widget.lang == 'uz' ? 'Safar davom etmoqda' : 'Вы в пути'),
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                Text(
-                                  eta.isEmpty ? '' : eta + ' мин',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: scheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-
-                    if (searching) ...<Widget>[
-                      Container(
-                        padding: const EdgeInsets.all(13),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: <Widget>[
-                            SizedBox(
-                              width: 92,
-                              height: 56,
-                              child: _TariffVehicleArt(kind: tariffKey, selected: true, available: true),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Text(tariffTitle(tariffKey), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-                                  Text(
-                                    source,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (cost != null)
-                              Text(
-                                cost.toString() + (widget.lang == 'uz' ? ' so‘m' : ' сум'),
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-
-                    if (!searching && !aborted) ...<Widget>[
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: scheme.outlineVariant.withValues(alpha: 0.7),
-                          ),
-                        ),
-                        child: Column(
-                          children: <Widget>[
-                            Row(
-                              children: <Widget>[
-                                Stack(
-                                  clipBehavior: Clip.none,
-                                  children: <Widget>[
-                                    CircleAvatar(
-                                      radius: 31,
-                                      backgroundColor: yangiLime.withValues(alpha: 0.20),
-                                      child: Text(
-                                        driverName.isEmpty
-                                            ? 'Y'
-                                            : driverName.substring(0, 1).toUpperCase(),
-                                        style: TextStyle(
-                                          fontSize: 23,
-                                          fontWeight: FontWeight.w900,
-                                          color: dark ? Colors.white : yangiGraphite,
-                                        ),
-                                      ),
-                                    ),
-                                    if (rating.isNotEmpty)
-                                      Positioned(
-                                        left: 1,
-                                        bottom: -8,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 7,
-                                            vertical: 3,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF111415),
-                                            borderRadius: BorderRadius.circular(10),
-                                            border: Border.all(
-                                              color: const Color(0xFF353A3C),
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: <Widget>[
-                                              const Icon(
-                                                Icons.star_rounded,
-                                                size: 14,
-                                                color: yangiLime,
-                                              ),
-                                              const SizedBox(width: 3),
-                                              Text(
-                                                rating,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(width: 13),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      Text(
-                                        driverName.isEmpty
-                                            ? (widget.lang == 'uz' ? 'Haydovchi' : 'Водитель')
-                                            : driverName,
-                                        style: const TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: -0.35,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        atPlace
-                                            ? (widget.lang == 'uz'
-                                                ? 'Sizni kutmoqda'
-                                                : 'Ожидает вас')
-                                            : activeRide
-                                                ? (widget.lang == 'uz'
-                                                    ? 'Safar davom etmoqda'
-                                                    : 'Поездка продолжается')
-                                                : (widget.lang == 'uz'
-                                                    ? 'Aloqada, tez orada yetib keladi'
-                                                    : 'На связи, скоро будет'),
-                                        style: TextStyle(
-                                          color: scheme.onSurfaceVariant,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                roundAction(
-                                  Icons.chat_bubble_rounded,
-                                  widget.lang == 'uz' ? 'Yozish' : 'Написать',
-                                  driverPhone.isEmpty ? null : messageDriver,
-                                ),
-                                const SizedBox(width: 7),
-                                roundAction(
-                                  Icons.call_rounded,
-                                  widget.lang == 'uz' ? 'Qo‘ng‘iroq' : 'Позвонить',
-                                  driverPhone.isEmpty ? null : callDriver,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: <Widget>[
-                                Expanded(
-                                  flex: 6,
-                                  child: SizedBox(
-                                    height: 82,
-                                    child: _TariffVehicleArt(
-                                      kind: tariffKey,
-                                      selected: true,
-                                      available: true,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  flex: 5,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: <Widget>[
-                                      Text(
-                                        car.isEmpty
-                                            ? tariffTitle(tariffKey)
-                                            : car,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                      if (number.isNotEmpty) ...<Widget>[
-                                        const SizedBox(height: 7),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 6,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: dark ? Colors.white : yangiGraphite,
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            number,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: dark ? yangiGraphite : Colors.white,
-                                              fontWeight: FontWeight.w900,
-                                              letterSpacing: 0.8,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: <Widget>[
-                          metric(
-                            Icons.schedule_rounded,
-                            eta.isEmpty
-                                ? (atPlace ? (widget.lang == 'uz' ? '0 daq' : '0 мин') : '')
-                                : eta + (widget.lang == 'uz' ? ' daq' : ' мин'),
-                            widget.lang == 'uz' ? 'Yetib kelish' : 'До прибытия',
-                          ),
-                          const SizedBox(width: 7),
-                          metric(
-                            Icons.location_on_outlined,
-                            distance.isEmpty ? '' : distance + (widget.lang == 'uz' ? ' km' : ' км'),
-                            widget.lang == 'uz' ? 'Qoldi' : 'Осталось',
-                          ),
-                          const SizedBox(width: 7),
-                          metric(
-                            Icons.payments_outlined,
-                            cost == null ? '' : cost.toString() + (widget.lang == 'uz' ? ' so‘m' : ' сум'),
-                            widget.lang == 'uz' ? 'Narx' : 'Стоимость',
-                          ),
-                        ],
-                      ),
-                    ],
-
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: scheme.outlineVariant.withValues(alpha: 0.65),
-                        ),
-                      ),
-                      child: Row(
-                        children: <Widget>[
-                          Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: yangiLime.withValues(alpha: dark ? 0.14 : 0.18),
-                              borderRadius: BorderRadius.circular(13),
-                            ),
-                            child: Icon(
-                              activeRide
-                                  ? Icons.flag_rounded
-                                  : Icons.location_on_rounded,
-                              color: dark ? yangiLime : yangiGreen,
-                              size: 21,
-                            ),
-                          ),
-                          const SizedBox(width: 11),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  activeRide
-                                      ? (widget.lang == 'uz' ? 'Yakuniy manzil' : 'Конечная точка')
-                                      : (widget.lang == 'uz' ? 'Olib ketish joyi' : 'Точка подачи'),
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: scheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  activeRide && destination.isNotEmpty
-                                      ? destination
-                                      : source,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 14.5,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
-                        ],
-                      ),
-                    ),
-
-                    if ((driverAssigned || atPlace || activeRide) && !finished) ...<Widget>[
-                      const SizedBox(height: 10),
-                      Row(
-                        children: <Widget>[
-                          tripAction(
-                            Icons.share_rounded,
-                            widget.lang == 'uz' ? 'Safarni ulashish' : 'Поделиться\nпоездкой',
-                            onTap: shareTrip,
-                          ),
-                          const SizedBox(width: 8),
-                          tripAction(
-                            Icons.shield_outlined,
-                            widget.lang == 'uz' ? 'Xavfsizlik' : 'Безопасность',
-                            onTap: showSafety,
-                          ),
-                          const SizedBox(width: 8),
-                          tripAction(
-                            Icons.more_horiz_rounded,
-                            widget.lang == 'uz' ? 'Yordam' : 'Помощь',
-                            onTap: showHelp,
-                          ),
-                        ],
-                      ),
-                    ],
-
-                    if (error != null) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                    ],
-
-                    if (!finished && !aborted && !activeRide) ...<Widget>[
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: cancel,
-                        icon: const Icon(Icons.close_rounded),
-                        label: Text(widget.lang == 'uz' ? 'Buyurtmani bekor qilish' : 'Отменить поездку'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Theme.of(context).colorScheme.error,
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
-                        ),
-                      ),
-                    ],
-
-                    if (finished) ...<Widget>[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(15),
-                        decoration: BoxDecoration(
-                          color: yangiLime.withValues(alpha: dark ? 0.10 : 0.16),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: yangiLime.withValues(alpha: dark ? 0.24 : 0.36),
-                          ),
-                        ),
-                        child: Column(
-                          children: <Widget>[
-                            Row(
-                              children: <Widget>[
-                                Container(
-                                  width: 42,
-                                  height: 42,
-                                  decoration: BoxDecoration(
-                                    color: yangiLime.withValues(alpha: dark ? 0.18 : 0.32),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    Icons.check_rounded,
-                                    color: dark ? yangiLime : yangiGreen,
-                                  ),
-                                ),
-                                const SizedBox(width: 11),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      Text(
-                                        widget.lang == 'uz'
-                                            ? 'Safar muvaffaqiyatli yakunlandi'
-                                            : 'Поездка успешно завершена',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        widget.lang == 'uz'
-                                            ? 'Yangi Taxi bilan safar qilganingiz uchun rahmat'
-                                            : 'Спасибо, что выбрали Yangi Taxi',
-                                        style: TextStyle(
-                                          color: scheme.onSurfaceVariant,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (cost != null) ...<Widget>[
-                              const SizedBox(height: 13),
-                              Divider(
-                                height: 1,
-                                color: scheme.outlineVariant.withValues(alpha: 0.60),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: <Widget>[
-                                  Text(
-                                    widget.lang == 'uz' ? 'Jami' : 'Итого',
-                                    style: const TextStyle(fontWeight: FontWeight.w800),
-                                  ),
-                                  Text(
-                                    cost.toString() + ' so‘m',
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      FilledButton.icon(
-                        onPressed: () => showDriverRatingDialog(
-                          context,
-                          widget.api,
-                          widget.lang,
-                          (o['order_id'] as num).toInt(),
-                          driverName: driverName,
-                        ),
-                        icon: const Icon(Icons.star_rounded),
-                        label: Text(
-                          widget.lang == 'uz'
-                              ? 'Haydovchini baholash'
-                              : 'Оценить водителя',
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: yangiLime,
-                          foregroundColor: yangiGraphite,
-                          minimumSize: const Size.fromHeight(54),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            },
           ),
         ],
       ),
     );
   }
 
-}
-
-Future<void> showDriverRatingDialog(
-  BuildContext context,
-  ApiClient api,
-  String lang,
-  int orderId, {
-  String driverName = '',
-}) async {
-  int rating = 5;
-  final selectedTags = <String>{};
-  final comment = TextEditingController();
-
-  String ratingText(int value) {
-    if (lang == 'uz') {
-      return switch (value) {
-        1 => 'Yaxshi emas',
-        2 => 'Qoniqarsiz',
-        3 => 'Yaxshi',
-        4 => 'Juda yaxshi',
-        _ => 'A’lo',
-      };
-    }
-    return switch (value) {
-      1 => 'Не понравилось',
-      2 => 'Можно лучше',
-      3 => 'Хорошо',
-      4 => 'Очень хорошо',
-      _ => 'Отлично',
-    };
-  }
-
-  final tags = <MapEntry<String, String>>[
-    MapEntry<String, String>('clean', lang == 'uz' ? 'Toza' : 'Чисто'),
-    MapEntry<String, String>('polite', lang == 'uz' ? 'Xushmuomala' : 'Вежливо'),
-    MapEntry<String, String>('safe', lang == 'uz' ? 'Xavfsiz' : 'Безопасно'),
-    MapEntry<String, String>('comfortable', lang == 'uz' ? 'Qulay' : 'Комфортно'),
-  ];
-
-  final submit = await showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    builder: (sheetContext) => StatefulBuilder(
-      builder: (context, setSheetState) {
-        final theme = Theme.of(context);
-        final scheme = theme.colorScheme;
-        final dark = theme.brightness == Brightness.dark;
-
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(context).bottom,
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              color: dark ? const Color(0xFF0C0E0F) : const Color(0xFFF9FAFA),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-              border: Border(
-                top: BorderSide(
-                  color: dark ? const Color(0xFF292E30) : const Color(0x14000000),
-                ),
-              ),
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 9, 16, 22),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Container(
-                    width: 42,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: scheme.outlineVariant,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(
-                      color: yangiLime.withValues(alpha: dark ? 0.16 : 0.24),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.check_rounded,
-                      size: 33,
-                      color: dark ? yangiLime : yangiGreen,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    lang == 'uz' ? 'Safarni baholang' : 'Оцените поездку',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    driverName.trim().isEmpty
-                        ? (lang == 'uz'
-                            ? 'Fikringiz Yangi Taxi xizmatini yaxshilaydi'
-                            : 'Ваш отзыв помогает улучшать Yangi Taxi')
-                        : (lang == 'uz'
-                            ? driverName.trim() + ' bilan safar'
-                            : 'Поездка с ' + driverName.trim()),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List<Widget>.generate(
-                      5,
-                      (i) => IconButton(
-                        onPressed: () => setSheetState(() => rating = i + 1),
-                        iconSize: 39,
-                        padding: const EdgeInsets.symmetric(horizontal: 3),
-                        constraints: const BoxConstraints(minWidth: 46, minHeight: 46),
-                        icon: Icon(
-                          i < rating ? Icons.star_rounded : Icons.star_outline_rounded,
-                        ),
-                        color: i < rating ? const Color(0xFFFFB300) : scheme.outline,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    ratingText(rating),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      lang == 'uz' ? 'Nima yoqdi?' : 'Что понравилось?',
-                      style: const TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                  ),
-                  const SizedBox(height: 9),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: tags.map((tag) {
-                        final selected = selectedTags.contains(tag.key);
-                        return ChoiceChip(
-                          selected: selected,
-                          showCheckmark: false,
-                          label: Text(
-                            tag.value,
-                            style: TextStyle(
-                              color: selected ? yangiGraphite : scheme.onSurface,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          selectedColor: yangiLime,
-                          backgroundColor: scheme.surfaceContainerHigh,
-                          side: BorderSide(
-                            color: selected
-                                ? yangiLime
-                                : scheme.outlineVariant.withValues(alpha: 0.8),
-                          ),
-                          onSelected: (_) => setSheetState(() {
-                            if (selected) {
-                              selectedTags.remove(tag.key);
-                            } else {
-                              selectedTags.add(tag.key);
-                            }
-                          }),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: comment,
-                    maxLines: 3,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: InputDecoration(
-                      labelText: lang == 'uz' ? 'Izoh' : 'Комментарий',
-                      hintText: lang == 'uz'
-                          ? 'Haydovchi va safar haqida fikringiz'
-                          : 'Что понравилось или можно улучшить',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: () => Navigator.pop(sheetContext, true),
-                    icon: const Icon(Icons.star_rounded),
-                    label: Text(lang == 'uz' ? 'Bahoni yuborish' : 'Отправить оценку'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: yangiLime,
-                      foregroundColor: yangiGraphite,
-                      minimumSize: const Size.fromHeight(54),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  TextButton(
-                    onPressed: () => Navigator.pop(sheetContext, false),
-                    child: Text(lang == 'uz' ? 'Keyinroq' : 'Позже'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    ),
-  );
-
-  if (submit != true) {
-    comment.dispose();
-    return;
-  }
-
-  try {
-    await api.post('/api/orders/' + orderId.toString() + '/rating', <String, dynamic>{
-      'rating': rating,
-      'tags': selectedTags.toList(),
-      'comment': comment.text.trim(),
-    });
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            lang == 'uz' ? 'Bahoyingiz yuborildi' : 'Спасибо! Оценка отправлена',
+  Widget _rideCircleButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required String tooltip,
+  }) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: dark ? const Color(0xED111415) : Colors.white.withValues(alpha: 0.97),
+      elevation: dark ? 0 : 7,
+      shadowColor: const Color(0x26000000),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Tooltip(
+          message: tooltip,
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Icon(icon, size: 23),
           ),
         ),
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-  } finally {
-    comment.dispose();
+      ),
+    );
+  }
+
+  Widget _rideProgressRow({required bool active, required String label}) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: active ? yangiLime : scheme.surfaceContainerHighest,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              active ? Icons.check_rounded : Icons.more_horiz_rounded,
+              size: 14,
+              color: active ? yangiGraphite : scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: active ? scheme.onSurface : scheme.onSurfaceVariant,
+                fontSize: 12,
+                fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _rideAddressLine(bool pickup, String label) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: <Widget>[
+        Container(
+          width: 11,
+          height: 11,
+          decoration: BoxDecoration(
+            color: pickup ? yangiLime : const Color(0xFF101719),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: pickup ? yangiGreen : const Color(0xFF101719),
+              width: 2,
+            ),
+          ),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
