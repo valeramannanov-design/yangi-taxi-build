@@ -7324,7 +7324,7 @@ class _RideScreenState extends State<RideScreen> {
     final rating = (o['driver_rating'] ?? o['rating'] ?? '').toString().trim();
     final crewId = int.tryParse((o['crew_id'] ?? '').toString()) ?? 0;
     final hasAssignedCrew =
-        crewId > 0 || driver != null || driverName.isNotEmpty || driverPhone.isNotEmpty;
+        crewId > 0 || driver != null || driverName.isNotEmpty;
     final state = ((rawState == 'driver_assigned' || rawState == 'car_at_place') &&
             !hasAssignedCrew)
         ? 'new_order'
