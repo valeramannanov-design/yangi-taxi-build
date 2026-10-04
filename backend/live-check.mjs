@@ -207,10 +207,11 @@ async function main() {
   const destLat = n('LIVE_TEST_DEST_LAT');
   const destLon = n('LIVE_TEST_DEST_LON');
 
-  if (![clientId, sourceLat, sourceLon, destLat, destLon].every((x) => x !== null)) {
+  if (![sourceLat, sourceLon, destLat, destLon].every((x) => x !== null)) {
     console.log('\nRoute pricing test skipped.');
-    console.log('Set LIVE_TEST_CLIENT_ID, LIVE_TEST_SOURCE_LAT, LIVE_TEST_SOURCE_LON,');
+    console.log('Set LIVE_TEST_SOURCE_LAT, LIVE_TEST_SOURCE_LON,');
     console.log('LIVE_TEST_DEST_LAT and LIVE_TEST_DEST_LON to test real prices.');
+    console.log('LIVE_TEST_CLIENT_ID is optional.');
     return;
   }
 
@@ -247,7 +248,7 @@ async function main() {
       let tariffId = def.fixed || 0;
       if (!tariffId) {
         const selected = await tmPostJson('select_tariff_for_order', {
-          client_id: clientId,
+          ...(clientId !== null ? { client_id: clientId } : {}),
           crew_group_id: def.group,
           source_time: sourceTime,
           is_prize: false,
@@ -260,10 +261,9 @@ async function main() {
       const analyzed = route.addresses || [];
       const cost = await tmPostJson('calc_order_cost2', {
         tariff_id: tariffId,
-        crew_group_id: def.group,
         source_time: sourceTime,
         is_prior: false,
-        client_id: clientId,
+        ...(clientId !== null ? { client_id: clientId } : {}),
         source_zone_id: analyzed[0]?.zone_id || 0,
         source_lat: source.lat,
         source_lon: source.lon,
