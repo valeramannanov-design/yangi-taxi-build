@@ -8427,8 +8427,11 @@ class _CardsScreenState extends State<CardsScreen> {
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 30),
+          : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 820),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 30),
               children: <Widget>[
                 Text(
                   widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
@@ -8509,7 +8512,20 @@ class _CardsScreenState extends State<CardsScreen> {
                           widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
                           style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
                         ),
-                        trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                        subtitle: Text(
+                          cardBindingAvailable
+                              ? (widget.lang == 'uz'
+                                  ? 'ATMOS orqali xavfsiz tokenlash'
+                                  : 'Безопасная токенизация через ATMOS')
+                              : (widget.lang == 'uz'
+                                  ? 'ATMOS karta bog‘lash hozir mavjud emas'
+                                  : 'Привязка карты ATMOS сейчас недоступна'),
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        trailing: Icon(
+                          cardBindingAvailable ? Icons.chevron_right_rounded : Icons.lock_outline_rounded,
+                          color: scheme.onSurfaceVariant,
+                        ),
                         onTap: cardBindingAvailable ? addCard : null,
                       ),
                     ],
@@ -8594,6 +8610,8 @@ class _CardsScreenState extends State<CardsScreen> {
                 ),
               ],
             ),
+          ),
+        ),
     );
   }
 }
