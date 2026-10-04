@@ -3816,15 +3816,20 @@ class _OrderScreenState extends State<OrderScreen> {
                   ),
                   const Spacer(),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
-                      borderRadius: BorderRadius.circular(18),
+                      color: const Color(0xF20A0C0D),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: const Color(0xFF2A2F30)),
                       boxShadow: const <BoxShadow>[
-                        BoxShadow(color: Color(0x22000000), blurRadius: 16, offset: Offset(0, 4)),
+                        BoxShadow(
+                          color: Color(0x42000000),
+                          blurRadius: 22,
+                          offset: Offset(0, 8),
+                        ),
                       ],
                     ),
-                    child: const YangiWordmark(),
+                    child: const YangiWordmark(onDarkSurface: true),
                   ),
                   const Spacer(),
                   Stack(
@@ -3861,20 +3866,25 @@ class _OrderScreenState extends State<OrderScreen> {
           ),
 
           DraggableScrollableSheet(
-            initialChildSize: destinationReady ? 0.54 : 0.42,
-            minChildSize: destinationReady ? 0.44 : 0.34,
-            maxChildSize: 0.80,
+            initialChildSize: destinationReady ? 0.60 : 0.46,
+            minChildSize: destinationReady ? 0.48 : 0.36,
+            maxChildSize: 0.88,
             snap: true,
             snapSizes: destinationReady
-                ? const <double>[0.44, 0.54, 0.80]
-                : const <double>[0.34, 0.42, 0.80],
+                ? const <double>[0.48, 0.60, 0.88]
+                : const <double>[0.36, 0.46, 0.88],
             builder: (context, scrollController) {
               return Container(
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+                  color: dark ? const Color(0xFF0C0E0F) : const Color(0xFFF9FAFA),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                  border: Border(
+                    top: BorderSide(
+                      color: dark ? const Color(0xFF292E30) : const Color(0x14000000),
+                    ),
+                  ),
                   boxShadow: const <BoxShadow>[
-                    BoxShadow(color: Color(0x26000000), blurRadius: 26, offset: Offset(0, -8)),
+                    BoxShadow(color: Color(0x48000000), blurRadius: 32, offset: Offset(0, -10)),
                   ],
                 ),
                 child: Column(
