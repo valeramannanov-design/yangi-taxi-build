@@ -1118,7 +1118,11 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    phone = TextEditingController(text: widget.initialPhone);
+    final initialDigits = widget.initialPhone.replaceAll(RegExp(r'\\D'), '');
+    final localPhone = initialDigits.length == 12 && initialDigits.startsWith('998')
+        ? initialDigits.substring(3)
+        : widget.initialPhone;
+    phone = TextEditingController(text: localPhone);
     rememberMe = widget.initialPhone.trim().isNotEmpty;
   }
 
@@ -1163,8 +1167,8 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         smsSent = true;
         info = widget.lang == 'uz'
-            ? 'SMS-kod ${phone.text.trim()} raqamiga yuborildi'
-            : 'SMS-код отправлен на ${phone.text.trim()}';
+            ? 'SMS-kod ${_authPhone()} raqamiga yuborildi'
+            : 'SMS-код отправлен на ${_authPhone()}';
         if (widget.api.isDemo && data['debugCode'] != null) {
           smsCode.text = data['debugCode'].toString();
         }
@@ -1403,7 +1407,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         enabled: !smsSent && !busy,
                         keyboardType: TextInputType.phone,
                         decoration: authDecoration(
-                          hint: '+998 90 123 45 67',
+                          hint: '90 123 45 67',
                           prefix: SizedBox(
                             width: 82,
                             child: Row(
