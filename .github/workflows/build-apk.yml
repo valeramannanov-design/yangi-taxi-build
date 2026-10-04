@@ -69,6 +69,31 @@ jobs:
       - name: Get packages
         working-directory: flutter
         run: flutter pub get
+      - name: Validate LIVE build configuration
+        env:
+          MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+          BACKEND_URL: ${{ secrets.YANGI_BACKEND_URL }}
+        run: |
+          if [ -z "$MAPKIT_API_KEY" ]; then
+            echo "::error::YANDEX_MAPKIT_API_KEY is not configured"
+            exit 1
+          fi
+          if [ -z "$BACKEND_URL" ]; then
+            echo "::error::YANGI_BACKEND_URL is not configured"
+            exit 1
+          fi
+          if [ "$BACKEND_URL" = "demo" ]; then
+            echo "::error::Production build must not use demo backend"
+            exit 1
+          fi
+          case "$BACKEND_URL" in
+            https://*) ;;
+            *)
+              echo "::error::YANGI_BACKEND_URL must use HTTPS"
+              exit 1
+              ;;
+          esac
+
       - name: Build release APK
         working-directory: flutter
         env:
@@ -77,7 +102,7 @@ jobs:
         run: |
           flutter build apk --release \
             --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY" \
-            --dart-define=BACKEND_URL="${BACKEND_URL:-demo}"
+            --dart-define=BACKEND_URL="$BACKEND_URL"
       - name: Prepare artifact
         run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.9.0-premium-ui.apk
       - name: Prepare backend package
