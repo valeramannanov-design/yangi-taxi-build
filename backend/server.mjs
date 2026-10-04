@@ -909,9 +909,9 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') return send(res, 204, {});
     if (req.method === 'GET' && path === '/health') {
-      if (cfg.mock) return send(res, 200, { ok: true, service: 'Yangi Taxi Backend', tmApi: 'demo', mock: true });
+      if (cfg.mock) return send(res, 200, { ok: true, service: 'Yangi Taxi Backend', tmApi: 'demo', mock: true, timeZone: cfg.timeZone });
       await tmGet('ping');
-      return send(res, 200, { ok: true, service: 'Yangi Taxi Backend', tmApi: 'ok', mock: false });
+      return send(res, 200, { ok: true, service: 'Yangi Taxi Backend', tmApi: 'ok', mock: false, timeZone: cfg.timeZone, sourceTime: tmTime() });
     }
     return cfg.mock ? await mockRoute(req, res, path, url) : await realRoute(req, res, path, url);
   } catch (e) {
