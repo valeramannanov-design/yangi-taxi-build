@@ -828,12 +828,12 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     final scheme = ColorScheme.fromSeed(
       seedColor: yangiLime,
       brightness: Brightness.light,
-      surface: const Color(0xFFF7F8F8),
+      surface: Colors.white,
     ).copyWith(
       primary: yangiGraphite,
       onPrimary: Colors.white,
       secondary: yangiGreen,
-      surface: const Color(0xFFF7F8F8),
+      surface: Colors.white,
       surfaceContainerLowest: Colors.white,
       surfaceContainerLow: const Color(0xFFF1F3F3),
       surfaceContainer: const Color(0xFFEBEEEE),
@@ -871,16 +871,16 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
       theme: ThemeData(
         colorScheme: scheme,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF7F8F8),
+        scaffoldBackgroundColor: Colors.white,
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFF7F8F8),
+          backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           centerTitle: false,
         ),
         navigationBarTheme: const NavigationBarThemeData(
           height: 68,
-          backgroundColor: Color(0xFFF7F8F8),
+          backgroundColor: Colors.white,
           indicatorColor: Color(0xFFDFFF9A),
           elevation: 0,
         ),
@@ -892,7 +892,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: scheme.surfaceContainerLowest,
+          fillColor: const Color(0xFFF7F8F8),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
