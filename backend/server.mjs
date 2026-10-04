@@ -51,6 +51,11 @@ const cfg = {
   },
 };
 
+const registrationCodes = new Map();
+const REG_CODE_TTL_MS = Math.max(60_000, Number(process.env.REG_CODE_TTL_MS || 5 * 60_000));
+const REG_CODE_RESEND_MS = Math.max(30_000, Number(process.env.REG_CODE_RESEND_MS || 60_000));
+const REG_CODE_MAX_ATTEMPTS = Math.max(1, Number(process.env.REG_CODE_MAX_ATTEMPTS || 5));
+
 const pad = (n) => String(n).padStart(2, '0');
 function tmTime(date = new Date()) {
   const parts = Object.fromEntries(
@@ -192,12 +197,16 @@ async function tmPostQuery(name, params = {}) {
   const q = queryString(params);
   return tmCall(name, 'POST', q, '', q);
 }
-async function tmCall(name, method, query, body, signed) {
+async function tmPostForm(name, params = {}) {
+  const body = queryString(params);
+  return tmCall(name, 'POST', '', body, body, 'application/x-www-form-urlencoded; charset=utf-8');
+}
+async function tmCall(name, method, query, body, signed, contentType = 'application/json; charset=utf-8') {
   if (!cfg.base || !cfg.secret) throw new Error('TaxiMaster API is not configured');
   const headers = { Accept: 'application/json', Signature: md5(signed) };
   if (cfg.userId) headers['X-User-Id'] = cfg.userId;
   if (body) {
-    headers['Content-Type'] = 'application/json; charset=utf-8';
+    headers['Content-Type'] = contentType;
     headers['Content-Length'] = Buffer.byteLength(body);
   }
   const url = cfg.base + '/' + name + (query ? '?' + query : '');
@@ -598,7 +607,96 @@ async function getCancelStateId() {
   return cancelStateId;
 }
 
+function registrationCodeHash(phone, code) {
+  return crypto.createHmac('sha256', cfg.sessionSecret).update(phone + ':' + code).digest('hex');
+}
+
+function cleanupRegistrationCodes() {
+  const now = Date.now();
+  for (const [phone, entry] of registrationCodes.entries()) {
+    if (!entry || now > entry.expiresAt) registrationCodes.delete(phone);
+  }
+}
+
+async function sendRegistrationCode(phone) {
+  cleanupRegistrationCodes();
+  const now = Date.now();
+  const previous = registrationCodes.get(phone);
+  if (previous && now - previous.sentAt < REG_CODE_RESEND_MS) {
+    const e = new Error('SMS code was sent recently. Please wait before retrying.');
+    e.statusCode = 429;
+    throw e;
+  }
+  const code = String(crypto.randomInt(100000, 1000000));
+  await tmPostForm('send_sms', { phone, message: 'Yangi Taxi: kod ' + code });
+  registrationCodes.set(phone, {
+    hash: registrationCodeHash(phone, code),
+    sentAt: now,
+    expiresAt: now + REG_CODE_TTL_MS,
+    attempts: 0,
+  });
+}
+
+function verifyRegistrationCode(phone, code) {
+  cleanupRegistrationCodes();
+  const entry = registrationCodes.get(phone);
+  if (!entry) {
+    const e = new Error('SMS code is missing or expired');
+    e.statusCode = 400;
+    throw e;
+  }
+  entry.attempts += 1;
+  if (entry.attempts > REG_CODE_MAX_ATTEMPTS) {
+    registrationCodes.delete(phone);
+    const e = new Error('Too many SMS code attempts');
+    e.statusCode = 429;
+    throw e;
+  }
+  const actual = registrationCodeHash(phone, String(code || '').trim());
+  const a = Buffer.from(actual);
+  const b = Buffer.from(entry.hash);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    const e = new Error('Invalid SMS code');
+    e.statusCode = 400;
+    throw e;
+  }
+  registrationCodes.delete(phone);
+}
+
 async function realRoute(req, res, path, url) {
+  if (req.method === 'POST' && path === '/api/auth/register/request-code') {
+    const body = await readJson(req);
+    const phone = normalizePhone(body.phone);
+    await sendRegistrationCode(phone);
+    return send(res, 200, { ok: true, data: { sent: true, expiresInSeconds: Math.round(REG_CODE_TTL_MS / 1000) } });
+  }
+
+  if (req.method === 'POST' && path === '/api/auth/register/verify-code') {
+    const body = await readJson(req);
+    const phone = normalizePhone(body.phone);
+    const name = String(body.name || '').trim();
+    const password = String(body.password || '');
+    if (!name) {
+      const e = new Error('Name is required');
+      e.statusCode = 400;
+      throw e;
+    }
+    if (password.length < 6) {
+      const e = new Error('Password must contain at least 6 characters');
+      e.statusCode = 400;
+      throw e;
+    }
+    verifyRegistrationCode(phone, body.code);
+    const data = await tmPostJson('register_client2', {
+      name,
+      login: phone,
+      password,
+      phones: [{ phone, is_default: true }],
+      need_validate: true,
+    });
+    return send(res, 201, { ok: true, data: { clientId: data.client_id, token: issueSession(data.client_id, phone) } });
+  }
+
   if (req.method === 'POST' && path === '/api/auth/register') {
     const body = await readJson(req);
     const phone = normalizePhone(body.phone);
@@ -948,7 +1046,11 @@ const server = http.createServer(async (req, res) => {
     return cfg.mock ? await mockRoute(req, res, path, url) : await realRoute(req, res, path, url);
   } catch (e) {
     const status = e.statusCode || 500;
-    console.error(new Date().toISOString(), e);
+    if (status >= 500 || (e.tmCode != null && Number(e.tmCode) !== 100)) {
+      console.error(new Date().toISOString(), e);
+    } else {
+      console.warn(new Date().toISOString(), status, e.message || 'Request rejected');
+    }
     return send(res, status, {
       ok: false,
       error: {
