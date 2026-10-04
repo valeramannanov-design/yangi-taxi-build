@@ -5462,6 +5462,7 @@ class _AddressSheetState extends State<AddressSheet> {
   }
 
   void change(String value) {
+    if (mounted) setState(() {});
     timer?.cancel();
     timer = Timer(const Duration(milliseconds: 280), () => search(value));
   }
