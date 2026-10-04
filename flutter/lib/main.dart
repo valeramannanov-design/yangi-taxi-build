@@ -1687,14 +1687,8 @@ class _ShellState extends State<Shell> {
         ),
       ),
       body: IndexedStack(index: tab, children: pages),
-      bottomNavigationBar: tab >= 2 ? NavigationBar(
-        selectedIndex: tab == 0
-            ? 0
-            : tab == 1
-                ? 1
-                : tab == 2
-                    ? 2
-                    : 3,
+      bottomNavigationBar: (tab == 2 || tab == 5) ? NavigationBar(
+        selectedIndex: tab == 2 ? 2 : 3,
         onDestinationSelected: (index) {
           final target = switch (index) {
             0 => 0,
