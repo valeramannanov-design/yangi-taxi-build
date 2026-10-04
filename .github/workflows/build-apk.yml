@@ -1,4 +1,4 @@
-name: Build Yangi Taxi v1.9.0 APK
+name: Build Yangi Taxi v1.9.4 APK
 
 on:
   workflow_dispatch:
@@ -61,6 +61,61 @@ jobs:
                   g += '\n\ndependencies {\n    implementation "com.google.android.gms:play-services-location:21.1.0"\n}\n'
               gradle.write_text(g)
           PY
+      - name: Validate production signing configuration
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD ANDROID_KEY_ALIAS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not configured"
+              exit 1
+            fi
+          done
+
+      - name: Configure production signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > flutter/android/app/yangi-taxi-release.jks
+          test -s flutter/android/app/yangi-taxi-release.jks
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('flutter/android/app/build.gradle.kts')
+          if not path.exists():
+              raise SystemExit('Expected build.gradle.kts was not generated')
+
+          g = path.read_text()
+
+          marker = '    buildTypes {'
+          if marker not in g:
+              raise SystemExit('buildTypes block not found in build.gradle.kts')
+
+          signing = '''    signingConfigs {
+              create("release") {
+                  storeFile = file(System.getenv("ANDROID_KEYSTORE_PATH"))
+                  storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                  keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                  keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+              }
+          }
+
+          '''
+          g = g.replace(marker, signing + marker, 1)
+
+          debug_line = '            signingConfig = signingConfigs.getByName("debug")'
+          release_line = '            signingConfig = signingConfigs.getByName("release")'
+          if debug_line not in g:
+              raise SystemExit('Default debug signing line not found in release build type')
+          g = g.replace(debug_line, release_line, 1)
+
+          path.write_text(g)
+          PY
+
       - name: Check backend syntax
         run: |
           node --check backend/server.mjs
@@ -72,7 +127,7 @@ jobs:
       - name: Validate LIVE build configuration
         env:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-          BACKEND_URL: https://lenders-burner-odds-delicious.trycloudflare.com
+          BACKEND_URL: ${{ secrets.YANGI_BACKEND_URL }}
         run: |
           if [ -z "$MAPKIT_API_KEY" ]; then
             echo "::error::YANDEX_MAPKIT_API_KEY is not configured"
@@ -98,23 +153,27 @@ jobs:
         working-directory: flutter
         env:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-          BACKEND_URL: https://lenders-burner-odds-delicious.trycloudflare.com
+          BACKEND_URL: ${{ secrets.YANGI_BACKEND_URL }}
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/flutter/android/app/yangi-taxi-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           flutter build apk --release \
             --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY" \
             --dart-define=BACKEND_URL="$BACKEND_URL"
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.9.0-premium-ui.apk
+        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.9.4.apk
       - name: Prepare backend package
         run: |
-          zip -r Yangi-Taxi-backend-v1.9.0-live.zip backend -x "backend/.env"
+          zip -r Yangi-Taxi-backend-v1.9.4-live.zip backend -x "backend/.env"
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-v1.9.0-premium-ui-apk
-          path: Yangi-Taxi-v1.9.0-premium-ui.apk
+          name: Yangi-Taxi-v1.9.4-apk
+          path: Yangi-Taxi-v1.9.4.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-backend-v1.9.0-live
-          path: Yangi-Taxi-backend-v1.9.0-live.zip
+          name: Yangi-Taxi-backend-v1.9.4-live
+          path: Yangi-Taxi-backend-v1.9.4-live.zip
           if-no-files-found: error
