@@ -2852,6 +2852,68 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
+  String tariffDescription(String key) {
+    if (widget.lang == 'uz') {
+      return switch (key) {
+        'together' => 'Birga borish — yanada tejamkor',
+        'comfort' => 'Ko‘proq joy va qulaylik',
+        'business' => 'Premium xizmat va avtomobil',
+        'delivery' => 'Posilka va kichik yuklar uchun',
+        'cargo' => 'Katta yuklarni tashish uchun',
+        _ => 'Har kun uchun tez va qulay',
+      };
+    }
+    return switch (key) {
+      'together' => 'Выгоднее для совместной поездки',
+      'comfort' => 'Больше пространства и комфорта',
+      'business' => 'Премиальный сервис и автомобиль',
+      'delivery' => 'Для посылок и небольших грузов',
+      'cargo' => 'Для перевозки крупных грузов',
+      _ => 'Быстро и выгодно на каждый день',
+    };
+  }
+
+  String moneyLabel(num? value) {
+    if (value == null) return '—';
+    final digits = value.round().toString();
+    final out = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) out.write(' ');
+      out.write(digits[i]);
+    }
+    return out.toString() + ' so‘m';
+  }
+
+  void swapRoutePoints() {
+    if (from == null || to == null) return;
+    setState(() {
+      final oldFrom = from;
+      from = to;
+      to = oldFrom;
+      pickupPinnedByUser = true;
+      cost = null;
+      route = <ym.Point>[];
+      routeDistanceKm = null;
+      routeMinutes = null;
+      error = null;
+    });
+    loadNearbyCars();
+    scheduleEstimate(delay: Duration.zero);
+  }
+
+  void clearDestination() {
+    if (to == null) return;
+    setState(() {
+      to = null;
+      cost = null;
+      route = <ym.Point>[];
+      tariffOptions = <Map<String, dynamic>>[];
+      routeDistanceKm = null;
+      routeMinutes = null;
+      error = null;
+    });
+  }
+
   double _distanceBetween(ym.Point a, ym.Point b) {
     const earthKm = 6371.0;
     final lat1 = a.latitude * math.pi / 180;
