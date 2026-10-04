@@ -6001,6 +6001,10 @@ class _RideScreenState extends State<RideScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+
     if (loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
