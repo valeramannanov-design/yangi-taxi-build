@@ -1,4 +1,4 @@
-name: Build Yangi Taxi v1.8.3 APK
+name: Build Yangi Taxi v1.8.4 APK
 
 on:
   workflow_dispatch:
@@ -65,6 +65,7 @@ jobs:
         run: |
           node --check backend/server.mjs
           node --check backend/live-check.mjs
+          node --check backend/route-price-check.mjs
       - name: Get packages
         working-directory: flutter
         run: flutter pub get
@@ -78,9 +79,9 @@ jobs:
             --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY" \
             --dart-define=BACKEND_URL="${BACKEND_URL:-demo}"
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.8.3-live-location-pricing.apk
+        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.8.4-live-tariff-verification.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-v1.8.3-live-location-pricing-apk
-          path: Yangi-Taxi-v1.8.3-live-location-pricing.apk
+          name: Yangi-Taxi-v1.8.4-live-tariff-verification-apk
+          path: Yangi-Taxi-v1.8.4-live-tariff-verification.apk
           if-no-files-found: error
