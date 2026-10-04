@@ -2117,7 +2117,7 @@ class _ShellState extends State<Shell> {
         onLang: widget.onLang,
         onBackend: widget.onBackend,
         onLogout: widget.onLogout,
-        onMenu: openMenu,
+        onMenu: () => selectTab(0),
       ),
     ];
 
@@ -7687,6 +7687,13 @@ class _RideScreenState extends State<RideScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
+            const Center(
+              child: Text(
+                '😔',
+                style: TextStyle(fontSize: 48, height: 1),
+              ),
+            ),
+            const SizedBox(height: 10),
             Center(
               child: Container(
                 width: 62,
