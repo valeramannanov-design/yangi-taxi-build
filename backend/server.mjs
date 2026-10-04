@@ -45,6 +45,10 @@ const cfg = {
     delivery: Number(process.env.TM_TARIFF_DELIVERY_ID || 27),
     cargo: Number(process.env.TM_TARIFF_CARGO_ID || 28),
   },
+  enabledTariffs: {
+    delivery: String(process.env.TM_ENABLE_DELIVERY || 'false').toLowerCase() === 'true',
+    cargo: String(process.env.TM_ENABLE_CARGO || 'false').toLowerCase() === 'true',
+  },
 };
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -248,12 +252,16 @@ const appTariffs = [
   { key: 'together', nameRu: 'Вместе', nameUz: 'Birga', crewGroupId: cfg.crewGroups.start, dynamic: true },
   { key: 'comfort', nameRu: 'Комфорт', nameUz: 'Komfort', crewGroupId: cfg.crewGroups.comfort, dynamic: true },
   { key: 'business', nameRu: 'Бизнес', nameUz: 'Biznes', crewGroupId: cfg.crewGroups.business, dynamic: true },
-  { key: 'delivery', nameRu: 'Доставка', nameUz: 'Yetkazib berish', crewGroupId: cfg.crewGroups.delivery, tariffId: cfg.fixedTariffs.delivery },
-  { key: 'cargo', nameRu: 'Грузовой', nameUz: 'Yuk tashish', crewGroupId: cfg.crewGroups.cargo, tariffId: cfg.fixedTariffs.cargo },
+  { key: 'delivery', nameRu: 'Доставка', nameUz: 'Yetkazib berish', crewGroupId: cfg.crewGroups.delivery, tariffId: cfg.fixedTariffs.delivery, enabled: cfg.enabledTariffs.delivery },
+  { key: 'cargo', nameRu: 'Грузовой', nameUz: 'Yuk tashish', crewGroupId: cfg.crewGroups.cargo, tariffId: cfg.fixedTariffs.cargo, enabled: cfg.enabledTariffs.cargo },
 ];
 
 function tariffDefinition(key) {
   return appTariffs.find((x) => x.key === String(key || '').toLowerCase()) || appTariffs[0];
+}
+
+function tariffEnabled(definition) {
+  return definition.enabled !== false;
 }
 
 async function liveCatalog() {
@@ -339,6 +347,15 @@ async function buildLiveEstimateOptions(session, source, destination) {
 
   await Promise.all(baseDefinitions.map(async (definition) => {
     try {
+      if (!tariffEnabled(definition)) {
+        resolved[definition.key] = {
+          available: false,
+          error: 'tariff_disabled_until_configured',
+          tariffId: definition.tariffId || null,
+          crewGroupId: definition.crewGroupId,
+        };
+        return;
+      }
       const crew = catalog.groups.get(Number(definition.crewGroupId));
       if (!crew) {
         resolved[definition.key] = {
@@ -688,7 +705,7 @@ async function realRoute(req, res, path, url) {
         crewGroupName: crew?.name || '',
         tariffId: definition.tariffId || null,
         tariffName: fixedTariff?.name || '',
-        available: crewAvailable && fixedTariffAvailable,
+        available: tariffEnabled(definition) && crewAvailable && fixedTariffAvailable,
       };
     });
     return send(res, 200, { ok: true, data });
@@ -732,6 +749,11 @@ async function realRoute(req, res, path, url) {
     const source = point(body, 'source');
     const tariffKey = String(body.tariffKey || 'start').toLowerCase();
     const definition = tariffDefinition(tariffKey);
+    if (!tariffEnabled(definition)) {
+      const e = new Error('Tariff is not enabled yet: ' + tariffKey);
+      e.statusCode = 409;
+      throw e;
+    }
     const destination = optionalPoint(body, 'destination');
 
     if (!destination && tariffKey !== 'delivery') {
