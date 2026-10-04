@@ -288,6 +288,7 @@ async function main() {
 
         const cost = await tmPostJson('calc_order_cost2', {
           tariff_id: tariffId,
+          crew_group_id: def.group,
           source_time: sourceTime,
           is_prior: false,
           ...(clientId !== null ? { client_id: clientId } : {}),
@@ -310,6 +311,9 @@ async function main() {
           tariff_id: tariffId,
           tariff_name: tariffMap.get(tariffId)?.name || '',
           sum: Number(cost.sum),
+          info: Array.isArray(cost.info)
+            ? cost.info.map((x) => String(x.comment || '') + ':' + String(x.sum || '')).join(' | ')
+            : '',
         });
       } catch (error) {
         results.push({
