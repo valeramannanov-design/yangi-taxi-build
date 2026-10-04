@@ -4122,15 +4122,32 @@ class _OrderScreenState extends State<OrderScreen> {
                           const SizedBox(height: 4),
 
                           if (estimating && destinationReady)
-                            const SizedBox(
-                              height: 150,
-                              child: Center(child: CircularProgressIndicator()),
+                            SizedBox(
+                              height: 214,
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    const CircularProgressIndicator(strokeWidth: 2.5),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      widget.lang == 'uz'
+                                          ? 'TaxiMaster narxlarni hisoblamoqda'
+                                          : 'TaxiMaster рассчитывает цены',
+                                      style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             )
                           else
                             SizedBox(
-                              height: 166,
+                              height: 214,
                               child: ListView.separated(
-                                padding: const EdgeInsets.fromLTRB(4, 0, 14, 0),
+                                padding: const EdgeInsets.fromLTRB(2, 0, 14, 0),
                                 clipBehavior: Clip.hardEdge,
                                 physics: const BouncingScrollPhysics(),
                                 scrollDirection: Axis.horizontal,
@@ -4145,131 +4162,210 @@ class _OrderScreenState extends State<OrderScreen> {
                                   final title = widget.lang == 'uz'
                                       ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
                                       : (option['nameRu'] ?? key).toString();
+                                  final saving =
+                                      (option['effectiveSavingPercentVsStart'] as num?)?.toDouble();
 
                                   return SizedBox(
-                                    width: 126,
+                                    width: 148,
                                     child: Opacity(
-                                      opacity: available ? 1 : 0.58,
-                                      child: Material(
-                                        color: isSelected
-                                            ? yangiLime.withValues(alpha: 0.10)
-                                            : Theme.of(context).colorScheme.surface,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(20),
-                                          side: BorderSide(
+                                      opacity: available ? 1 : 0.52,
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 180),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? Color.alphaBlend(
+                                                  yangiLime.withValues(alpha: dark ? 0.12 : 0.09),
+                                                  scheme.surfaceContainerLow,
+                                                )
+                                              : scheme.surfaceContainerLow,
+                                          borderRadius: BorderRadius.circular(22),
+                                          border: Border.all(
                                             color: isSelected
-                                                ? yangiGreen
-                                                : Theme.of(context).colorScheme.outlineVariant,
-                                            width: isSelected ? 2 : 1,
+                                                ? yangiLime
+                                                : scheme.outlineVariant.withValues(alpha: 0.85),
+                                            width: isSelected ? 2.2 : 1,
                                           ),
+                                          boxShadow: isSelected
+                                              ? <BoxShadow>[
+                                                  BoxShadow(
+                                                    color: yangiLime.withValues(alpha: dark ? 0.16 : 0.11),
+                                                    blurRadius: 18,
+                                                    spreadRadius: 1,
+                                                  ),
+                                                ]
+                                              : null,
                                         ),
-                                        child: InkWell(
-                                          onTap: available ? () => selectTariff(key) : null,
-                                          borderRadius: BorderRadius.circular(20),
-                                          child: Padding(
-                                            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                                            child: Column(
-                                              children: <Widget>[
-                                                SizedBox(
-                                                  height: 70,
-                                                  width: 80,
-                                                  child: Stack(
-                                                    alignment: Alignment.center,
-                                                    children: <Widget>[
-                                                      Image.asset(
-                                                        tariffAsset(key),
-                                                        fit: BoxFit.contain,
-                                                        filterQuality: FilterQuality.high,
-                                                        errorBuilder: (_, __, ___) => Icon(
-                                                          tariffIcon(key),
-                                                          size: 48,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                                        ),
-                                                      ),
-                                                      if (key == 'together')
-                                                        Positioned(
-                                                          right: 0,
-                                                          top: 0,
-                                                          child: Container(
-                                                            width: 25,
-                                                            height: 25,
-                                                            decoration: BoxDecoration(
-                                                              color: yangiLime,
-                                                              borderRadius: BorderRadius.circular(8),
-                                                            ),
-                                                            child: const Icon(
-                                                              Icons.people_alt_rounded,
-                                                              size: 14,
-                                                              color: yangiGraphite,
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          borderRadius: BorderRadius.circular(22),
+                                          clipBehavior: Clip.antiAlias,
+                                          child: InkWell(
+                                            onTap: available ? () => selectTariff(key) : null,
+                                            child: Padding(
+                                              padding: const EdgeInsets.fromLTRB(11, 9, 11, 11),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: <Widget>[
+                                                  SizedBox(
+                                                    height: 66,
+                                                    child: Stack(
+                                                      children: <Widget>[
+                                                        Align(
+                                                          alignment: Alignment.center,
+                                                          child: Image.asset(
+                                                            tariffAsset(key),
+                                                            height: 58,
+                                                            fit: BoxFit.contain,
+                                                            filterQuality: FilterQuality.high,
+                                                            errorBuilder: (_, __, ___) => Icon(
+                                                              tariffIcon(key),
+                                                              size: 46,
+                                                              color: scheme.onSurfaceVariant,
                                                             ),
                                                           ),
                                                         ),
+                                                        Positioned(
+                                                          top: 0,
+                                                          right: 0,
+                                                          child: Container(
+                                                            width: 24,
+                                                            height: 24,
+                                                            decoration: BoxDecoration(
+                                                              color: isSelected
+                                                                  ? yangiLime
+                                                                  : Colors.transparent,
+                                                              shape: BoxShape.circle,
+                                                              border: Border.all(
+                                                                color: isSelected
+                                                                    ? yangiLime
+                                                                    : scheme.outline,
+                                                                width: 1.5,
+                                                              ),
+                                                            ),
+                                                            child: isSelected
+                                                                ? const Icon(
+                                                                    Icons.check_rounded,
+                                                                    size: 16,
+                                                                    color: yangiGraphite,
+                                                                  )
+                                                                : null,
+                                                          ),
+                                                        ),
+                                                        if (saving != null && saving > 0)
+                                                          Positioned(
+                                                            left: 0,
+                                                            top: 0,
+                                                            child: Container(
+                                                              padding: const EdgeInsets.symmetric(
+                                                                horizontal: 6,
+                                                                vertical: 3,
+                                                              ),
+                                                              decoration: BoxDecoration(
+                                                                color: yangiLime,
+                                                                borderRadius: BorderRadius.circular(8),
+                                                              ),
+                                                              child: Text(
+                                                                '−' + saving.round().toString() + '%',
+                                                                style: const TextStyle(
+                                                                  color: yangiGraphite,
+                                                                  fontSize: 10,
+                                                                  fontWeight: FontWeight.w900,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    title,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontSize: 15,
+                                                      fontWeight: FontWeight.w900,
+                                                      letterSpacing: -0.2,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    children: <Widget>[
+                                                      Icon(
+                                                        Icons.person_rounded,
+                                                        size: 14,
+                                                        color: scheme.onSurfaceVariant,
+                                                      ),
+                                                      const SizedBox(width: 2),
+                                                      Text(
+                                                        tariffPassengers(key).toString(),
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: scheme.onSurfaceVariant,
+                                                          fontWeight: FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 9),
+                                                      Icon(
+                                                        key == 'delivery' || key == 'cargo'
+                                                            ? Icons.inventory_2_outlined
+                                                            : Icons.luggage_rounded,
+                                                        size: 13,
+                                                        color: scheme.onSurfaceVariant,
+                                                      ),
+                                                      const SizedBox(width: 2),
+                                                      Text(
+                                                        tariffBaggage(key).toString(),
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: scheme.onSurfaceVariant,
+                                                          fontWeight: FontWeight.w700,
+                                                        ),
+                                                      ),
                                                     ],
                                                   ),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  title,
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.w900,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 5),
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.center,
-                                                  children: <Widget>[
-                                                    const Icon(
-                                                      Icons.person_rounded,
-                                                      size: 14,
-                                                      color: Color(0xFF8B8F97),
+                                                  const SizedBox(height: 5),
+                                                  Text(
+                                                    tariffDescription(key),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      height: 1.15,
+                                                      fontSize: 10.5,
+                                                      color: scheme.onSurfaceVariant,
                                                     ),
-                                                    const SizedBox(width: 2),
+                                                  ),
+                                                  const Spacer(),
+                                                  Text(
+                                                    !available
+                                                        ? (widget.lang == 'uz'
+                                                            ? 'Mavjud emas'
+                                                            : 'Недоступен')
+                                                        : price != null
+                                                            ? moneyLabel(price)
+                                                            : (widget.lang == 'uz'
+                                                                ? 'Yo‘nalishdan keyin'
+                                                                : 'После маршрута'),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.w900,
+                                                      color: available
+                                                          ? scheme.onSurface
+                                                          : scheme.onSurfaceVariant,
+                                                    ),
+                                                  ),
+                                                  if (destinationReady && routeMinutes != null)
                                                     Text(
-                                                      tariffPassengers(key).toString(),
-                                                      style: const TextStyle(
-                                                        fontSize: 11,
-                                                        color: Color(0xFF8B8F97),
+                                                      '~ ' + routeMinutes!.toString() + ' мин',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: scheme.onSurfaceVariant,
+                                                        fontWeight: FontWeight.w700,
                                                       ),
                                                     ),
-                                                    const SizedBox(width: 8),
-                                                    const Icon(
-                                                      Icons.luggage_rounded,
-                                                      size: 13,
-                                                      color: Color(0xFF8B8F97),
-                                                    ),
-                                                    const SizedBox(width: 2),
-                                                    Text(
-                                                      tariffBaggage(key).toString(),
-                                                      style: const TextStyle(
-                                                        fontSize: 11,
-                                                        color: Color(0xFF8B8F97),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const Spacer(),
-                                                Text(
-                                                  available && price != null
-                                                      ? '~ ${price.toStringAsFixed(0)} so‘m'
-                                                      : (widget.lang == 'uz'
-                                                          ? 'Mavjud emas'
-                                                          : 'Недоступен'),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  textAlign: TextAlign.center,
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w900,
-                                                    color: available
-                                                        ? Theme.of(context).colorScheme.onSurface
-                                                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                                                  ),
-                                                ),
-                                              ],
+                                                ],
+                                              ),
                                             ),
                                           ),
                                         ),
