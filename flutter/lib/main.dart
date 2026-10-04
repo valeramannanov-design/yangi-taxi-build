@@ -2212,82 +2212,30 @@ class _MapCarMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = switch (kind) {
-      'business' => const Color(0xFF22252A),
-      'delivery' => yangiLime,
-      'cargo' => const Color(0xFF43484F),
-      'together' => yangiLime,
-      _ => yangiLime,
-    };
-    final asset = switch (kind) {
-      'together' => 'assets/map_car_together.webp',
-      'comfort' => 'assets/map_car_comfort.webp',
-      'business' => 'assets/map_car_business.webp',
-      'delivery' => 'assets/map_car_delivery.webp',
-      'cargo' => 'assets/map_car_cargo.webp',
-      _ => 'assets/map_car_start.webp',
-    };
-
     return SizedBox(
-      width: driver ? 48 : 40,
-      height: driver ? 54 : 46,
+      width: driver ? 50 : 42,
+      height: driver ? 58 : 48,
       child: Stack(
-        alignment: Alignment.center,
         clipBehavior: Clip.none,
+        alignment: Alignment.center,
         children: <Widget>[
-          Positioned(
-            bottom: 2,
-            child: Container(
-              width: driver ? 34 : 29,
-              height: driver ? 13 : 11,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.20),
-                borderRadius: BorderRadius.circular(50),
-              ),
-            ),
+          CustomPaint(
+            painter: _PremiumTopCarPainter(kind: kind, selected: driver),
+            size: Size(driver ? 44 : 36, driver ? 54 : 44),
           ),
-          Image.asset(
-            asset,
-            width: driver ? 46 : 38,
-            height: driver ? 50 : 43,
-            fit: BoxFit.contain,
-            filterQuality: FilterQuality.high,
-            errorBuilder: (_, __, ___) => Container(
-              width: driver ? 40 : 34,
-              height: driver ? 48 : 40,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: accent, width: 3),
-              ),
-              child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite),
-            ),
-          ),
-          if (kind == 'business')
-            Positioned(
-              top: 1,
-              child: Container(
-                width: 18,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: accent,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-            ),
           if (driver)
             Positioned(
-              right: -1,
+              right: 0,
               top: 0,
               child: Container(
-                width: 12,
-                height: 12,
+                width: 13,
+                height: 13,
                 decoration: BoxDecoration(
                   color: yangiLime,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                   boxShadow: const <BoxShadow>[
-                    BoxShadow(color: Color(0x33000000), blurRadius: 4),
+                    BoxShadow(color: Color(0x44000000), blurRadius: 5),
                   ],
                 ),
               ),
@@ -2299,32 +2247,29 @@ class _MapCarMarker extends StatelessWidget {
 }
 
 class _TariffVehicleArt extends StatelessWidget {
-  const _TariffVehicleArt({required this.kind, required this.selected, required this.available});
+  const _TariffVehicleArt({
+    required this.kind,
+    required this.selected,
+    required this.available,
+  });
+
   final String kind;
   final bool selected;
   final bool available;
-
-  String get asset => switch (kind) {
-        'comfort' => 'assets/tariff_comfort.webp',
-        'business' => 'assets/tariff_business_v2.webp',
-        'delivery' => 'assets/tariff_delivery.webp',
-        'cargo' => 'assets/tariff_cargo.webp',
-        _ => 'assets/tariff_start.webp',
-      };
 
   @override
   Widget build(BuildContext context) {
     return Opacity(
       opacity: available ? 1 : 0.42,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-        child: Image.asset(
-          asset,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
-          errorBuilder: (_, __, ___) => CustomPaint(
-            painter: _TariffVehiclePainter(kind: kind, selected: selected),
-            size: const Size(112, 48),
+      child: Center(
+        child: SizedBox(
+          width: kind == 'cargo' ? 88 : 72,
+          height: 72,
+          child: CustomPaint(
+            painter: _PremiumTopCarPainter(
+              kind: kind,
+              selected: selected,
+            ),
           ),
         ),
       ),
@@ -2332,146 +2277,380 @@ class _TariffVehicleArt extends StatelessWidget {
   }
 }
 
-class _TariffVehiclePainter extends CustomPainter {
-  const _TariffVehiclePainter({required this.kind, required this.selected});
+class _PremiumTopCarPainter extends CustomPainter {
+  const _PremiumTopCarPainter({required this.kind, required this.selected});
+
   final String kind;
   final bool selected;
 
+  Color get _bodyColor => switch (kind) {
+        'business' => const Color(0xFF20252A),
+        'comfort' => const Color(0xFFE4E8EA),
+        'delivery' => const Color(0xFFF4F5F5),
+        'cargo' => const Color(0xFFF2F3F3),
+        _ => const Color(0xFFF8F9F9),
+      };
+
+  Color get _bodyHighlight => switch (kind) {
+        'business' => const Color(0xFF454C53),
+        'comfort' => Colors.white,
+        _ => Colors.white,
+      };
+
   @override
   void paint(Canvas canvas, Size size) {
-    final sx = size.width / 112;
-    final sy = size.height / 48;
+    final sx = size.width / 72;
+    final sy = size.height / 72;
     canvas.save();
     canvas.scale(sx, sy);
 
-    canvas.drawOval(const Rect.fromLTWH(12, 38, 91, 7), Paint()..color = const Color(0x22000000));
+    if (selected) {
+      canvas.drawOval(
+        const Rect.fromLTWH(12, 3, 48, 66),
+        Paint()
+          ..color = yangiLime.withValues(alpha: 0.15)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+      );
+    }
 
-    final body = Paint()..color = _bodyColor(kind);
-    final dark = Paint()..color = const Color(0xFF252A30);
-    final glass = Paint()..color = const Color(0xFF4B5864);
-    final wheel = Paint()..color = const Color(0xFF151719);
-    final rim = Paint()..color = const Color(0xFFAEB4BB);
-    final yellow = Paint()..color = const Color(0xFFFFD900);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(18, 5, 36, 62),
+        const Radius.circular(15),
+      ),
+      Paint()
+        ..color = const Color(0x4A000000)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
 
     if (kind == 'cargo') {
+      _paintCargo(canvas);
+      canvas.restore();
+      return;
+    }
+
+    if (kind == 'delivery') {
+      _paintVan(canvas);
+      canvas.restore();
+      return;
+    }
+
+    final bodyRect = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(20, 2, 32, 66),
+      const Radius.circular(14),
+    );
+    final bodyPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: <Color>[_bodyHighlight, _bodyColor],
+      ).createShader(const Rect.fromLTWH(20, 2, 32, 66));
+    canvas.drawRRect(bodyRect, bodyPaint);
+
+    final bodyEdge = Paint()
+      ..color = kind == 'business'
+          ? const Color(0xFF111416)
+          : const Color(0xFFB7BEC2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.15;
+    canvas.drawRRect(bodyRect, bodyEdge);
+
+    // Wheels tucked tightly under the body for a realistic top view.
+    final tyre = Paint()..color = const Color(0xFF101214);
+    for (final rect in const <Rect>[
+      Rect.fromLTWH(15.5, 15, 6, 14),
+      Rect.fromLTWH(50.5, 15, 6, 14),
+      Rect.fromLTWH(15.5, 43, 6, 14),
+      Rect.fromLTWH(50.5, 43, 6, 14),
+    ]) {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(const Rect.fromLTWH(13, 13, 61, 25), const Radius.circular(3)),
-        yellow,
+        RRect.fromRectAndRadius(rect, const Radius.circular(2.5)),
+        tyre,
       );
-      final cab = Path()
-        ..moveTo(74, 20)
-        ..lineTo(91, 20)
-        ..lineTo(104, 30)
-        ..lineTo(104, 38)
-        ..lineTo(74, 38)
-        ..close();
-      canvas.drawPath(cab, dark);
+    }
+
+    // Mirrors.
+    final mirror = Paint()..color = kind == 'business' ? const Color(0xFF30363B) : const Color(0xFFD5DADC);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(16.5, 27, 5, 7), const Radius.circular(2)),
+      mirror,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(50.5, 27, 5, 7), const Radius.circular(2)),
+      mirror,
+    );
+
+    // Panoramic glass.
+    final glassRect = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(24, 13, 24, 38),
+      const Radius.circular(9),
+    );
+    canvas.drawRRect(
+      glassRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[Color(0xFF5F6B73), Color(0xFF252C31)],
+        ).createShader(const Rect.fromLTWH(24, 13, 24, 38)),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(26, 18, 20, 13), const Radius.circular(6)),
+      Paint()..color = const Color(0xFF11171B),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(26, 34, 20, 12), const Radius.circular(5)),
+      Paint()..color = const Color(0xFF1A2024),
+    );
+
+    // Roof highlight adds depth in small tariff cards.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(31, 17, 2.3, 29), const Radius.circular(2)),
+      Paint()..color = Colors.white.withValues(alpha: kind == 'business' ? 0.10 : 0.32),
+    );
+
+    // Head/tail lamps.
+    final head = Paint()..color = const Color(0xFFF6F3D5);
+    final tail = Paint()..color = const Color(0xFFFF4451);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(23, 4.5, 8, 3), const Radius.circular(1.5)),
+      head,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(41, 4.5, 8, 3), const Radius.circular(1.5)),
+      head,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(23, 62, 8, 3), const Radius.circular(1.5)),
+      tail,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(41, 62, 8, 3), const Radius.circular(1.5)),
+      tail,
+    );
+
+    // Tariff identity stays subtle and premium.
+    if (kind == 'together') {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(const Rect.fromLTWH(83, 23, 13, 8), const Radius.circular(2)),
-        glass,
+        RRect.fromRectAndRadius(const Rect.fromLTWH(20.5, 31, 31, 5), const Radius.circular(2.5)),
+        Paint()..color = yangiLime,
       );
-      _wheel(canvas, 30, 39, wheel, rim);
-      _wheel(canvas, 87, 39, wheel, rim);
-    } else if (kind == 'delivery') {
+      canvas.drawCircle(const Offset(31, 28), 2.2, Paint()..color = yangiLime);
+      canvas.drawCircle(const Offset(41, 28), 2.2, Paint()..color = yangiLime);
+    } else if (kind == 'business') {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(const Rect.fromLTWH(20, 13, 65, 25), const Radius.circular(7)),
-        yellow,
+        RRect.fromRectAndRadius(const Rect.fromLTWH(21.5, 31.5, 29, 2), const Radius.circular(1)),
+        Paint()..color = yangiLime.withValues(alpha: 0.80),
       );
-      final nose = Path()
-        ..moveTo(85, 23)
-        ..lineTo(98, 25)
-        ..lineTo(106, 33)
-        ..lineTo(106, 38)
-        ..lineTo(84, 38)
-        ..close();
-      canvas.drawPath(nose, yellow);
+    } else if (kind == 'comfort') {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(const Rect.fromLTWH(90, 26, 10, 6), const Radius.circular(2)),
-        glass,
+        RRect.fromRectAndRadius(const Rect.fromLTWH(22, 55, 28, 2), const Radius.circular(1)),
+        Paint()..color = const Color(0xFFB7C1C7),
       );
-      canvas.drawRect(const Rect.fromLTWH(44, 18, 15, 13), Paint()..color = Colors.white);
-      final boxLine = Paint()..color = const Color(0x99252A30)..strokeWidth = 1.2;
-      canvas.drawLine(const Offset(51.5, 18), const Offset(51.5, 31), boxLine);
-      canvas.drawLine(const Offset(44, 24.5), const Offset(59, 24.5), boxLine);
-      _wheel(canvas, 34, 39, wheel, rim);
-      _wheel(canvas, 89, 39, wheel, rim);
-    } else {
-      final compact = kind == 'start' || kind == 'together';
-      final premium = kind == 'business';
-      final path = Path()
-        ..moveTo(8, 35)
-        ..lineTo(16, 27)
-        ..lineTo(compact ? 34 : 31, compact ? 19 : 17)
-        ..lineTo(compact ? 68 : 73, compact ? 19 : 17)
-        ..lineTo(86, 24)
-        ..lineTo(104, 33)
-        ..lineTo(106, 38)
-        ..lineTo(10, 38)
-        ..close();
-      canvas.drawPath(path, body);
-      final frontWindow = Path()
-        ..moveTo(compact ? 38 : 35, compact ? 21 : 19)
-        ..lineTo(54, compact ? 21 : 19)
-        ..lineTo(54, 29)
-        ..lineTo(31, 29)
-        ..close();
-      canvas.drawPath(frontWindow, glass);
-      final rearWindow = Path()
-        ..moveTo(57, compact ? 21 : 19)
-        ..lineTo(compact ? 68 : 72, compact ? 21 : 19)
-        ..lineTo(82, 28)
-        ..lineTo(57, 29)
-        ..close();
-      canvas.drawPath(rearWindow, glass);
-      if (premium) {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(const Rect.fromLTWH(47, 33, 20, 1.8), const Radius.circular(1)),
-          Paint()..color = const Color(0xFFC8A44D),
-        );
-      }
-      if (kind == 'comfort') {
-        final accent = Path()
-          ..moveTo(23, 31)
-          ..lineTo(36, 22)
-          ..lineTo(42, 31)
-          ..close();
-        canvas.drawPath(accent, yellow);
-      }
-      if (kind == 'together') {
-        canvas.drawCircle(const Offset(64, 24), 2.2, yellow);
-        canvas.drawCircle(const Offset(71, 24), 2.2, yellow);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(const Rect.fromLTWH(60, 27, 15, 4), const Radius.circular(2)),
-          yellow,
-        );
-      }
-      _wheel(canvas, 28, 39, wheel, rim);
-      _wheel(canvas, 83, 39, wheel, rim);
     }
 
     canvas.restore();
   }
 
-  void _wheel(Canvas canvas, double x, double y, Paint wheel, Paint rim) {
-    canvas.drawCircle(Offset(x, y), 7, wheel);
-    canvas.drawCircle(Offset(x, y), 3.5, rim);
-    canvas.drawCircle(Offset(x, y), 1.4, Paint()..color = const Color(0xFF555B62));
+  void _paintVan(Canvas canvas) {
+    final body = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(19, 5, 34, 62),
+      const Radius.circular(10),
+    );
+    canvas.drawRRect(body, Paint()..color = const Color(0xFFF4F5F5));
+    canvas.drawRRect(
+      body,
+      Paint()
+        ..color = const Color(0xFFB6BEC2)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(23, 12, 26, 15), const Radius.circular(6)),
+      Paint()..color = const Color(0xFF293138),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(23, 31, 26, 22), const Radius.circular(6)),
+      Paint()..color = yangiLime,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(27, 35, 18, 14), const Radius.circular(3)),
+      Paint()..color = Colors.white,
+    );
+    canvas.drawLine(const Offset(36, 35), const Offset(36, 49), Paint()..color = const Color(0xFFB6BEC2));
+    canvas.drawLine(const Offset(27, 42), const Offset(45, 42), Paint()..color = const Color(0xFFB6BEC2));
+    _paintSimpleWheels(canvas);
   }
 
-  Color _bodyColor(String key) {
-    switch (key) {
-      case 'comfort':
-        return const Color(0xFFD9DEE3);
-      case 'business':
-        return const Color(0xFF202328);
-      default:
-        return const Color(0xFFFFD900);
+  void _paintCargo(Canvas canvas) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(15, 20, 42, 43), const Radius.circular(6)),
+      Paint()..color = const Color(0xFFF1F3F3),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(20, 5, 32, 23), const Radius.circular(9)),
+      Paint()..color = const Color(0xFF30373C),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(24, 10, 24, 10), const Radius.circular(4)),
+      Paint()..color = const Color(0xFF11171B),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(19, 31, 34, 5), const Radius.circular(2.5)),
+      Paint()..color = yangiLime,
+    );
+    _paintSimpleWheels(canvas);
+  }
+
+  void _paintSimpleWheels(Canvas canvas) {
+    final tyre = Paint()..color = const Color(0xFF101214);
+    for (final rect in const <Rect>[
+      Rect.fromLTWH(14.5, 16, 6, 14),
+      Rect.fromLTWH(51.5, 16, 6, 14),
+      Rect.fromLTWH(14.5, 46, 6, 14),
+      Rect.fromLTWH(51.5, 46, 6, 14),
+    ]) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(2.5)),
+        tyre,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(covariant _TariffVehiclePainter oldDelegate) =>
+  bool shouldRepaint(covariant _PremiumTopCarPainter oldDelegate) =>
       oldDelegate.kind != kind || oldDelegate.selected != selected;
+}
+
+class _DriverAssignedVehicleArt extends StatelessWidget {
+  const _DriverAssignedVehicleArt({required this.kind});
+
+  final String kind;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _DriverAssignedVehiclePainter(kind: kind),
+      size: const Size(120, 66),
+    );
+  }
+}
+
+class _DriverAssignedVehiclePainter extends CustomPainter {
+  const _DriverAssignedVehiclePainter({required this.kind});
+  final String kind;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final sx = size.width / 120;
+    final sy = size.height / 66;
+    canvas.save();
+    canvas.scale(sx, sy);
+
+    canvas.drawOval(
+      const Rect.fromLTWH(12, 49, 96, 11),
+      Paint()
+        ..color = const Color(0x55000000)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+
+    final bodyDark = kind == 'business';
+    final body = bodyDark ? const Color(0xFF23292E) : const Color(0xFFF4F6F6);
+    final highlight = bodyDark ? const Color(0xFF505860) : Colors.white;
+
+    final silhouette = Path()
+      ..moveTo(8, 45)
+      ..quadraticBezierTo(10, 36, 20, 33)
+      ..lineTo(35, 20)
+      ..quadraticBezierTo(40, 15, 49, 15)
+      ..lineTo(77, 15)
+      ..quadraticBezierTo(84, 16, 90, 23)
+      ..lineTo(99, 33)
+      ..quadraticBezierTo(109, 36, 112, 45)
+      ..lineTo(109, 50)
+      ..lineTo(11, 50)
+      ..close();
+
+    canvas.drawPath(
+      silhouette,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[highlight, body],
+        ).createShader(const Rect.fromLTWH(8, 15, 104, 36)),
+    );
+    canvas.drawPath(
+      silhouette,
+      Paint()
+        ..color = bodyDark ? const Color(0xFF0D1012) : const Color(0xFFB5BDC1)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+
+    // Glass and pillars.
+    final glass = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: <Color>[Color(0xFF5D6870), Color(0xFF151B1F)],
+      ).createShader(const Rect.fromLTWH(34, 19, 57, 17));
+    final frontWindow = Path()
+      ..moveTo(40, 20)
+      ..lineTo(59, 20)
+      ..lineTo(59, 33)
+      ..lineTo(30, 33)
+      ..close();
+    final rearWindow = Path()
+      ..moveTo(63, 20)
+      ..lineTo(77, 20)
+      ..lineTo(89, 33)
+      ..lineTo(63, 33)
+      ..close();
+    canvas.drawPath(frontWindow, glass);
+    canvas.drawPath(rearWindow, glass);
+
+    // Wheels with metallic rims.
+    for (final x in <double>[31, 88]) {
+      canvas.drawCircle(Offset(x, 49), 9, Paint()..color = const Color(0xFF111315));
+      canvas.drawCircle(Offset(x, 49), 5.3, Paint()..color = const Color(0xFFB9C0C4));
+      canvas.drawCircle(Offset(x, 49), 2.4, Paint()..color = const Color(0xFF4B5257));
+    }
+
+    // Yangi lime identity line.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(39, 42, 42, 3), const Radius.circular(1.5)),
+      Paint()..color = yangiLime,
+    );
+
+    // Lamps and small trim details.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(99, 38, 9, 3), const Radius.circular(1.5)),
+      Paint()..color = const Color(0xFFFFF1B5),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(11, 39, 7, 3), const Radius.circular(1.5)),
+      Paint()..color = const Color(0xFFFF4A55),
+    );
+    canvas.drawLine(
+      const Offset(62, 19),
+      const Offset(62, 42),
+      Paint()
+        ..color = Colors.white.withValues(alpha: bodyDark ? 0.10 : 0.40)
+        ..strokeWidth = 1,
+    );
+
+    if (kind == 'together') {
+      canvas.drawCircle(const Offset(70, 39), 2.5, Paint()..color = yangiLime);
+      canvas.drawCircle(const Offset(77, 39), 2.5, Paint()..color = yangiLime);
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _DriverAssignedVehiclePainter oldDelegate) =>
+      oldDelegate.kind != kind;
 }
 
 class _TariffGlyph extends StatelessWidget {
