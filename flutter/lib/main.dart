@@ -2007,7 +2007,6 @@ class _ShellState extends State<Shell> {
             ),
           ),
         ),
-        ),
       ),
       body: IndexedStack(index: tab, children: pages),
       bottomNavigationBar: null,
