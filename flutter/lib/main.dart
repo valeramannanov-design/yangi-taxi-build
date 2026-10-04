@@ -3740,8 +3740,8 @@ class _OrderScreenState extends State<OrderScreen> {
       }
       return widget.lang == 'uz' ? 'Yangi Taxi buyurtma qilish' : 'Заказать Yangi Taxi';
     }
-    final distanceLabel = routeDistanceKm == null ? '—' : '${routeDistanceKm!.toStringAsFixed(1)} км';
-    final minutesLabel = routeMinutes == null ? '—' : '${routeMinutes!} мин';
+    final distanceLabel = routeDistanceKm == null ? '—' : '${routeDistanceKm!.toStringAsFixed(1)} ${widget.lang == 'uz' ? 'km' : 'км'}';
+    final minutesLabel = routeMinutes == null ? '—' : '${routeMinutes!} ${widget.lang == 'uz' ? 'daq' : 'мин'}';
 
     Widget metric(IconData icon, String value, String label) {
       return Expanded(
@@ -7052,7 +7052,7 @@ class _RideScreenState extends State<RideScreen> {
                             ),
                             if (cost != null)
                               Text(
-                                cost.toString() + ' so‘m',
+                                cost.toString() + (widget.lang == 'uz' ? ' so‘m' : ' сум'),
                                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
                               ),
                           ],
@@ -7247,19 +7247,21 @@ class _RideScreenState extends State<RideScreen> {
                         children: <Widget>[
                           metric(
                             Icons.schedule_rounded,
-                            eta.isEmpty ? (atPlace ? '0 мин' : '') : eta + ' мин',
+                            eta.isEmpty
+                                ? (atPlace ? (widget.lang == 'uz' ? '0 daq' : '0 мин') : '')
+                                : eta + (widget.lang == 'uz' ? ' daq' : ' мин'),
                             widget.lang == 'uz' ? 'Yetib kelish' : 'До прибытия',
                           ),
                           const SizedBox(width: 7),
                           metric(
                             Icons.location_on_outlined,
-                            distance.isEmpty ? '' : distance + ' км',
+                            distance.isEmpty ? '' : distance + (widget.lang == 'uz' ? ' km' : ' км'),
                             widget.lang == 'uz' ? 'Qoldi' : 'Осталось',
                           ),
                           const SizedBox(width: 7),
                           metric(
                             Icons.payments_outlined,
-                            cost == null ? '' : cost.toString() + ' сум',
+                            cost == null ? '' : cost.toString() + (widget.lang == 'uz' ? ' so‘m' : ' сум'),
                             widget.lang == 'uz' ? 'Narx' : 'Стоимость',
                           ),
                         ],
