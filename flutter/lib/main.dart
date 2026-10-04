@@ -6455,52 +6455,180 @@ class _RideScreenState extends State<RideScreen> {
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(20),
+                          color: scheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: scheme.outlineVariant.withValues(alpha: 0.7),
+                          ),
                         ),
-                        child: Row(
+                        child: Column(
                           children: <Widget>[
-                            CircleAvatar(
-                              radius: 28,
-                              backgroundColor: yangiLime.withValues(alpha: 0.28),
-                              child: Text(
-                                driverName.isEmpty ? 'Y' : driverName.substring(0, 1).toUpperCase(),
-                                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: yangiGraphite),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Text(
-                                    driverName.isEmpty
-                                        ? (widget.lang == 'uz' ? 'Haydovchi' : 'Водитель')
-                                        : driverName,
-                                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                            Row(
+                              children: <Widget>[
+                                Stack(
+                                  clipBehavior: Clip.none,
+                                  children: <Widget>[
+                                    CircleAvatar(
+                                      radius: 31,
+                                      backgroundColor: yangiLime.withValues(alpha: 0.20),
+                                      child: Text(
+                                        driverName.isEmpty
+                                            ? 'Y'
+                                            : driverName.substring(0, 1).toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 23,
+                                          fontWeight: FontWeight.w900,
+                                          color: dark ? Colors.white : yangiGraphite,
+                                        ),
+                                      ),
+                                    ),
+                                    if (rating.isNotEmpty)
+                                      Positioned(
+                                        left: 1,
+                                        bottom: -8,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 7,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF111415),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: const Color(0xFF353A3C),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: <Widget>[
+                                              const Icon(
+                                                Icons.star_rounded,
+                                                size: 14,
+                                                color: yangiLime,
+                                              ),
+                                              const SizedBox(width: 3),
+                                              Text(
+                                                rating,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(width: 13),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        driverName.isEmpty
+                                            ? (widget.lang == 'uz' ? 'Haydovchi' : 'Водитель')
+                                            : driverName,
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: -0.35,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        atPlace
+                                            ? (widget.lang == 'uz'
+                                                ? 'Sizni kutmoqda'
+                                                : 'Ожидает вас')
+                                            : activeRide
+                                                ? (widget.lang == 'uz'
+                                                    ? 'Safar davom etmoqda'
+                                                    : 'Поездка продолжается')
+                                                : (widget.lang == 'uz'
+                                                    ? 'Aloqada, tez orada yetib keladi'
+                                                    : 'На связи, скоро будет'),
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  if (rating.isNotEmpty)
-                                    Row(
-                                      children: <Widget>[
-                                        const Icon(Icons.star_rounded, size: 16, color: Color(0xFFFFB300)),
-                                        const SizedBox(width: 3),
-                                        Text(rating),
-                                      ],
-                                    ),
-                                  if (car.isNotEmpty)
-                                    Text(
-                                      car + (number.isEmpty ? '' : ' • ' + number),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                    ),
-                                ],
-                              ),
+                                ),
+                                roundAction(
+                                  Icons.chat_bubble_rounded,
+                                  widget.lang == 'uz' ? 'Yozish' : 'Написать',
+                                  driverPhone.isEmpty ? null : messageDriver,
+                                ),
+                                const SizedBox(width: 7),
+                                roundAction(
+                                  Icons.call_rounded,
+                                  widget.lang == 'uz' ? 'Qo‘ng‘iroq' : 'Позвонить',
+                                  driverPhone.isEmpty ? null : callDriver,
+                                ),
+                              ],
                             ),
-                            SizedBox(
-                              width: 92,
-                              height: 52,
-                              child: _TariffVehicleArt(kind: tariffKey, selected: false, available: true),
+                            const SizedBox(height: 16),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: <Widget>[
+                                Expanded(
+                                  flex: 6,
+                                  child: SizedBox(
+                                    height: 82,
+                                    child: _TariffVehicleArt(
+                                      kind: tariffKey,
+                                      selected: true,
+                                      available: true,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  flex: 5,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: <Widget>[
+                                      Text(
+                                        car.isEmpty
+                                            ? tariffTitle(tariffKey)
+                                            : car,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      if (number.isNotEmpty) ...<Widget>[
+                                        const SizedBox(height: 7),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: dark ? Colors.white : yangiGraphite,
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            number,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: dark ? yangiGraphite : Colors.white,
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: 0.8,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -6511,13 +6639,19 @@ class _RideScreenState extends State<RideScreen> {
                           metric(
                             Icons.schedule_rounded,
                             eta.isEmpty ? (atPlace ? '0 мин' : '') : eta + ' мин',
-                            widget.lang == 'uz' ? 'Vaqt' : 'Время',
+                            widget.lang == 'uz' ? 'Yetib kelish' : 'До прибытия',
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 7),
                           metric(
-                            Icons.route_rounded,
+                            Icons.location_on_outlined,
                             distance.isEmpty ? '' : distance + ' км',
-                            widget.lang == 'uz' ? 'Masofa' : 'Расстояние',
+                            widget.lang == 'uz' ? 'Qoldi' : 'Осталось',
+                          ),
+                          const SizedBox(width: 7),
+                          metric(
+                            Icons.payments_outlined,
+                            cost == null ? '' : cost.toString() + ' сум',
+                            widget.lang == 'uz' ? 'Narx' : 'Стоимость',
                           ),
                         ],
                       ),
