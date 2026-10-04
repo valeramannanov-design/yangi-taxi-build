@@ -2540,6 +2540,8 @@ class _OrderScreenState extends State<OrderScreen> {
       from = place;
       cost = null;
       route = <ym.Point>[];
+      routeDistanceKm = null;
+      routeMinutes = null;
     });
     await loadNearbyCars();
   }
@@ -2582,6 +2584,8 @@ class _OrderScreenState extends State<OrderScreen> {
       }
       cost = null;
       route = <ym.Point>[];
+      routeDistanceKm = null;
+      routeMinutes = null;
       error = null;
     });
 
@@ -3157,6 +3161,8 @@ class _OrderScreenState extends State<OrderScreen> {
           from = place;
           cost = null;
           route = <ym.Point>[];
+          routeDistanceKm = null;
+          routeMinutes = null;
         });
       }
       await loadNearbyCars();
@@ -3247,6 +3253,8 @@ class _OrderScreenState extends State<OrderScreen> {
           from = place;
           cost = null;
           route = <ym.Point>[];
+          routeDistanceKm = null;
+          routeMinutes = null;
           locationHint = position.accuracy > 100
               ? (widget.lang == 'uz'
                   ? 'Joylashuv aniqligi taxminan ${position.accuracy.toStringAsFixed(0)} m'
@@ -3807,66 +3815,70 @@ class _OrderScreenState extends State<OrderScreen> {
                               style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -0.6),
                             ),
                             const SizedBox(height: 10),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                                borderRadius: BorderRadius.circular(19),
-                              ),
-                              child: Column(
-                                children: <Widget>[
-                                  _addressLine(
-                                    pickup: true,
-                                    title: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
-                                    value: from?.address ??
-                                        (locating
-                                            ? (widget.lang == 'uz' ? 'Joylashuv aniqlanmoqda…' : 'Определяем местоположение…')
-                                            : (widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение')),
-                                    onTap: () async {
-                                      final p = await selectAddress(tx(widget.lang, 'from'), from);
-                                      if (p != null && mounted) {
-                                        setState(() {
-                                          from = p;
-                                          pickupPinnedByUser = true;
-                                          cost = null;
-                                          route = <ym.Point>[];
-                                        });
-                                        await loadNearbyCars();
-                                        scheduleEstimate();
-                                      }
-                                    },
-                                    onMapTap: () => pickRoutePointOnMap(pickup: true),
-                                  ),
-                                  const Divider(height: 1, indent: 44, endIndent: 12),
-                                  _addressLine(
-                                    pickup: false,
-                                    title: selectedTariffKey == 'delivery'
-                                        ? (widget.lang == 'uz' ? 'Qayerga — ixtiyoriy' : 'Куда — необязательно')
-                                        : (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
-                                    value: to?.address ??
-                                        (selectedTariffKey == 'delivery'
-                                            ? (widget.lang == 'uz' ? 'Keyinroq ko‘rsatish mumkin' : 'Можно указать позже')
-                                            : (widget.lang == 'uz' ? 'Manzilni tanlang' : 'Выберите адрес')),
-                                    onTap: () async {
-                                      final p = await selectAddress(
-                                        tx(widget.lang, 'to'),
-                                        to ?? from,
-                                      );
-                                      if (p != null && mounted) {
-                                        setState(() {
-                                          to = p;
-                                          cost = null;
-                                          route = <ym.Point>[];
-                                        });
-                                        scheduleEstimate();
-                                      }
-                                    },
-                                    onMapTap: () => pickRoutePointOnMap(pickup: false),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
                           ],
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(19),
+                            ),
+                            child: Column(
+                              children: <Widget>[
+                                _addressLine(
+                                  pickup: true,
+                                  title: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
+                                  value: from?.address ??
+                                      (locating
+                                          ? (widget.lang == 'uz' ? 'Joylashuv aniqlanmoqda…' : 'Определяем местоположение…')
+                                          : (widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение')),
+                                  onTap: () async {
+                                    final p = await selectAddress(tx(widget.lang, 'from'), from);
+                                    if (p != null && mounted) {
+                                      setState(() {
+                                        from = p;
+                                        pickupPinnedByUser = true;
+                                        cost = null;
+                                        route = <ym.Point>[];
+                                        routeDistanceKm = null;
+                                        routeMinutes = null;
+                                      });
+                                      await loadNearbyCars();
+                                      scheduleEstimate();
+                                    }
+                                  },
+                                  onMapTap: () => pickRoutePointOnMap(pickup: true),
+                                ),
+                                const Divider(height: 1, indent: 44, endIndent: 12),
+                                _addressLine(
+                                  pickup: false,
+                                  title: selectedTariffKey == 'delivery'
+                                      ? (widget.lang == 'uz' ? 'Qayerga — ixtiyoriy' : 'Куда — необязательно')
+                                      : (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
+                                  value: to?.address ??
+                                      (selectedTariffKey == 'delivery'
+                                          ? (widget.lang == 'uz' ? 'Keyinroq ko‘rsatish mumkin' : 'Можно указать позже')
+                                          : (widget.lang == 'uz' ? 'Manzilni tanlang' : 'Выберите адрес')),
+                                  onTap: () async {
+                                    final p = await selectAddress(
+                                      tx(widget.lang, 'to'),
+                                      to ?? from,
+                                    );
+                                    if (p != null && mounted) {
+                                      setState(() {
+                                        to = p;
+                                        cost = null;
+                                        route = <ym.Point>[];
+                                        routeDistanceKm = null;
+                                        routeMinutes = null;
+                                      });
+                                      scheduleEstimate();
+                                    }
+                                  },
+                                  onMapTap: () => pickRoutePointOnMap(pickup: false),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
 
                           Row(
                             children: <Widget>[
@@ -4294,20 +4306,32 @@ class _OrderScreenState extends State<OrderScreen> {
               onTap: onTap,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 9),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
+                child: Row(
                   children: <Widget>[
-                    Text(
-                      title,
-                      style: const TextStyle(fontSize: 10, color: Color(0xFF8A8D93), fontWeight: FontWeight.w700),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Text(
+                            title,
+                            style: const TextStyle(fontSize: 10, color: Color(0xFF8A8D93), fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            value,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.edit_rounded,
+                      size: 17,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ],
                 ),
