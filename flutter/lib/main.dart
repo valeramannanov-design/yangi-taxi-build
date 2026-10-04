@@ -3810,7 +3810,7 @@ class _OrderScreenState extends State<OrderScreen> {
               child: Row(
                 children: <Widget>[
                   _roundMapButton(
-                    icon: Icons.arrow_back_rounded,
+                    icon: Icons.menu_rounded,
                     onTap: widget.onMenu,
                     tooltip: widget.lang == 'uz' ? 'Menyu' : 'Меню',
                   ),
@@ -6552,7 +6552,8 @@ class _RideScreenState extends State<RideScreen> {
                     ),
                     child: IconButton(
                       onPressed: widget.onMenu,
-                      icon: const Icon(Icons.arrow_back_rounded),
+                      tooltip: widget.lang == 'uz' ? 'Menyu' : 'Меню',
+                      icon: const Icon(Icons.menu_rounded),
                     ),
                   ),
                   const Spacer(),
