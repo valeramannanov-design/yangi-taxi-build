@@ -7934,7 +7934,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               final total = o['total_cost'];
                               final isFinished = state == 'finished';
                               final statusColor = isFinished
-                                  ? yangiLime
+                                  ? (dark ? yangiLime : yangiGreen)
                                   : state == 'aborted'
                                       ? scheme.error
                                       : scheme.onSurfaceVariant;
@@ -7995,7 +7995,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                                   ),
                                                   if (total != null)
                                                     Text(
-                                                      '$total so‘m',
+                                                      '$total ${widget.lang == 'uz' ? 'so‘m' : 'сум'}',
                                                       style: const TextStyle(
                                                         fontSize: 16,
                                                         fontWeight: FontWeight.w900,
