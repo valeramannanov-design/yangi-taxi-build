@@ -10004,7 +10004,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: InkWell(
           onTap: onTap,
           child: Container(
-            minHeight: 62,
+            constraints: const BoxConstraints(minHeight: 62),
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
             decoration: BoxDecoration(
               border: Border.all(
