@@ -6119,30 +6119,110 @@ class _RideScreenState extends State<RideScreen> {
     Widget metric(IconData icon, String value, String label) {
       return Expanded(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.6),
+            ),
           ),
           child: Row(
             children: <Widget>[
-              Icon(icon, size: 21),
+              Icon(icon, size: 21, color: scheme.onSurface),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(value.isEmpty ? '—' : value, style: const TextStyle(fontWeight: FontWeight.w900)),
+                    Text(
+                      value.isEmpty ? '—' : value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
                     Text(
                       label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
               ),
             ],
+          ),
+        ),
+      );
+    }
+
+    Widget roundAction(
+      IconData icon,
+      String tooltip,
+      VoidCallback? onTap,
+    ) {
+      return Tooltip(
+        message: tooltip,
+        child: Material(
+          color: scheme.surfaceContainerHigh,
+          shape: CircleBorder(
+            side: BorderSide(
+              color: scheme.outlineVariant.withValues(alpha: 0.75),
+            ),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const CircleBorder(),
+            child: SizedBox(
+              width: 52,
+              height: 52,
+              child: Icon(icon, size: 23),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget tripAction(
+      IconData icon,
+      String label, {
+      VoidCallback? onTap,
+    }) {
+      return Expanded(
+        child: Material(
+          color: scheme.surfaceContainerLow,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(
+              color: scheme.outlineVariant.withValues(alpha: 0.65),
+            ),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(icon, size: 24),
+                  const SizedBox(height: 6),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       );
