@@ -201,6 +201,42 @@ async function main() {
   console.log('\nAll active tariffs:');
   console.table(tariffs.filter((x) => x.is_active !== false));
 
+  console.log('\nCurrent TaxiMaster tariff selection (no client / no route):');
+  const currentSelection = [];
+  for (const def of [
+    { key: 'start', group: cfg.groups.start },
+    { key: 'comfort', group: cfg.groups.comfort },
+    { key: 'business', group: cfg.groups.business },
+    { key: 'delivery', group: cfg.groups.delivery, fixed: cfg.fixedTariffs.delivery },
+    { key: 'cargo', group: cfg.groups.cargo, fixed: cfg.fixedTariffs.cargo },
+  ]) {
+    try {
+      let tariffId = def.fixed || 0;
+      if (!tariffId) {
+        const selected = await tmPostJson('select_tariff_for_order', {
+          crew_group_id: def.group,
+          source_time: tmTime(),
+          is_prize: false,
+        });
+        tariffId = Number(selected.tariff_id || selected.id || 0);
+      }
+      currentSelection.push({
+        key: def.key,
+        crew_group_id: def.group,
+        crew_group_name: groupMap.get(def.group)?.name || '',
+        tariff_id: tariffId,
+        tariff_name: tariffMap.get(tariffId)?.name || '',
+      });
+    } catch (error) {
+      currentSelection.push({
+        key: def.key,
+        crew_group_id: def.group,
+        error: error.message || String(error),
+      });
+    }
+  }
+  console.table(currentSelection);
+
   const clientId = n('LIVE_TEST_CLIENT_ID');
   const sourceLat = n('LIVE_TEST_SOURCE_LAT');
   const sourceLon = n('LIVE_TEST_SOURCE_LON');
