@@ -3804,6 +3804,34 @@ class _OrderScreenState extends State<OrderScreen> {
 
 
   @override
+  Future<void> _editPickupPremium() async {
+    final p = await selectAddress(tx(widget.lang, 'from'), from);
+    if (p == null || !mounted) return;
+    setState(() {
+      from = p;
+      pickupPinnedByUser = true;
+      cost = null;
+      route = <ym.Point>[];
+      routeDistanceKm = null;
+      routeMinutes = null;
+    });
+    await loadNearbyCars();
+    scheduleEstimate();
+  }
+
+  Future<void> _editDestinationPremium() async {
+    final p = await selectAddress(tx(widget.lang, 'to'), to ?? from);
+    if (p == null || !mounted) return;
+    setState(() {
+      to = p;
+      cost = null;
+      route = <ym.Point>[];
+      routeDistanceKm = null;
+      routeMinutes = null;
+    });
+    scheduleEstimate();
+  }
+
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -3902,51 +3930,179 @@ class _OrderScreenState extends State<OrderScreen> {
           ),
 
           Positioned(
-            top: 8,
-            left: 12,
-            right: 12,
+            top: 10,
+            left: 14,
+            right: 14,
             child: SafeArea(
               bottom: false,
-              child: Row(
+              child: Column(
                 children: <Widget>[
-                  _roundMapButton(
-                    icon: Icons.menu_rounded,
-                    onTap: widget.onMenu,
-                    tooltip: widget.lang == 'uz' ? 'Menyu' : 'Меню',
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: const Color(0xF20A0C0D),
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: const Color(0xFF2A2F30)),
-                      boxShadow: const <BoxShadow>[
-                        BoxShadow(
-                          color: Color(0x42000000),
-                          blurRadius: 22,
-                          offset: Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: const YangiWordmark(onDarkSurface: true),
-                  ),
-                  const Spacer(),
-                  Stack(
-                    clipBehavior: Clip.none,
+                  Row(
                     children: <Widget>[
                       _roundMapButton(
-                        icon: Icons.person_rounded,
-                        onTap: widget.onProfile,
-                        tooltip: widget.lang == 'uz' ? 'Profil' : 'Профиль',
+                        icon: Icons.menu_rounded,
+                        onTap: widget.onMenu,
+                        tooltip: widget.lang == 'uz' ? 'Menyu' : 'Меню',
                       ),
-                      const Positioned(
-                        right: 1,
-                        bottom: 3,
-                        child: CircleAvatar(radius: 5, backgroundColor: yangiLime),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Material(
+                          color: dark
+                              ? const Color(0xED121516)
+                              : Colors.white.withValues(alpha: 0.97),
+                          borderRadius: BorderRadius.circular(22),
+                          elevation: dark ? 0 : 8,
+                          shadowColor: const Color(0x26000000),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: _editPickupPremium,
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 9, 10, 9),
+                              child: Row(
+                                children: <Widget>[
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: yangiLime,
+                                      borderRadius: BorderRadius.circular(11),
+                                    ),
+                                    child: const Icon(
+                                      Icons.my_location_rounded,
+                                      color: yangiGraphite,
+                                      size: 19,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        Text(
+                                          widget.lang == 'uz' ? 'Mashina keladi' : 'Подача машины',
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            height: 1,
+                                            color: scheme.onSurfaceVariant,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          from?.address ??
+                                              (locating
+                                                  ? (widget.lang == 'uz'
+                                                      ? 'Joylashuv aniqlanmoqda…'
+                                                      : 'Определяем местоположение…')
+                                                  : (widget.lang == 'uz'
+                                                      ? 'Joriy joylashuv'
+                                                      : 'Текущее местоположение')),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 13.5,
+                                            height: 1,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: -0.2,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.expand_more_rounded,
+                                    color: scheme.onSurfaceVariant,
+                                    size: 22,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: <Widget>[
+                          _roundMapButton(
+                            icon: Icons.person_rounded,
+                            onTap: widget.onProfile,
+                            tooltip: widget.lang == 'uz' ? 'Profil' : 'Профиль',
+                          ),
+                          const Positioned(
+                            right: 1,
+                            bottom: 2,
+                            child: CircleAvatar(radius: 5, backgroundColor: yangiLime),
+                          ),
+                        ],
                       ),
                     ],
                   ),
+                  if (!destinationReady) ...<Widget>[
+                    const SizedBox(height: 12),
+                    Material(
+                      color: const Color(0xF5151718),
+                      borderRadius: BorderRadius.circular(25),
+                      elevation: 10,
+                      shadowColor: const Color(0x42000000),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: _editDestinationPremium,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(17, 14, 12, 14),
+                          child: Row(
+                            children: <Widget>[
+                              const Icon(Icons.search_rounded, color: Colors.white, size: 25),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Text(
+                                      widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда поедем?',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        height: 1,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -0.45,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      widget.lang == 'uz'
+                                          ? 'Manzil yoki joy nomini kiriting'
+                                          : 'Введите адрес или название места',
+                                      style: const TextStyle(
+                                        color: Color(0xFFB8BDBE),
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                width: 42,
+                                height: 42,
+                                decoration: const BoxDecoration(
+                                  color: yangiLime,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.arrow_forward_rounded,
+                                  color: yangiGraphite,
+                                  size: 24,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -3966,25 +4122,25 @@ class _OrderScreenState extends State<OrderScreen> {
           ),
 
           DraggableScrollableSheet(
-            initialChildSize: destinationReady ? 0.60 : 0.46,
-            minChildSize: destinationReady ? 0.48 : 0.36,
-            maxChildSize: 0.88,
+            initialChildSize: destinationReady ? 0.61 : 0.40,
+            minChildSize: destinationReady ? 0.47 : 0.31,
+            maxChildSize: 0.92,
             snap: true,
             snapSizes: destinationReady
-                ? const <double>[0.48, 0.60, 0.88]
-                : const <double>[0.36, 0.46, 0.88],
+                ? const <double>[0.47, 0.61, 0.92]
+                : const <double>[0.31, 0.40, 0.92],
             builder: (context, scrollController) {
               return Container(
                 decoration: BoxDecoration(
-                  color: dark ? const Color(0xFF0C0E0F) : const Color(0xFFF9FAFA),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                  color: dark ? const Color(0xFF101314) : const Color(0xFFF4F5F3),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
                   border: Border(
                     top: BorderSide(
-                      color: dark ? const Color(0xFF292E30) : const Color(0x14000000),
+                      color: dark ? const Color(0xFF24292A) : const Color(0x0F000000),
                     ),
                   ),
                   boxShadow: const <BoxShadow>[
-                    BoxShadow(color: Color(0x48000000), blurRadius: 32, offset: Offset(0, -10)),
+                    BoxShadow(color: Color(0x30000000), blurRadius: 28, offset: Offset(0, -8)),
                   ],
                 ),
                 child: Column(
@@ -4002,20 +4158,20 @@ class _OrderScreenState extends State<OrderScreen> {
                     Expanded(
                       child: ListView(
                         controller: scrollController,
-                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+                        padding: const EdgeInsets.fromLTRB(16, 5, 16, 12),
                         children: <Widget>[
                           Text(
                             destinationReady
                                 ? (widget.lang == 'uz'
-                                    ? 'Yo‘nalishni tekshiring'
-                                    : 'Проверьте маршрут')
+                                    ? 'Safar tafsilotlari'
+                                    : 'Детали поездки')
                                 : (widget.lang == 'uz'
-                                    ? 'Qayerga boramiz?'
-                                    : 'Куда поедем?'),
+                                    ? 'Safarni buyurtma qiling'
+                                    : 'Заказать поездку'),
                             style: const TextStyle(
-                              fontSize: 25,
+                              fontSize: 28,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: -0.7,
+                              letterSpacing: -0.9,
                               height: 1.05,
                             ),
                           ),
@@ -4037,13 +4193,22 @@ class _OrderScreenState extends State<OrderScreen> {
                               Expanded(
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: scheme.surfaceContainerHigh,
-                                    borderRadius: BorderRadius.circular(22),
+                                    color: dark ? const Color(0xFF191D1E) : Colors.white,
+                                    borderRadius: BorderRadius.circular(24),
                                     border: Border.all(
                                       color: dark
-                                          ? const Color(0xFF303638)
-                                          : scheme.outlineVariant.withValues(alpha: 0.75),
+                                          ? const Color(0xFF2A3031)
+                                          : const Color(0x10000000),
                                     ),
+                                    boxShadow: dark
+                                        ? const <BoxShadow>[]
+                                        : const <BoxShadow>[
+                                            BoxShadow(
+                                              color: Color(0x10000000),
+                                              blurRadius: 18,
+                                              offset: Offset(0, 7),
+                                            ),
+                                          ],
                                   ),
                                   child: Column(
                                     children: <Widget>[
@@ -4162,10 +4327,10 @@ class _OrderScreenState extends State<OrderScreen> {
                               height: 68,
                               padding: const EdgeInsets.symmetric(horizontal: 6),
                               decoration: BoxDecoration(
-                                color: scheme.surfaceContainerLow,
-                                borderRadius: BorderRadius.circular(20),
+                                color: dark ? const Color(0xFF191D1E) : Colors.white,
+                                borderRadius: BorderRadius.circular(22),
                                 border: Border.all(
-                                  color: scheme.outlineVariant.withValues(alpha: 0.55),
+                                  color: dark ? const Color(0xFF2A3031) : const Color(0x10000000),
                                 ),
                               ),
                               child: Row(
@@ -4206,7 +4371,7 @@ class _OrderScreenState extends State<OrderScreen> {
                               Expanded(
                                 child: Text(
                                   widget.lang == 'uz' ? 'Tarifni tanlang' : 'Выберите тариф',
-                                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, letterSpacing: -0.4),
+                                  style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -0.55),
                                 ),
                               ),
                               TextButton.icon(
@@ -4224,7 +4389,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
                           if (estimating && destinationReady)
                             SizedBox(
-                              height: 214,
+                              height: 226,
                               child: Center(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
@@ -4267,34 +4432,41 @@ class _OrderScreenState extends State<OrderScreen> {
                                       (option['effectiveSavingPercentVsStart'] as num?)?.toDouble();
 
                                   return SizedBox(
-                                    width: 148,
+                                    width: 158,
                                     child: Opacity(
                                       opacity: available ? 1 : 0.52,
                                       child: AnimatedContainer(
                                         duration: const Duration(milliseconds: 180),
                                         decoration: BoxDecoration(
                                           color: isSelected
-                                              ? Color.alphaBlend(
-                                                  yangiLime.withValues(alpha: dark ? 0.12 : 0.09),
-                                                  scheme.surfaceContainerLow,
-                                                )
-                                              : scheme.surfaceContainerLow,
-                                          borderRadius: BorderRadius.circular(22),
+                                              ? const Color(0xFF151819)
+                                              : (dark ? const Color(0xFF191D1E) : Colors.white),
+                                          borderRadius: BorderRadius.circular(24),
                                           border: Border.all(
                                             color: isSelected
                                                 ? yangiLime
-                                                : scheme.outlineVariant.withValues(alpha: 0.85),
-                                            width: isSelected ? 2.2 : 1,
+                                                : (dark
+                                                    ? const Color(0xFF2A3031)
+                                                    : const Color(0x12000000)),
+                                            width: isSelected ? 2 : 1,
                                           ),
                                           boxShadow: isSelected
                                               ? <BoxShadow>[
                                                   BoxShadow(
-                                                    color: yangiLime.withValues(alpha: dark ? 0.16 : 0.11),
-                                                    blurRadius: 18,
-                                                    spreadRadius: 1,
+                                                    color: yangiLime.withValues(alpha: 0.15),
+                                                    blurRadius: 22,
+                                                    offset: const Offset(0, 8),
                                                   ),
                                                 ]
-                                              : null,
+                                              : (dark
+                                                  ? null
+                                                  : const <BoxShadow>[
+                                                      BoxShadow(
+                                                        color: Color(0x0E000000),
+                                                        blurRadius: 16,
+                                                        offset: Offset(0, 6),
+                                                      ),
+                                                    ]),
                                         ),
                                         child: Material(
                                           color: Colors.transparent,
@@ -4382,10 +4554,11 @@ class _OrderScreenState extends State<OrderScreen> {
                                                     title,
                                                     maxLines: 1,
                                                     overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      fontSize: 15,
+                                                    style: TextStyle(
+                                                      color: isSelected ? Colors.white : scheme.onSurface,
+                                                      fontSize: 16,
                                                       fontWeight: FontWeight.w900,
-                                                      letterSpacing: -0.2,
+                                                      letterSpacing: -0.3,
                                                     ),
                                                   ),
                                                   const SizedBox(height: 4),
@@ -4401,7 +4574,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                                         tariffPassengers(key).toString(),
                                                         style: TextStyle(
                                                           fontSize: 11,
-                                                          color: scheme.onSurfaceVariant,
+                                                          color: isSelected ? const Color(0xFFBFC5C6) : scheme.onSurfaceVariant,
                                                           fontWeight: FontWeight.w700,
                                                         ),
                                                       ),
@@ -4418,7 +4591,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                                         tariffBaggage(key).toString(),
                                                         style: TextStyle(
                                                           fontSize: 11,
-                                                          color: scheme.onSurfaceVariant,
+                                                          color: isSelected ? const Color(0xFFBFC5C6) : scheme.onSurfaceVariant,
                                                           fontWeight: FontWeight.w700,
                                                         ),
                                                       ),
@@ -4432,7 +4605,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                                     style: TextStyle(
                                                       height: 1.15,
                                                       fontSize: 10.5,
-                                                      color: scheme.onSurfaceVariant,
+                                                      color: isSelected ? const Color(0xFFBFC5C6) : scheme.onSurfaceVariant,
                                                     ),
                                                   ),
                                                   const Spacer(),
@@ -4452,7 +4625,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                                       fontSize: 13,
                                                       fontWeight: FontWeight.w900,
                                                       color: available
-                                                          ? scheme.onSurface
+                                                          ? (isSelected ? yangiLime : scheme.onSurface)
                                                           : scheme.onSurfaceVariant,
                                                     ),
                                                   ),
@@ -4633,8 +4806,8 @@ class _OrderScreenState extends State<OrderScreen> {
                                       ? () => scheduleEstimate(delay: Duration.zero)
                                       : createOrder)),
                           style: FilledButton.styleFrom(
-                            backgroundColor: yangiLime,
-                            foregroundColor: yangiGraphite,
+                            backgroundColor: yangiGraphite,
+                            foregroundColor: Colors.white,
                             disabledBackgroundColor: Color.alphaBlend(
                               Theme.of(context).colorScheme.onSurface.withValues(
                                     alpha: Theme.of(context).brightness == Brightness.dark ? 0.10 : 0.06,
@@ -4680,6 +4853,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                           Text(
                                             moneyLabel(selectedPrice),
                                             style: const TextStyle(
+                                              color: yangiLime,
                                               fontSize: 14,
                                               fontWeight: FontWeight.w900,
                                             ),
@@ -4691,10 +4865,10 @@ class _OrderScreenState extends State<OrderScreen> {
                                         ],
                                       ),
                                       const SizedBox(width: 10),
-                                      Container(width: 1, height: 34, color: const Color(0x55000000)),
+                                      Container(width: 1, height: 34, color: const Color(0x33FFFFFF)),
                                       const SizedBox(width: 10),
                                     ],
-                                    const Icon(Icons.arrow_forward_rounded, size: 28),
+                                    const Icon(Icons.arrow_forward_rounded, size: 28, color: yangiLime),
                                   ],
                                 ),
                         ),
@@ -4722,8 +4896,8 @@ class _OrderScreenState extends State<OrderScreen> {
         : Colors.white.withValues(alpha: 0.96);
     return Material(
       color: fill,
-      elevation: dark ? 0 : 5,
-      shadowColor: const Color(0x30000000),
+      elevation: dark ? 0 : 8,
+      shadowColor: const Color(0x26000000),
       shape: CircleBorder(
         side: BorderSide(
           color: dark ? const Color(0xFF303638) : const Color(0x16000000),
@@ -4759,7 +4933,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }) {
     final scheme = Theme.of(context).colorScheme;
     return SizedBox(
-      height: 66,
+      height: 70,
       child: Row(
         children: <Widget>[
           const SizedBox(width: 14),
@@ -4809,9 +4983,9 @@ class _OrderScreenState extends State<OrderScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 15.5,
+                        fontSize: 16,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: -0.15,
+                        letterSpacing: -0.25,
                       ),
                     ),
                   ],
