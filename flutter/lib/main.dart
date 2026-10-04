@@ -5578,61 +5578,227 @@ class _AddressSheetState extends State<AddressSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: MediaQuery.viewInsetsOf(context).bottom + 16),
-          child: SizedBox(
-            height: MediaQuery.sizeOf(context).height * .72,
-            child: Column(
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(child: Text(widget.title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700))),
-                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
-                  ],
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 14,
+          right: 14,
+          top: 8,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 14,
+        ),
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * .78,
+          child: Column(
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 5,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: scheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                TextField(
-                  controller: c,
-                  autofocus: true,
-                  onChanged: change,
-                  decoration: InputDecoration(
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.search),
-                    labelText: tx(widget.lang, 'address'),
-                    helperText: yandexMapKitApiKey.isNotEmpty ? 'Поиск Яндекс' : 'Поиск TaxiMaster',
+              ),
+              Row(
+                children: <Widget>[
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: yangiLime,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.search_rounded, color: yangiGraphite),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.45,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 13),
+              TextField(
+                controller: c,
+                autofocus: true,
+                onChanged: change,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  hintText: widget.lang == 'uz'
+                      ? 'Ko‘cha, uy yoki joy nomi'
+                      : 'Улица, дом или название места',
+                  labelText: tx(widget.lang, 'address'),
+                  suffixIcon: c.text.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            c.clear();
+                            change('');
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 9),
+              Material(
+                color: scheme.surfaceContainerLow,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: BorderSide(
+                    color: scheme.outlineVariant.withValues(alpha: 0.65),
                   ),
                 ),
+                child: InkWell(
+                  onTap: pickOnMap,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+                    child: Row(
+                      children: <Widget>[
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: yangiLime.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.map_rounded, color: yangiGreen),
+                        ),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                widget.lang == 'uz' ? 'Xaritada tanlash' : 'Выбрать на карте',
+                                style: const TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                              Text(
+                                widget.lang == 'uz'
+                                    ? 'Nuqtani aniq belgilang'
+                                    : 'Укажите точную точку подачи или назначения',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right_rounded),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (busy) ...<Widget>[
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: pickOnMap,
-                    icon: const Icon(Icons.my_location),
-                    label: Text(widget.lang == 'uz' ? 'Xaritada ko‘rsatish' : 'Указать на карте'),
-                  ),
-                ),
-                if (busy) const LinearProgressIndicator(),
-                if (error != null) Padding(padding: const EdgeInsets.all(8), child: Text(error!)),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: results.length,
-                    itemBuilder: (_, i) {
-                      final item = results[i];
-                      return ListTile(
-                        leading: const Icon(Icons.location_on_outlined),
-                        title: Text(item.address),
-                        subtitle: const Text('TaxiMaster / Яндекс'),
-                        onTap: () => Navigator.pop(context, item),
-                      );
-                    },
-                  ),
-                ),
+                const LinearProgressIndicator(minHeight: 2),
               ],
-            ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 2),
+                  child: Text(
+                    error!,
+                    style: TextStyle(color: scheme.error, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              const SizedBox(height: 9),
+              Expanded(
+                child: results.isEmpty && !busy && error == null
+                    ? Center(
+                        child: Text(
+                          widget.lang == 'uz'
+                              ? 'Manzilni yozishni boshlang'
+                              : 'Начните вводить адрес',
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: results.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 6),
+                        itemBuilder: (_, i) {
+                          final item = results[i];
+                          return Material(
+                            color: scheme.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(17),
+                            child: InkWell(
+                              onTap: () => Navigator.pop(context, item),
+                              borderRadius: BorderRadius.circular(17),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                child: Row(
+                                  children: <Widget>[
+                                    Container(
+                                      width: 38,
+                                      height: 38,
+                                      decoration: BoxDecoration(
+                                        color: scheme.surfaceContainerHigh,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.location_on_outlined, size: 20),
+                                    ),
+                                    const SizedBox(width: 11),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Text(
+                                            item.address,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'TaxiMaster / Яндекс',
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              color: scheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.north_west_rounded,
+                                      size: 18,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
+  }
+
 }
 
 class MapPointPickerScreen extends StatefulWidget {
