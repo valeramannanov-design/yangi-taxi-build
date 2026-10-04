@@ -27,6 +27,7 @@ const cfg = {
   secret: process.env.TM_API_SECRET || '',
   verifyTls: String(process.env.TM_API_VERIFY_TLS || 'true').toLowerCase() !== 'false',
   timeout: Number(process.env.TM_API_TIMEOUT_MS || 12000),
+  timeZone: process.env.TM_TIME_ZONE || 'Asia/Tashkent',
   sessionSecret: process.env.SESSION_SECRET || 'change-me-in-production',
   city: process.env.TM_DEFAULT_CITY || '',
   searchTm: String(process.env.TM_ADDRESS_SEARCH_TM || 'true').toLowerCase() !== 'false',
@@ -48,8 +49,19 @@ const cfg = {
 
 const pad = (n) => String(n).padStart(2, '0');
 function tmTime(date = new Date()) {
-  return String(date.getFullYear()) + pad(date.getMonth() + 1) + pad(date.getDate()) +
-    pad(date.getHours()) + pad(date.getMinutes()) + pad(date.getSeconds());
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: cfg.timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date).filter((x) => x.type !== 'literal').map((x) => [x.type, x.value]),
+  );
+  return parts.year + parts.month + parts.day + parts.hour + parts.minute + parts.second;
 }
 function tmDaysAgo(days) {
   const d = new Date();
@@ -279,10 +291,19 @@ async function analyzeLiveRoute(source, destination) {
   });
 }
 
-async function calculateLiveCost({ session, source, destination, route, tariffId, sourceTime }) {
+async function calculateLiveCost({
+  session,
+  source,
+  destination,
+  route,
+  tariffId,
+  crewGroupId,
+  sourceTime,
+}) {
   const analyzed = route.addresses || [];
   return tmPostJson('calc_order_cost2', {
     tariff_id: tariffId,
+    crew_group_id: crewGroupId,
     source_time: sourceTime,
     is_prior: false,
     client_id: session.clientId,
@@ -339,7 +360,13 @@ async function buildLiveEstimateOptions(session, source, destination) {
         return;
       }
       const cost = await calculateLiveCost({
-        session, source, destination, route, tariffId, sourceTime,
+        session,
+        source,
+        destination,
+        route,
+        tariffId,
+        crewGroupId: definition.crewGroupId,
+        sourceTime,
       });
       const amount = Number(cost.sum);
       resolved[definition.key] = {
@@ -350,6 +377,7 @@ async function buildLiveEstimateOptions(session, source, destination) {
         crewGroupName: crew.name || '',
         cost: amount,
         costInfo: cost.info || [],
+        pricingSource: 'taximaster',
       };
     } catch (error) {
       resolved[definition.key] = {
@@ -387,6 +415,7 @@ async function buildLiveEstimateOptions(session, source, destination) {
         cost: amount,
         savingVsStart: Math.max(0, Math.round(Number(start.cost) - amount)),
         savingPercentVsStart: discount,
+        pricingSource: 'yangi_together_rule',
         priceBadgeRu: 'На ' + discount + '% дешевле Старт',
         priceBadgeUz: 'Startdan ' + discount + '% arzon',
         costInfo: start.costInfo || [],
@@ -647,12 +676,18 @@ async function realRoute(req, res, path, url) {
       const fixedTariffAvailable = !definition.tariffId ||
         (catalog.tariffs.has(Number(definition.tariffId)) &&
           catalog.tariffs.get(Number(definition.tariffId))?.is_active !== false);
+      const crew = catalog.groups.get(Number(definition.crewGroupId));
+      const fixedTariff = definition.tariffId
+        ? catalog.tariffs.get(Number(definition.tariffId))
+        : null;
       return {
         key: definition.key,
         nameRu: definition.nameRu,
         nameUz: definition.nameUz,
         crewGroupId: definition.crewGroupId,
+        crewGroupName: crew?.name || '',
         tariffId: definition.tariffId || null,
+        tariffName: fixedTariff?.name || '',
         available: crewAvailable && fixedTariffAvailable,
       };
     });
@@ -670,6 +705,7 @@ async function realRoute(req, res, path, url) {
         options: data.options,
         route: data.route,
         sourceTime: data.sourceTime,
+        timeZone: cfg.timeZone,
       },
     });
   }
@@ -735,6 +771,7 @@ async function realRoute(req, res, path, url) {
         destination,
         route,
         tariffId: startTariffId,
+        crewGroupId: startDefinition.crewGroupId,
         sourceTime,
       });
       const startAmount = Number(baseCost.sum);
