@@ -72,7 +72,7 @@ jobs:
       - name: Validate LIVE build configuration
         env:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-          BACKEND_URL: ${{ secrets.YANGI_BACKEND_URL }}
+          BACKEND_URL: https://lenders-burner-odds-delicious.trycloudflare.com
         run: |
           if [ -z "$MAPKIT_API_KEY" ]; then
             echo "::error::YANDEX_MAPKIT_API_KEY is not configured"
@@ -98,7 +98,7 @@ jobs:
         working-directory: flutter
         env:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-          BACKEND_URL: ${{ secrets.YANGI_BACKEND_URL }}
+          BACKEND_URL: https://lenders-burner-odds-delicious.trycloudflare.com
         run: |
           flutter build apk --release \
             --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY" \
