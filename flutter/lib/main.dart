@@ -1375,8 +1375,13 @@ class ExitConfirmScope extends StatelessWidget {
 }
 
 class YangiWordmark extends StatelessWidget {
-  const YangiWordmark({super.key, this.compact = false});
+  const YangiWordmark({
+    super.key,
+    this.compact = false,
+    this.onDarkSurface = false,
+  });
   final bool compact;
+  final bool onDarkSurface;
 
   @override
   Widget build(BuildContext context) {
@@ -1390,7 +1395,7 @@ class YangiWordmark extends StatelessWidget {
             fontSize: size,
             fontWeight: FontWeight.w900,
             letterSpacing: -0.8,
-            color: Theme.of(context).colorScheme.onSurface,
+            color: onDarkSurface ? Colors.white : Theme.of(context).colorScheme.onSurface,
           ),
         ),
         const SizedBox(width: 4),
