@@ -9754,40 +9754,108 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
-    Widget row({
+    Widget sectionTitle(String title, {VoidCallback? onAll}) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(2, 18, 2, 8),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ),
+            if (onAll != null)
+              TextButton(
+                onPressed: onAll,
+                child: Text(widget.lang == 'uz' ? 'Barchasi' : 'Все'),
+              ),
+          ],
+        ),
+      );
+    }
+
+    Widget profileRow({
       required IconData icon,
       required String title,
+      String? subtitle,
       VoidCallback? onTap,
-      bool danger = false,
+      Widget? trailing,
+      bool greenIcon = false,
     }) {
       return Material(
-        color: Colors.transparent,
+        color: dark ? const Color(0xFF171B1C) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: SizedBox(
-            height: 58,
+          child: Container(
+            minHeight: 62,
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: dark
+                    ? const Color(0xFF2D3334)
+                    : const Color(0xFFE8EAEA),
+              ),
+              borderRadius: BorderRadius.circular(18),
+            ),
             child: Row(
               children: <Widget>[
-                SizedBox(
-                  width: 44,
+                Container(
+                  width: 39,
+                  height: 39,
+                  decoration: BoxDecoration(
+                    color: greenIcon
+                        ? yangiLime.withValues(alpha: 0.16)
+                        : (dark
+                            ? const Color(0xFF222728)
+                            : const Color(0xFFF4F6F6)),
+                    shape: BoxShape.circle,
+                  ),
                   child: Icon(
                     icon,
-                    size: 21,
-                    color: danger ? scheme.error : scheme.onSurface,
+                    size: 20,
+                    color: greenIcon ? yangiGreen : scheme.onSurface,
                   ),
                 ),
+                const SizedBox(width: 11),
                 Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: danger ? scheme.error : scheme.onSurface,
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      if (subtitle != null && subtitle.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (!danger)
-                  Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                trailing ??
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: scheme.onSurfaceVariant,
+                    ),
               ],
             ),
           ),
@@ -9796,151 +9864,291 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     return Scaffold(
-      backgroundColor: dark ? const Color(0xFF0B0D0E) : Colors.white,
+      backgroundColor: dark ? const Color(0xFF0B0D0E) : const Color(0xFFF7F9F9),
       appBar: AppBar(
-        backgroundColor: dark ? const Color(0xFF0B0D0E) : Colors.white,
+        backgroundColor: dark ? const Color(0xFF0B0D0E) : const Color(0xFFF7F9F9),
         surfaceTintColor: Colors.transparent,
+        centerTitle: true,
         leading: widget.onMenu == null
             ? null
             : IconButton(
                 onPressed: widget.onMenu,
                 icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
               ),
-        title: const SizedBox.shrink(),
+        title: Text(
+          widget.lang == 'uz' ? 'Profil' : 'Профиль',
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2.3))
           : Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 620),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        GestureDetector(
+                child: RefreshIndicator(
+                  onRefresh: load,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 34),
+                    children: <Widget>[
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
                           onTap: chooseProfilePhoto,
-                          child: CircleAvatar(
-                            radius: 33,
-                            backgroundColor: yangiLime,
-                            child: clientPhotoBytes == null
-                                ? Text(
-                                    name.isEmpty ? 'Y' : name.substring(0, 1).toUpperCase(),
-                                    style: const TextStyle(
-                                      color: yangiGraphite,
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  )
-                                : ClipOval(
-                                    child: Image.memory(
-                                      clientPhotoBytes!,
-                                      width: 66,
-                                      height: 66,
-                                      fit: BoxFit.cover,
-                                    ),
+                          borderRadius: BorderRadius.circular(22),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 3,
+                              vertical: 8,
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                CircleAvatar(
+                                  radius: 39,
+                                  backgroundColor:
+                                      dark ? const Color(0xFF222728) : const Color(0xFFE9EEEE),
+                                  child: clientPhotoBytes == null
+                                      ? Text(
+                                          name.isEmpty
+                                              ? 'Y'
+                                              : name.substring(0, 1).toUpperCase(),
+                                          style: const TextStyle(
+                                            color: yangiGraphite,
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        )
+                                      : ClipOval(
+                                          child: Image.memory(
+                                            clientPhotoBytes!,
+                                            width: 78,
+                                            height: 78,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        name.isEmpty ? 'Yangi Taxi' : name,
+                                        style: const TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: -0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        phone.isEmpty ? '—' : phone,
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                          ),
-                        ),
-                        const SizedBox(width: 13),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                name.isEmpty ? 'Yangi Taxi' : name,
-                                style: const TextStyle(
-                                  fontSize: 21,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: -0.45,
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                phone.isEmpty ? '—' : phone,
-                                style: TextStyle(
-                                  color: scheme.onSurfaceVariant,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: chooseProfilePhoto,
-                          icon: const Icon(Icons.edit_outlined, size: 20),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 26),
-                    row(
-                      icon: Icons.receipt_long_outlined,
-                      title: widget.lang == 'uz' ? 'Mening safarlarim' : 'Мои поездки',
-                      onTap: () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(
-                          builder: (routeContext) => HistoryScreen(
-                            api: widget.api,
-                            lang: widget.lang,
-                            onMenu: () => Navigator.pop(routeContext),
+                                const Icon(Icons.chevron_right_rounded),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    row(
-                      icon: Icons.credit_card_rounded,
-                      title: widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
-                      onTap: () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(
-                          builder: (_) => CardsScreen(api: widget.api, lang: widget.lang),
+                      const SizedBox(height: 8),
+                      profileRow(
+                        icon: Icons.workspace_premium_rounded,
+                        title: 'Yangi Taxi Plus',
+                        subtitle: widget.lang == 'uz'
+                            ? 'Ko‘proq imkoniyatlar'
+                            : 'Больше возможностей',
+                        greenIcon: true,
+                        onTap: () => notReady('Yangi Taxi Plus'),
+                      ),
+
+                      sectionTitle(
+                        widget.lang == 'uz'
+                            ? 'Saqlangan manzillar'
+                            : 'Сохранённые адреса',
+                        onAll: () => notReady(
+                          widget.lang == 'uz'
+                              ? 'Saqlangan manzillar'
+                              : 'Сохранённые адреса',
                         ),
                       ),
-                    ),
-                    row(
-                      icon: Icons.local_offer_outlined,
-                      title: widget.lang == 'uz' ? 'Promokodlar' : 'Промокоды',
-                      onTap: () => notReady(widget.lang == 'uz' ? 'Promokodlar' : 'Промокоды'),
-                    ),
-                    row(
-                      icon: Icons.location_on_outlined,
-                      title: widget.lang == 'uz' ? 'Sevimli manzillar' : 'Любимые адреса',
-                      onTap: () => notReady(widget.lang == 'uz' ? 'Sevimli manzillar' : 'Любимые адреса'),
-                    ),
-                    row(
-                      icon: Icons.settings_outlined,
-                      title: widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки',
-                      onTap: () => notReady(widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки'),
-                    ),
-                    row(
-                      icon: Icons.help_outline_rounded,
-                      title: widget.lang == 'uz' ? 'Yordam' : 'Помощь',
-                      onTap: () => notReady(widget.lang == 'uz' ? 'Yordam' : 'Помощь'),
-                    ),
-                    const SizedBox(height: 16),
-                    Divider(color: scheme.outlineVariant),
-                    const SizedBox(height: 6),
-                    row(
-                      icon: Icons.logout_rounded,
-                      title: widget.lang == 'uz' ? 'Chiqish' : 'Выйти',
-                      onTap: widget.onLogout,
-                      danger: true,
-                    ),
-                    const SizedBox(height: 28),
-                    Center(
-                      child: Text(
-                        'YANGI TAXI',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant.withValues(alpha: 0.42),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.4,
+                      profileRow(
+                        icon: Icons.home_rounded,
+                        title: widget.lang == 'uz' ? 'Uy' : 'Дом',
+                        subtitle: widget.lang == 'uz'
+                            ? 'Uy manzilini qo‘shing'
+                            : 'Добавьте домашний адрес',
+                        onTap: () => notReady(
+                          widget.lang == 'uz' ? 'Uy' : 'Дом',
+                        ),
+                        trailing: const Icon(Icons.more_vert_rounded),
+                      ),
+                      const SizedBox(height: 8),
+                      profileRow(
+                        icon: Icons.work_rounded,
+                        title: widget.lang == 'uz' ? 'Ish' : 'Работа',
+                        subtitle: widget.lang == 'uz'
+                            ? 'Ish manzilini qo‘shing'
+                            : 'Добавьте рабочий адрес',
+                        onTap: () => notReady(
+                          widget.lang == 'uz' ? 'Ish' : 'Работа',
+                        ),
+                        trailing: const Icon(Icons.more_vert_rounded),
+                      ),
+                      const SizedBox(height: 8),
+                      profileRow(
+                        icon: Icons.add_rounded,
+                        title: widget.lang == 'uz'
+                            ? 'Yangi manzil qo‘shish'
+                            : 'Добавить новый адрес',
+                        greenIcon: true,
+                        onTap: () => notReady(
+                          widget.lang == 'uz'
+                              ? 'Yangi manzil'
+                              : 'Новый адрес',
                         ),
                       ),
-                    ),
-                  ],
+
+                      sectionTitle(
+                        widget.lang == 'uz'
+                            ? 'To‘lov usullari'
+                            : 'Способы оплаты',
+                        onAll: () => Navigator.of(context).push<void>(
+                          MaterialPageRoute(
+                            builder: (_) => CardsScreen(
+                              api: widget.api,
+                              lang: widget.lang,
+                            ),
+                          ),
+                        ),
+                      ),
+                      profileRow(
+                        icon: Icons.credit_card_rounded,
+                        title: widget.lang == 'uz'
+                            ? 'Kartalar va naqd'
+                            : 'Карты и наличные',
+                        subtitle: widget.lang == 'uz'
+                            ? 'To‘lov usulini boshqarish'
+                            : 'Управление способом оплаты',
+                        onTap: () => Navigator.of(context).push<void>(
+                          MaterialPageRoute(
+                            builder: (_) => CardsScreen(
+                              api: widget.api,
+                              lang: widget.lang,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      sectionTitle(
+                        widget.lang == 'uz' ? 'Promo kodlar' : 'Промокоды',
+                      ),
+                      profileRow(
+                        icon: Icons.percent_rounded,
+                        title: widget.lang == 'uz'
+                            ? 'Promo kod kiritish'
+                            : 'Ввести промокод',
+                        onTap: () => notReady(
+                          widget.lang == 'uz'
+                              ? 'Promo kod'
+                              : 'Промокод',
+                        ),
+                      ),
+
+                      const SizedBox(height: 13),
+                      profileRow(
+                        icon: Icons.headset_mic_outlined,
+                        title: widget.lang == 'uz'
+                            ? 'Yordam va qo‘llab-quvvatlash'
+                            : 'Помощь и поддержка',
+                        onTap: () => notReady(
+                          widget.lang == 'uz' ? 'Yordam' : 'Поддержка',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      profileRow(
+                        icon: Icons.settings_outlined,
+                        title: widget.lang == 'uz'
+                            ? 'Sozlamalar'
+                            : 'Настройки',
+                        onTap: () => notReady(
+                          widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      profileRow(
+                        icon: Icons.language_rounded,
+                        title: widget.lang == 'uz'
+                            ? 'Ilova tili'
+                            : 'Язык приложения',
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(
+                              widget.lang == 'uz'
+                                  ? 'O‘zbekcha'
+                                  : 'Русский',
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            const Icon(Icons.chevron_right_rounded),
+                          ],
+                        ),
+                        onTap: () => widget.onLang(
+                          widget.lang == 'uz' ? 'ru' : 'uz',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      profileRow(
+                        icon: Icons.receipt_long_outlined,
+                        title: widget.lang == 'uz'
+                            ? 'Safarlar tarixi'
+                            : 'История поездок',
+                        onTap: () => Navigator.of(context).push<void>(
+                          MaterialPageRoute(
+                            builder: (routeContext) => HistoryScreen(
+                              api: widget.api,
+                              lang: widget.lang,
+                              onMenu: () => Navigator.pop(routeContext),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      TextButton.icon(
+                        onPressed: widget.onLogout,
+                        icon: Icon(
+                          Icons.logout_rounded,
+                          color: scheme.error,
+                        ),
+                        label: Text(
+                          widget.lang == 'uz' ? 'Chiqish' : 'Выйти',
+                          style: TextStyle(
+                            color: scheme.error,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
     );
   }
 }
+
