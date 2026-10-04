@@ -932,7 +932,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
         ),
       ),
       home: loading
-          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          ? const _YangiSplashScreen()
           : loggedIn
               ? ExitConfirmScope(
                   lang: lang,
@@ -993,6 +993,90 @@ Future<void> backendDialog(BuildContext context, ApiClient api, Future<void> Fun
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backend: ' + (h['tmApi'] ?? 'ok').toString())));
   } catch (e) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+  }
+}
+
+class _YangiSplashScreen extends StatelessWidget {
+  const _YangiSplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF071017),
+      body: Stack(
+        children: <Widget>[
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[Color(0xFF071017), Color(0xFF101A1B), Color(0xFF050708)],
+                ),
+              ),
+            ),
+          ),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Stack(
+                  alignment: Alignment.center,
+                  children: <Widget>[
+                    const Icon(Icons.location_on_rounded, size: 82, color: yangiLime),
+                    Positioned(
+                      top: 22,
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF071017),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'YANGI TAXI',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Везде, где вы',
+                  style: TextStyle(
+                    color: Color(0xFFD8DEDF),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 34,
+            child: Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: yangiLime,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1073,7 +1157,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final data = await widget.api.post('/api/auth/register/request-code', <String, dynamic>{
-        'phone': phone.text.trim(),
+        'phone': _authPhone(),
       });
       if (!mounted) return;
       setState(() {
@@ -1106,11 +1190,11 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final data = await widget.api.post('/api/auth/register/verify-code', <String, dynamic>{
         'name': name.text.trim(),
-        'phone': phone.text.trim(),
+        'phone': _authPhone(),
         'password': pass.text,
         'code': smsCode.text.trim(),
       });
-      await widget.onToken(data['token'].toString(), rememberMe, phone.text.trim());
+      await widget.onToken(data['token'].toString(), rememberMe, _authPhone());
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -1136,15 +1220,23 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       final data = await widget.api.post('/api/auth/login', <String, dynamic>{
-        'phone': phone.text.trim(),
+        'phone': _authPhone(),
         'password': pass.text,
       });
-      await widget.onToken(data['token'].toString(), rememberMe, phone.text.trim());
+      await widget.onToken(data['token'].toString(), rememberMe, _authPhone());
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  String _authPhone() {
+    final raw = phone.text.trim();
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.length == 9) return '+998' + digits;
+    if (digits.length == 12 && digits.startsWith('998')) return '+' + digits;
+    return raw;
   }
 
   Future<void> submit() async {
@@ -1154,278 +1246,401 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(22),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
-                    ),
-                    boxShadow: Theme.of(context).brightness == Brightness.dark
-                        ? const <BoxShadow>[]
-                        : const <BoxShadow>[
-                            BoxShadow(
-                              color: Color(0x12000000),
-                              blurRadius: 28,
-                              offset: Offset(0, 10),
-                            ),
-                          ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(22),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        Row(
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+
+    InputDecoration authDecoration({
+      required String hint,
+      Widget? prefix,
+      Widget? suffix,
+    }) =>
+        InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.58),
+            fontWeight: FontWeight.w600,
+          ),
+          prefixIcon: prefix,
+          suffixIcon: suffix,
+          filled: true,
+          fillColor: dark ? const Color(0xFF171A1B) : const Color(0xFFF7F8F8),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(15),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(15),
+            borderSide: BorderSide(
+              color: dark ? const Color(0xFF2B3031) : const Color(0xFFE5E7E8),
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(15),
+            borderSide: const BorderSide(color: yangiLime, width: 1.6),
+          ),
+        );
+
+    return Scaffold(
+      backgroundColor: dark ? const Color(0xFF0B0D0E) : Colors.white,
+      body: SafeArea(
+        child: Stack(
+          children: <Widget>[
+            Positioned(
+              top: 8,
+              right: 12,
+              child: IconButton(
+                onPressed: busy ? null : () => backendDialog(context, widget.api, widget.onBackend),
+                tooltip: 'Backend',
+                icon: Icon(Icons.settings_outlined, color: scheme.onSurfaceVariant),
+              ),
+            ),
+            Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 430),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      Center(
+                        child: Column(
                           children: <Widget>[
                             Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: yangiLime,
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(child: YangiWordmark()),
-                            IconButton(
-                              onPressed: busy ? null : () => backendDialog(context, widget.api, widget.onBackend),
-                              icon: const Icon(Icons.settings_outlined),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 7),
-                        Text(
-                          widget.lang == 'uz' ? 'Harakat erkinligi siz bilan' : 'Движение ближе к вам',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceContainerLow,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: <Widget>[
-                              Row(
+                              width: 72,
+                              height: 88,
+                              alignment: Alignment.topCenter,
+                              child: Stack(
+                                alignment: Alignment.topCenter,
                                 children: <Widget>[
-                                  Icon(
-                                    widget.api.isDemo ? Icons.science_outlined : Icons.cloud_done_outlined,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      widget.api.isDemo ? tx(widget.lang, 'demo') : widget.api.baseUrl,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                  Positioned(
+                                    top: 2,
+                                    child: Icon(
+                                      Icons.location_on_rounded,
+                                      size: 68,
+                                      color: yangiLime,
                                     ),
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 9),
-                              Row(
-                                children: <Widget>[
-                                  Expanded(
-                                    child: Text(
-                                      widget.lang == 'uz' ? 'Ilova tili' : 'Язык приложения',
-                                      style: TextStyle(
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
+                                  Positioned(
+                                    top: 21,
+                                    child: Container(
+                                      width: 18,
+                                      height: 18,
+                                      decoration: BoxDecoration(
+                                        color: dark ? const Color(0xFF0B0D0E) : Colors.white,
+                                        shape: BoxShape.circle,
                                       ),
                                     ),
                                   ),
-                                  SegmentedButton<String>(
-                                    segments: const <ButtonSegment<String>>[
-                                      ButtonSegment<String>(value: 'ru', label: Text('RU')),
-                                      ButtonSegment<String>(value: 'uz', label: Text('UZ')),
-                                    ],
-                                    selected: <String>{widget.lang},
-                                    onSelectionChanged: busy ? null : (x) => widget.onLang(x.first),
-                                  ),
                                 ],
+                              ),
+                            ),
+                            Text(
+                              'YANGI TAXI',
+                              style: TextStyle(
+                                color: scheme.onSurface,
+                                fontSize: 27,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              widget.lang == 'uz' ? 'Har doim yoningizda' : 'Везде, где вы',
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 34),
+                      Container(
+                        height: 48,
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: dark ? const Color(0xFF181B1C) : const Color(0xFFF1F2F3),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _authModeButton(
+                                label: widget.lang == 'uz' ? 'Kirish' : 'Вход',
+                                selected: !register,
+                                onTap: busy || !register ? null : toggleMode,
+                              ),
+                            ),
+                            Expanded(
+                              child: _authModeButton(
+                                label: widget.lang == 'uz' ? 'Ro‘yxatdan o‘tish' : 'Регистрация',
+                                selected: register,
+                                onTap: busy || register ? null : toggleMode,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      if (register) ...<Widget>[
+                        TextField(
+                          controller: name,
+                          enabled: !smsSent && !busy,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: authDecoration(
+                            hint: widget.lang == 'uz' ? 'Ismingiz' : 'Ваше имя',
+                            prefix: const Icon(Icons.person_outline_rounded),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      TextField(
+                        controller: phone,
+                        enabled: !smsSent && !busy,
+                        keyboardType: TextInputType.phone,
+                        decoration: authDecoration(
+                          hint: '+998 90 123 45 67',
+                          prefix: SizedBox(
+                            width: 82,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                const Text('🇺🇿', style: TextStyle(fontSize: 19)),
+                                const SizedBox(width: 7),
+                                Text(
+                                  '+998',
+                                  style: TextStyle(
+                                    color: scheme.onSurface,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: pass,
+                        enabled: !smsSent && !busy,
+                        obscureText: !passwordVisible,
+                        onSubmitted: (_) => submit(),
+                        decoration: authDecoration(
+                          hint: widget.lang == 'uz' ? 'Parol' : 'Пароль',
+                          prefix: const Icon(Icons.lock_outline_rounded),
+                          suffix: IconButton(
+                            onPressed: busy || smsSent
+                                ? null
+                                : () => setState(() => passwordVisible = !passwordVisible),
+                            icon: Icon(
+                              passwordVisible
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (register && smsSent) ...<Widget>[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: smsCode,
+                          autofocus: true,
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
+                          onSubmitted: (_) => submit(),
+                          decoration: authDecoration(
+                            hint: widget.lang == 'uz' ? 'SMS-kod' : 'Код из SMS',
+                            prefix: const Icon(Icons.sms_outlined),
+                          ).copyWith(counterText: ''),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: busy
+                                ? null
+                                : () {
+                                    setState(() {
+                                      smsSent = false;
+                                      smsCode.clear();
+                                      info = null;
+                                    });
+                                    requestSms();
+                                  },
+                            child: Text(
+                              widget.lang == 'uz'
+                                  ? 'Kodni qayta yuborish'
+                                  : 'Отправить код ещё раз',
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
+                      Row(
+                        children: <Widget>[
+                          Checkbox(
+                            value: rememberMe,
+                            onChanged: busy || smsSent
+                                ? null
+                                : (value) => setState(() => rememberMe = value ?? false),
+                            activeColor: dark ? yangiLime : yangiGraphite,
+                            checkColor: dark ? yangiGraphite : Colors.white,
+                          ),
+                          Expanded(
+                            child: Text(
+                              widget.lang == 'uz' ? 'Meni eslab qolish' : 'Запомнить меня',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: null,
+                            child: Text(widget.lang == 'uz' ? 'Parolni unutdingizmi?' : 'Забыли пароль?'),
+                          ),
+                        ],
+                      ),
+                      if (info != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            info!,
+                            style: TextStyle(color: dark ? yangiLime : yangiGreen, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      if (error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(error!, style: TextStyle(color: scheme.error, fontWeight: FontWeight.w700)),
+                        ),
+                      SizedBox(
+                        height: 58,
+                        child: FilledButton(
+                          onPressed: busy ? null : submit,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: dark ? const Color(0xFFF4F5F5) : const Color(0xFF101719),
+                            foregroundColor: dark ? yangiGraphite : Colors.white,
+                            disabledBackgroundColor: scheme.surfaceContainerHighest,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                          ),
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  !register
+                                      ? (widget.lang == 'uz' ? 'Kirish' : 'Войти')
+                                      : (smsSent
+                                          ? (widget.lang == 'uz' ? 'SMS-kodni tasdiqlash' : 'Подтвердить SMS')
+                                          : (widget.lang == 'uz' ? 'SMS-kod olish' : 'Получить SMS-код')),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                                ),
+                              ),
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: const BoxDecoration(
+                                  color: yangiLime,
+                                  shape: BoxShape.circle,
+                                ),
+                                alignment: Alignment.center,
+                                child: busy
+                                    ? const SizedBox.square(
+                                        dimension: 17,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: yangiGraphite,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.arrow_forward_rounded,
+                                        color: yangiGraphite,
+                                        size: 23,
+                                      ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 18),
-                        Text(
-                          register
-                              ? (widget.lang == 'uz' ? 'Yangi akkaunt' : 'Новый аккаунт')
-                              : (widget.lang == 'uz' ? 'Xush kelibsiz' : 'С возвращением'),
-                          style: const TextStyle(
-                            fontSize: 24,
-                            height: 1.0,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.6,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          register
-                              ? (widget.lang == 'uz'
-                                  ? 'Telefon raqamingizni SMS orqali tasdiqlang'
-                                  : 'Подтвердите номер телефона по SMS')
-                              : (widget.lang == 'uz'
-                                  ? 'Safarni davom ettirish uchun tizimga kiring'
-                                  : 'Войдите, чтобы продолжить поездки'),
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        if (register) ...<Widget>[
-                          TextField(
-                            controller: name,
-                            enabled: !smsSent && !busy,
-                            decoration: InputDecoration(labelText: tx(widget.lang, 'name')),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        TextField(
-                          controller: phone,
-                          enabled: !smsSent && !busy,
-                          keyboardType: TextInputType.phone,
-                          decoration: InputDecoration(labelText: tx(widget.lang, 'phone')),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: pass,
-                          enabled: !smsSent && !busy,
-                          obscureText: !passwordVisible,
-                          onSubmitted: (_) => submit(),
-                          decoration: InputDecoration(
-                            labelText: tx(widget.lang, 'password'),
-                            prefixIcon: const Icon(Icons.lock_outline_rounded),
-                            suffixIcon: IconButton(
-                              onPressed: busy || smsSent
-                                  ? null
-                                  : () => setState(() => passwordVisible = !passwordVisible),
-                              tooltip: passwordVisible
-                                  ? (widget.lang == 'uz' ? 'Parolni yashirish' : 'Скрыть пароль')
-                                  : (widget.lang == 'uz' ? 'Parolni ko‘rsatish' : 'Показать пароль'),
-                              icon: Icon(
-                                passwordVisible
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        CheckboxListTile(
-                          value: rememberMe,
-                          contentPadding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          title: Text(
-                            widget.lang == 'uz' ? 'Meni eslab qolish' : 'Запомнить меня',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                          subtitle: Text(
-                            widget.lang == 'uz'
-                                ? 'Parol saqlanmaydi — faqat himoyalangan sessiya'
-                                : 'Пароль не сохраняется — только защищённая сессия',
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                          onChanged: busy || smsSent ? null : (value) => setState(() => rememberMe = value ?? false),
-                        ),
-                        if (register && smsSent) ...<Widget>[
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: smsCode,
-                            autofocus: true,
-                            keyboardType: TextInputType.number,
-                            maxLength: 6,
-                            onSubmitted: (_) => submit(),
-                            decoration: InputDecoration(
-                              counterText: '',
-                              labelText: widget.lang == 'uz' ? 'SMS-kod' : 'Код из SMS',
-                              prefixIcon: const Icon(Icons.sms_outlined),
-                            ),
-                          ),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: TextButton(
-                              onPressed: busy ? null : () {
-                                setState(() {
-                                  smsSent = false;
-                                  smsCode.clear();
-                                  info = null;
-                                });
-                                requestSms();
-                              },
-                              child: Text(widget.lang == 'uz' ? 'Kodni qayta yuborish' : 'Отправить код ещё раз'),
-                            ),
-                          ),
-                        ],
-                        if (info != null)
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: <Widget>[
+                          Expanded(child: Divider(color: scheme.outlineVariant)),
                           Padding(
-                            padding: const EdgeInsets.only(top: 10),
-                            child: Text(info!, style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              widget.lang == 'uz' ? 'yoki' : 'или',
+                              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+                            ),
                           ),
-                        if (error != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 10),
-                            child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                          ),
-                        const SizedBox(height: 14),
-                        FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: yangiLime,
-                            foregroundColor: yangiGraphite,
-                            minimumSize: const Size.fromHeight(52),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
-                          ),
-                          onPressed: busy ? null : submit,
-                          icon: busy
-                              ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                              : Icon(
-                                  register
-                                      ? (smsSent ? Icons.verified_user_outlined : Icons.sms_outlined)
-                                      : Icons.login,
-                                ),
-                          label: Text(
-                            !register
-                                ? tx(widget.lang, 'login')
-                                : (smsSent
-                                    ? (widget.lang == 'uz' ? 'SMS-kodni tasdiqlash' : 'Подтвердить SMS')
-                                    : (widget.lang == 'uz' ? 'SMS-kod olish' : 'Получить SMS-код')),
-                          ),
+                          Expanded(child: Divider(color: scheme.outlineVariant)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Center(
+                        child: SegmentedButton<String>(
+                          segments: const <ButtonSegment<String>>[
+                            ButtonSegment<String>(value: 'ru', label: Text('RU')),
+                            ButtonSegment<String>(value: 'uz', label: Text('UZ')),
+                          ],
+                          selected: <String>{widget.lang},
+                          onSelectionChanged: busy ? null : (x) => widget.onLang(x.first),
                         ),
-                        TextButton(
-                          onPressed: busy ? null : toggleMode,
-                          child: Text(register ? tx(widget.lang, 'login') : tx(widget.lang, 'register')),
+                      ),
+                      const SizedBox(height: 15),
+                      Text(
+                        widget.lang == 'uz'
+                            ? 'Davom etish orqali xizmat shartlari va maxfiylik siyosatiga rozilik bildirasiz.'
+                            : 'Продолжая, вы соглашаетесь с условиями использования и политикой конфиденциальности.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 10.5,
+                          height: 1.35,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _authModeButton({
+    required String label,
+    required bool selected,
+    required VoidCallback? onTap,
+  }) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: selected
+          ? (dark ? const Color(0xFF282C2D) : Colors.white)
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(11),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(11),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
+            ),
           ),
         ),
-      );
+      ),
+    );
+  }
+
 }
 
 
