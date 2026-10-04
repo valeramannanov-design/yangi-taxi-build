@@ -108,18 +108,24 @@ jobs:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
           BACKEND_URL: ${{ secrets.YANGI_BACKEND_URL }}
         run: |
-          flutter build apk --release \
+          flutter build apk --release --split-per-abi \
             --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY" \
             --dart-define=BACKEND_URL="${BACKEND_URL:-http://192.168.1.254:8788}"
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.9.5-design-pack.apk
+        run: |
+          cp flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk Yangi-Taxi-v1.9.6-arm64.apk
+          cp flutter/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk Yangi-Taxi-v1.9.6-armv7.apk
+          cp flutter/build/app/outputs/flutter-apk/app-x86_64-release.apk Yangi-Taxi-v1.9.6-x86_64.apk
       - name: Prepare backend package
         run: |
           zip -r Yangi-Taxi-backend-v1.9.0-live.zip backend -x "backend/.env"
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-v1.9.5-design-pack-apk
-          path: Yangi-Taxi-v1.9.5-design-pack.apk
+          name: Yangi-Taxi-v1.9.6-split-apks
+          path: |
+            Yangi-Taxi-v1.9.6-arm64.apk
+            Yangi-Taxi-v1.9.6-armv7.apk
+            Yangi-Taxi-v1.9.6-x86_64.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
