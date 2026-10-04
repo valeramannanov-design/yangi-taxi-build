@@ -32,12 +32,13 @@ jobs:
           cp -R shell/android flutter/android
       - name: Configure Android app
         run: |
+          cp .github/preview-signing/yangi-preview.jks flutter/android/app/yangi-preview.jks
           python3 - <<'PY'
           from pathlib import Path
 
           manifest = Path('flutter/android/app/src/main/AndroidManifest.xml')
           text = manifest.read_text()
-          text = text.replace('android:label="yangi_taxi"', 'android:label="Yangi Taxi"')
+          text = text.replace('android:label="yangi_taxi"', 'android:label="Yangi Taxi Design"')
           if 'android:usesCleartextTraffic=' not in text:
               text = text.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           perms = '    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n'
@@ -49,6 +50,20 @@ jobs:
           if gradle_kts.exists():
               g = gradle_kts.read_text()
               g = g.replace('minSdk = flutter.minSdkVersion', 'minSdk = 26')
+              g = g.replace('applicationId = "uz.yangi.yangi_taxi"', 'applicationId = "uz.yangi.yangi_taxi.design"')
+              signing = '''    signingConfigs {
+        create("preview") {
+            keyAlias = "yangiPreview"
+            keyPassword = "yangi-preview-2026"
+            storeFile = file("yangi-preview.jks")
+            storePassword = "yangi-preview-2026"
+        }
+    }
+
+'''
+              if 'create("preview")' not in g:
+                  g = g.replace('    buildTypes {', signing + '    buildTypes {', 1)
+              g = g.replace('signingConfig = signingConfigs.getByName("debug")', 'signingConfig = signingConfigs.getByName("preview")')
               if 'play-services-location:21.1.0' not in g:
                   g += '\n\ndependencies {\n    implementation("com.google.android.gms:play-services-location:21.1.0")\n}\n'
               gradle_kts.write_text(g)
@@ -57,6 +72,20 @@ jobs:
           if gradle.exists():
               g = gradle.read_text()
               g = g.replace('minSdkVersion flutter.minSdkVersion', 'minSdkVersion 26')
+              g = g.replace('applicationId "uz.yangi.yangi_taxi"', 'applicationId "uz.yangi.yangi_taxi.design"')
+              signing = '''    signingConfigs {
+        preview {
+            keyAlias 'yangiPreview'
+            keyPassword 'yangi-preview-2026'
+            storeFile file('yangi-preview.jks')
+            storePassword 'yangi-preview-2026'
+        }
+    }
+
+'''
+              if 'preview {' not in g:
+                  g = g.replace('    buildTypes {', signing + '    buildTypes {', 1)
+              g = g.replace('signingConfig signingConfigs.debug', 'signingConfig signingConfigs.preview')
               if 'play-services-location:21.1.0' not in g:
                   g += '\n\ndependencies {\n    implementation "com.google.android.gms:play-services-location:21.1.0"\n}\n'
               gradle.write_text(g)
@@ -77,7 +106,7 @@ jobs:
         run: |
           flutter build apk --release \
             --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY" \
-            --dart-define=BACKEND_URL="${BACKEND_URL:-demo}"
+            --dart-define=BACKEND_URL="${BACKEND_URL:-http://192.168.1.254:8788}"
       - name: Prepare artifact
         run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.9.5-design-pack.apk
       - name: Prepare backend package
