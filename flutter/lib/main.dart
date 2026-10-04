@@ -4395,13 +4395,18 @@ class _OrderScreenState extends State<OrderScreen> {
                             ],
                           ),
                           Material(
-                            color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(18),
+                            color: scheme.surfaceContainerLow,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide(
+                                color: scheme.outlineVariant.withValues(alpha: 0.65),
+                              ),
+                            ),
                             child: InkWell(
                               onTap: () => _showPaymentSheet(canUseCard),
-                              borderRadius: BorderRadius.circular(18),
+                              borderRadius: BorderRadius.circular(20),
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                                 child: Row(
                                   children: <Widget>[
                                     Container(
@@ -4424,14 +4429,39 @@ class _OrderScreenState extends State<OrderScreen> {
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
-                                      child: Text(
-                                        paymentMethod == 'card'
-                                            ? maskedCardLabel(selectedCard?['maskedPan'])
-                                            : (widget.lang == 'uz' ? 'Naqd' : 'Наличные'),
-                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Text(
+                                            paymentMethod == 'card'
+                                                ? maskedCardLabel(selectedCard?['maskedPan'])
+                                                : (widget.lang == 'uz' ? 'Naqd' : 'Наличные'),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                          Text(
+                                            paymentMethod == 'card'
+                                                ? (widget.lang == 'uz'
+                                                    ? 'ATMOS orqali xavfsiz to‘lov'
+                                                    : 'Безопасная оплата через ATMOS')
+                                                : (widget.lang == 'uz'
+                                                    ? 'Haydovchiga safardan keyin'
+                                                    : 'Оплата водителю после поездки'),
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              color: scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    const Icon(Icons.chevron_right_rounded),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -4439,11 +4469,16 @@ class _OrderScreenState extends State<OrderScreen> {
                           ),
                           const SizedBox(height: 9),
                           Material(
-                            color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(18),
+                            color: scheme.surfaceContainerLow,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide(
+                                color: scheme.outlineVariant.withValues(alpha: 0.65),
+                              ),
+                            ),
                             child: InkWell(
                               onTap: _showRideOptionsSheet,
-                              borderRadius: BorderRadius.circular(18),
+                              borderRadius: BorderRadius.circular(20),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                 child: Row(
@@ -4455,10 +4490,10 @@ class _OrderScreenState extends State<OrderScreen> {
                                         widget.lang == 'uz'
                                             ? 'Haydovchiga izoh (ixtiyoriy)'
                                             : 'Комментарий для водителя (необязательно)',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w700,
-                                          color: Color(0xFF8B8F97),
+                                          color: scheme.onSurfaceVariant,
                                         ),
                                       ),
                                     ),
@@ -4484,7 +4519,7 @@ class _OrderScreenState extends State<OrderScreen> {
                         math.max(10, MediaQuery.of(context).padding.bottom),
                       ),
                       child: SizedBox(
-                        height: 58,
+                        height: 62,
                         child: FilledButton(
                           onPressed: busy ||
                                   estimating ||
@@ -4510,7 +4545,8 @@ class _OrderScreenState extends State<OrderScreen> {
                                 .onSurfaceVariant
                                 .withValues(alpha: 0.74),
                             elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(19)),
+                            shadowColor: yangiLime.withValues(alpha: 0.22),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                           ),
                           child: busy
                               ? const SizedBox.square(
@@ -4527,7 +4563,11 @@ class _OrderScreenState extends State<OrderScreen> {
                                         child: Text(
                                           orderButtonLabel(),
                                           maxLines: 1,
-                                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: -0.25,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -4537,8 +4577,11 @@ class _OrderScreenState extends State<OrderScreen> {
                                         crossAxisAlignment: CrossAxisAlignment.end,
                                         children: <Widget>[
                                           Text(
-                                            '~ ${selectedPrice.toStringAsFixed(0)} so‘m',
-                                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+                                            moneyLabel(selectedPrice),
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w900,
+                                            ),
                                           ),
                                           Text(
                                             '${routeMinutes ?? '—'} мин • ${routeDistanceKm?.toStringAsFixed(1) ?? '—'} км',
