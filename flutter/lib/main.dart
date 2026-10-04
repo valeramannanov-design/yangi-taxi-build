@@ -2482,6 +2482,7 @@ class _OrderScreenState extends State<OrderScreen> {
   bool cardBindingAvailable = false;
   List<Map<String, dynamic>> cards = <Map<String, dynamic>>[];
   int selectedCardId = 0;
+  bool pickupPinnedByUser = false;
   late final ys.SearchManager locationSearchManager;
   ys.SearchSession? locationSearchSession;
   yd.DrivingRouter? drivingRouter;
@@ -2539,7 +2540,6 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> pickRoutePointOnMap({required bool pickup}) async {
-    if (!pickup) await ensurePickupFromCurrentLocation();
     final title = pickup ? tx(widget.lang, 'from') : tx(widget.lang, 'to');
     final initial = pickup
         ? (from ?? (currentLocation == null
@@ -2571,6 +2571,7 @@ class _OrderScreenState extends State<OrderScreen> {
     setState(() {
       if (pickup) {
         from = place;
+        pickupPinnedByUser = true;
       } else {
         to = place;
       }
@@ -3146,7 +3147,7 @@ class _OrderScreenState extends State<OrderScreen> {
     try {
       final place = await reverseCurrentLocation(point);
       if (!mounted) return;
-      if (from == null) {
+      if (!pickupPinnedByUser) {
         setState(() {
           from = place;
           cost = null;
@@ -3160,6 +3161,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> detectMyLocation({bool auto = false}) async {
     if (locating) return;
+    if (!auto) pickupPinnedByUser = false;
     if (mounted) {
       setState(() {
         locating = true;
@@ -3235,7 +3237,7 @@ class _OrderScreenState extends State<OrderScreen> {
       final place = await reverseCurrentLocation(point);
       if (!mounted) return;
 
-      if (!auto || from == null) {
+      if (!pickupPinnedByUser) {
         setState(() {
           from = place;
           cost = null;
@@ -3817,7 +3819,12 @@ class _OrderScreenState extends State<OrderScreen> {
                                     onTap: () async {
                                       final p = await selectAddress(tx(widget.lang, 'from'), from);
                                       if (p != null && mounted) {
-                                        setState(() => from = p);
+                                        setState(() {
+                                          from = p;
+                                          pickupPinnedByUser = true;
+                                          cost = null;
+                                          route = <ym.Point>[];
+                                        });
                                         await loadNearbyCars();
                                         scheduleEstimate();
                                       }
@@ -3835,19 +3842,20 @@ class _OrderScreenState extends State<OrderScreen> {
                                             ? (widget.lang == 'uz' ? 'Keyinroq ko‘rsatish mumkin' : 'Можно указать позже')
                                             : (widget.lang == 'uz' ? 'Manzilni tanlang' : 'Выберите адрес')),
                                     onTap: () async {
-                                      await ensurePickupFromCurrentLocation();
-                                      if (!mounted) return;
-                                      final p = await selectAddress(tx(widget.lang, 'to'), to);
+                                      final p = await selectAddress(
+                                        tx(widget.lang, 'to'),
+                                        to ?? from,
+                                      );
                                       if (p != null && mounted) {
-                                        setState(() => to = p);
+                                        setState(() {
+                                          to = p;
+                                          cost = null;
+                                          route = <ym.Point>[];
+                                        });
                                         scheduleEstimate();
                                       }
                                     },
-                                    onMapTap: () async {
-                                      await ensurePickupFromCurrentLocation();
-                                      if (!mounted) return;
-                                      await pickRoutePointOnMap(pickup: false);
-                                    },
+                                    onMapTap: () => pickRoutePointOnMap(pickup: false),
                                   ),
                                 ],
                               ),
@@ -7026,7 +7034,7 @@ class SettingsScreen extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.info_outline_rounded),
                     title: Text(lang == 'uz' ? 'Ilova haqida' : 'О приложении'),
-                    subtitle: const Text('Yangi Taxi 1.8.2'),
+                    subtitle: const Text('Yangi Taxi 1.8.3'),
                   ),
                 ],
               ),
