@@ -4254,70 +4254,6 @@ class _OrderScreenState extends State<OrderScreen> {
                       ),
                     ],
                   ),
-                  if (!destinationReady) ...<Widget>[
-                    const SizedBox(height: 12),
-                    Material(
-                      color: const Color(0xF5151718),
-                      borderRadius: BorderRadius.circular(25),
-                      elevation: 10,
-                      shadowColor: const Color(0x42000000),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: _editDestinationPremium,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(17, 14, 12, 14),
-                          child: Row(
-                            children: <Widget>[
-                              const Icon(Icons.search_rounded, color: Colors.white, size: 25),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: <Widget>[
-                                    Text(
-                                      widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда поедем?',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 20,
-                                        height: 1,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: -0.45,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 5),
-                                    Text(
-                                      widget.lang == 'uz'
-                                          ? 'Manzil yoki joy nomini kiriting'
-                                          : 'Введите адрес или название места',
-                                      style: const TextStyle(
-                                        color: Color(0xFFB8BDBE),
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                width: 42,
-                                height: 42,
-                                decoration: const BoxDecoration(
-                                  color: yangiLime,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.arrow_forward_rounded,
-                                  color: yangiGraphite,
-                                  size: 24,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -4325,7 +4261,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
           Positioned(
             right: 18,
-            bottom: MediaQuery.of(context).size.height * (destinationReady ? 0.62 : 0.49),
+            bottom: MediaQuery.of(context).size.height * (destinationReady ? 0.62 : 0.42),
             child: SafeArea(
               child: _roundMapButton(
                 icon: Icons.my_location_rounded,
@@ -4375,6 +4311,136 @@ class _OrderScreenState extends State<OrderScreen> {
                         controller: scrollController,
                         padding: const EdgeInsets.fromLTRB(16, 5, 16, 12),
                         children: <Widget>[
+                          if (!destinationReady) ...<Widget>[
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда поедем?',
+                              style: const TextStyle(
+                                fontSize: 29,
+                                height: 1,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -1.0,
+                              ),
+                            ),
+                            const SizedBox(height: 7),
+                            Text(
+                              widget.lang == 'uz'
+                                  ? 'Manzilni tanlang — narx va mashina darhol ko‘rinadi'
+                                  : 'Выберите адрес — сразу покажем цену и машину',
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Material(
+                              color: const Color(0xFF101719),
+                              borderRadius: BorderRadius.circular(22),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                onTap: _editDestinationPremium,
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(17, 15, 12, 15),
+                                  child: Row(
+                                    children: <Widget>[
+                                      const Icon(Icons.search_rounded, color: Colors.white, size: 25),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          widget.lang == 'uz' ? 'Manzilni kiriting' : 'Введите адрес',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: -0.35,
+                                          ),
+                                        ),
+                                      ),
+                                      Container(
+                                        width: 42,
+                                        height: 42,
+                                        decoration: const BoxDecoration(
+                                          color: yangiLime,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_forward_rounded,
+                                          color: yangiGraphite,
+                                          size: 24,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              height: 66,
+                              child: ListView(
+                                scrollDirection: Axis.horizontal,
+                                physics: const BouncingScrollPhysics(),
+                                children: <Widget>[
+                                  _premiumQuickDestination(
+                                    icon: Icons.home_rounded,
+                                    title: widget.lang == 'uz' ? 'Uy' : 'Дом',
+                                    subtitle: widget.lang == 'uz' ? 'Tanlash' : 'Выбрать',
+                                    onTap: _editDestinationPremium,
+                                  ),
+                                  _premiumQuickDestination(
+                                    icon: Icons.work_rounded,
+                                    title: widget.lang == 'uz' ? 'Ish' : 'Работа',
+                                    subtitle: widget.lang == 'uz' ? 'Tanlash' : 'Выбрать',
+                                    onTap: _editDestinationPremium,
+                                  ),
+                                  _premiumQuickDestination(
+                                    icon: Icons.flight_takeoff_rounded,
+                                    title: widget.lang == 'uz' ? 'Aeroport' : 'Аэропорт',
+                                    subtitle: widget.lang == 'uz' ? 'Tez yo‘l' : 'Быстрый выбор',
+                                    onTap: _editDestinationPremium,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: Text(
+                                    widget.lang == 'uz' ? 'Tezkor manzillar' : 'Быстрые адреса',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.3,
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _editDestinationPremium,
+                                  child: Text(widget.lang == 'uz' ? 'Hammasi' : 'Все'),
+                                ),
+                              ],
+                            ),
+                            _premiumDestinationRow(
+                              icon: Icons.location_on_rounded,
+                              title: widget.lang == 'uz' ? 'Manzilni xaritadan tanlash' : 'Выбрать место на карте',
+                              subtitle: widget.lang == 'uz'
+                                  ? 'Nuqtani aniq belgilang'
+                                  : 'Укажите точную точку подачи или назначения',
+                              onTap: () => pickRoutePointOnMap(pickup: false),
+                            ),
+                            const SizedBox(height: 8),
+                            _premiumDestinationRow(
+                              icon: Icons.search_rounded,
+                              title: widget.lang == 'uz' ? 'Manzil bo‘yicha qidirish' : 'Поиск по адресу',
+                              subtitle: widget.lang == 'uz'
+                                  ? 'Ko‘cha, uy yoki joy nomi'
+                                  : 'Улица, дом или название места',
+                              onTap: _editDestinationPremium,
+                            ),
+                          ],
+                          if (destinationReady) ...<Widget>[
                           Text(
                             destinationReady
                                 ? (widget.lang == 'uz'
@@ -4992,6 +5058,7 @@ class _OrderScreenState extends State<OrderScreen> {
                               ),
                             ),
                           ),
+                          ],
                           if (error != null) ...<Widget>[
                             const SizedBox(height: 8),
                             Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
@@ -5095,6 +5162,127 @@ class _OrderScreenState extends State<OrderScreen> {
             },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _premiumQuickDestination({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.only(right: 9),
+      child: Material(
+        color: dark ? const Color(0xFF191D1E) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            width: 128,
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: dark ? const Color(0xFF2A3031) : const Color(0x11000000),
+              ),
+            ),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(icon, size: 18, color: scheme.onSurface),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _premiumDestinationRow({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: dark ? const Color(0xFF191D1E) : Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHigh,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 20),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10.5),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
       ),
     );
   }
