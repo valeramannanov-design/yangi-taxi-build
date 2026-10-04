@@ -110,8 +110,11 @@ function normalizePhone(value) {
     e.statusCode = 400;
     throw e;
   }
-  // TaxiMaster stores/validates phone values as digits; UI may still accept +, spaces and dashes.
-  return digits;
+  return '+' + digits;
+}
+
+function tmPhoneDigits(value) {
+  return String(value || '').replace(/\D/g, '');
 }
 
 function b64url(value) {
@@ -629,7 +632,7 @@ async function sendRegistrationCode(phone) {
     throw e;
   }
   const code = String(crypto.randomInt(100000, 1000000));
-  await tmPostForm('send_sms', { phone, message: 'Yangi Taxi: kod ' + code });
+  await tmPostForm('send_sms', { phone: tmPhoneDigits(phone), message: 'Yangi Taxi: kod ' + code });
   registrationCodes.set(phone, {
     hash: registrationCodeHash(phone, code),
     sentAt: now,
@@ -692,7 +695,7 @@ async function realRoute(req, res, path, url) {
       name,
       login: phone,
       password,
-      phones: [{ phone, is_default: true }],
+      phones: [{ phone: tmPhoneDigits(phone), is_default: true }],
       need_validate: true,
     });
     return send(res, 201, { ok: true, data: { clientId: data.client_id, token: issueSession(data.client_id, phone) } });
@@ -705,7 +708,7 @@ async function realRoute(req, res, path, url) {
       name: String(body.name || '').trim(),
       login: phone,
       password: String(body.password || ''),
-      phones: [{ phone, is_default: true }],
+      phones: [{ phone: tmPhoneDigits(phone), is_default: true }],
       need_validate: true,
     });
     return send(res, 201, { ok: true, data: { clientId: data.client_id, token: issueSession(data.client_id, phone) } });
