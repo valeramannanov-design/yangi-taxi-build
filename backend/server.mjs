@@ -297,13 +297,11 @@ async function calculateLiveCost({
   destination,
   route,
   tariffId,
-  crewGroupId,
   sourceTime,
 }) {
   const analyzed = route.addresses || [];
   return tmPostJson('calc_order_cost2', {
     tariff_id: tariffId,
-    crew_group_id: crewGroupId,
     source_time: sourceTime,
     is_prior: false,
     client_id: session.clientId,
@@ -365,7 +363,6 @@ async function buildLiveEstimateOptions(session, source, destination) {
         destination,
         route,
         tariffId,
-        crewGroupId: definition.crewGroupId,
         sourceTime,
       });
       const amount = Number(cost.sum);
@@ -771,7 +768,6 @@ async function realRoute(req, res, path, url) {
         destination,
         route,
         tariffId: startTariffId,
-        crewGroupId: startDefinition.crewGroupId,
         sourceTime,
       });
       const startAmount = Number(baseCost.sum);
