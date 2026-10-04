@@ -4328,7 +4328,7 @@ class _OrderScreenState extends State<OrderScreen> {
             child: InkWell(
               onTap: available ? () => selectTariff(key) : null,
               child: Container(
-                minHeight: 92,
+                constraints: const BoxConstraints(minHeight: 92),
                 padding: const EdgeInsets.fromLTRB(10, 9, 11, 9),
                 decoration: BoxDecoration(
                   border: Border.all(
