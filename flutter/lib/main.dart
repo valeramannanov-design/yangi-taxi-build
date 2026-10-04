@@ -103,6 +103,11 @@ const words = <String, Map<String, String>>{
 
 String tx(String lang, String key) => words[lang]?[key] ?? words['ru']?[key] ?? key;
 
+const defaultBackendUrl = String.fromEnvironment(
+  'BACKEND_URL',
+  defaultValue: 'demo',
+);
+
 class ApiException implements Exception {
   ApiException(this.message);
   final String message;
@@ -704,7 +709,7 @@ class YangiTaxiApp extends StatefulWidget {
 
 class _YangiTaxiAppState extends State<YangiTaxiApp> {
   final storage = const FlutterSecureStorage();
-  final api = ApiClient('demo');
+  final api = ApiClient(defaultBackendUrl);
   bool loading = true;
   bool loggedIn = false;
   String lang = 'ru';
@@ -725,7 +730,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     final shouldRemember = remember == 'true';
     final session = shouldRemember ? await storage.read(key: 'session') : null;
     final savedPhone = shouldRemember ? await storage.read(key: 'remembered_phone') : null;
-    api.setBaseUrl(savedUrl ?? 'demo');
+    api.setBaseUrl(savedUrl ?? defaultBackendUrl);
     if (savedLang == 'uz' || savedLang == 'ru') lang = savedLang!;
     if (savedTheme == 'light' || savedTheme == 'dark' || savedTheme == 'system') {
       themeSetting = savedTheme!;
