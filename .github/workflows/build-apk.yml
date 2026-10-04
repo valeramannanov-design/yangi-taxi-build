@@ -1,14 +1,16 @@
-name: Build Yangi Taxi v1.5 APK
+name: Build Yangi Taxi v1.9.0 APK
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - 'flutter/**'
+      - 'backend/**'
       - '.github/workflows/build-apk.yml'
   push:
     paths:
       - 'flutter/**'
+      - 'backend/**'
       - '.github/workflows/build-apk.yml'
 
 jobs:
@@ -59,6 +61,11 @@ jobs:
                   g += '\n\ndependencies {\n    implementation "com.google.android.gms:play-services-location:21.1.0"\n}\n'
               gradle.write_text(g)
           PY
+      - name: Check backend syntax
+        run: |
+          node --check backend/server.mjs
+          node --check backend/live-check.mjs
+          node --check backend/route-price-check.mjs
       - name: Get packages
         working-directory: flutter
         run: flutter pub get
@@ -66,11 +73,23 @@ jobs:
         working-directory: flutter
         env:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-        run: flutter build apk --release --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY"
+          BACKEND_URL: ${{ secrets.YANGI_BACKEND_URL }}
+        run: |
+          flutter build apk --release \
+            --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY" \
+            --dart-define=BACKEND_URL="${BACKEND_URL:-demo}"
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.5-tariffs-dispatch.apk
+        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.9.0-premium-ui.apk
+      - name: Prepare backend package
+        run: |
+          zip -r Yangi-Taxi-backend-v1.9.0-live.zip backend -x "backend/.env"
       - uses: actions/upload-artifact@v4
         with:
-          name: Yangi-Taxi-v1.5-tariffs-dispatch-apk
-          path: Yangi-Taxi-v1.5-tariffs-dispatch.apk
+          name: Yangi-Taxi-v1.9.0-premium-ui-apk
+          path: Yangi-Taxi-v1.9.0-premium-ui.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Yangi-Taxi-backend-v1.9.0-live
+          path: Yangi-Taxi-backend-v1.9.0-live.zip
           if-no-files-found: error

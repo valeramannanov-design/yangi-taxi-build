@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:yandex_maps_mapkit/init.dart' as yandex_init;
-import 'package:yandex_maps_mapkit/image.dart' as yi;
+import 'package:yandex_maps_mapkit/directions.dart' as yd;
 import 'package:yandex_maps_mapkit/mapkit.dart' as ym;
+import 'package:yandex_maps_mapkit/ui_view.dart' as yv;
 import 'package:yandex_maps_mapkit/mapkit_factory.dart' as ym_factory;
 import 'package:yandex_maps_mapkit/search.dart' as ys;
 import 'package:yandex_maps_mapkit/yandex_map.dart' as ym_widget;
@@ -19,6 +22,13 @@ const defaultLat = 41.3111;
 const defaultLon = 69.2797;
 
 const yandexMapKitApiKey = String.fromEnvironment('MAPKIT_API_KEY');
+
+String maskedCardLabel(dynamic value) {
+  final raw = (value ?? '').toString().trim();
+  final match = RegExp(r'(\d{4})(?!.*\d)').firstMatch(raw);
+  if (match == null) return raw.isEmpty ? 'ATMOS' : raw;
+  return '•••• ' + match.group(1)!;
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -93,6 +103,11 @@ const words = <String, Map<String, String>>{
 
 String tx(String lang, String key) => words[lang]?[key] ?? words['ru']?[key] ?? key;
 
+const defaultBackendUrl = String.fromEnvironment(
+  'BACKEND_URL',
+  defaultValue: 'demo',
+);
+
 class ApiException implements Exception {
   ApiException(this.message);
   final String message;
@@ -106,6 +121,7 @@ class ApiClient {
   String? token;
   Map<String, dynamic>? _demoOrder;
   DateTime? _demoStarted;
+  String _demoClientPhoto = '';
   final List<Map<String, dynamic>> _demoHistory = [];
   final List<Map<String, dynamic>> _demoCards = <Map<String, dynamic>>[
     <String, dynamic>{
@@ -188,6 +204,9 @@ class ApiClient {
         'name': 'Yangi Taxi Demo',
         'phones': <dynamic>[<String, dynamic>{'phone': '+998901234567'}],
         'bonus_balance': 12000,
+        'client_rating': 4.86,
+        'client_rating_count': 27,
+        'client_photo': _demoClientPhoto,
       };
 
   List<Map<String, dynamic>> get demoAddresses => <Map<String, dynamic>>[
@@ -201,6 +220,82 @@ class ApiClient {
   Future<dynamic> _demoGet(String path, Map<String, String> query) async {
     await Future<void>.delayed(const Duration(milliseconds: 180));
     if (path == '/api/me') return demoMe;
+    if (path == '/api/tariffs') {
+      return <Map<String, dynamic>>[
+        <String, dynamic>{
+          'key': 'start',
+          'nameRu': 'Старт',
+          'nameUz': 'Start',
+          'icon': 'local_taxi',
+          'tariffId': 1,
+          'tariffName': 'Старт',
+          'crewGroupId': 11,
+          'crewGroupName': 'Старт',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'together',
+          'nameRu': 'Вместе',
+          'nameUz': 'Birga',
+          'icon': 'groups',
+          'tariffId': 2,
+          'tariffName': 'Вместе',
+          'crewGroupId': 12,
+          'crewGroupName': 'Вместе',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'comfort',
+          'nameRu': 'Комфорт',
+          'nameUz': 'Komfort',
+          'icon': 'airline_seat_recline_extra',
+          'tariffId': 3,
+          'tariffName': 'Комфорт',
+          'crewGroupId': 13,
+          'crewGroupName': 'Комфорт',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'business',
+          'nameRu': 'Бизнес',
+          'nameUz': 'Biznes',
+          'icon': 'business_center',
+          'tariffId': 4,
+          'tariffName': 'Бизнес',
+          'crewGroupId': 14,
+          'crewGroupName': 'Бизнес',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'delivery',
+          'nameRu': 'Доставка',
+          'nameUz': 'Yetkazish',
+          'icon': 'inventory_2',
+          'tariffId': 5,
+          'tariffName': 'Доставка',
+          'crewGroupId': 15,
+          'crewGroupName': 'Доставка',
+          'available': true,
+          'missing': <String>[],
+        },
+        <String, dynamic>{
+          'key': 'cargo',
+          'nameRu': 'Грузовой',
+          'nameUz': 'Yuk',
+          'icon': 'local_shipping',
+          'tariffId': 6,
+          'tariffName': 'Грузовой',
+          'crewGroupId': 16,
+          'crewGroupName': 'Грузовой',
+          'available': true,
+          'missing': <String>[],
+        },
+      ];
+    }
     if (path == '/api/payments/config') {
       return <String, dynamic>{
         'atmosEnabled': true,
@@ -344,6 +439,115 @@ class ApiClient {
       token = 'demo-session';
       return <String, dynamic>{'token': token, 'client': demoMe};
     }
+    if (path == '/api/profile/photo') {
+      _demoClientPhoto = (body['photoBase64'] ?? '').toString();
+      return <String, dynamic>{'saved': true};
+    }
+    final demoRatingMatch = RegExp(r'^/api/orders/(\d+)/rating$').firstMatch(path);
+    if (demoRatingMatch != null) {
+      return <String, dynamic>{
+        'saved': true,
+        'rating': (body['rating'] as num?)?.toInt() ?? 5,
+      };
+    }
+    if (path == '/api/orders/estimate-options') {
+      final a = Map<String, dynamic>.from(body['source'] as Map);
+      final b = Map<String, dynamic>.from(body['destination'] as Map);
+      final aLat = (a['lat'] as num).toDouble();
+      final aLon = (a['lon'] as num).toDouble();
+      final bLat = (b['lat'] as num).toDouble();
+      final bLon = (b['lon'] as num).toDouble();
+      final dist = math.sqrt(math.pow(aLat - bLat, 2) + math.pow(aLon - bLon, 2));
+      final baseCost = 12000 + dist * 560000;
+
+      Map<String, dynamic> option({
+        required String key,
+        required String nameRu,
+        required String nameUz,
+        required int tariffId,
+        required int crewGroupId,
+        required double multiplier,
+      }) =>
+          <String, dynamic>{
+            'key': key,
+            'nameRu': nameRu,
+            'nameUz': nameUz,
+            'tariffId': tariffId,
+            'crewGroupId': crewGroupId,
+            'available': true,
+            'cost': (baseCost * multiplier).roundToDouble(),
+          };
+
+      return <String, dynamic>{
+        'options': <Map<String, dynamic>>[
+          option(
+            key: 'start',
+            nameRu: 'Старт',
+            nameUz: 'Start',
+            tariffId: 1,
+            crewGroupId: 11,
+            multiplier: 1.00,
+          ),
+          <String, dynamic>{
+            ...option(
+              key: 'together',
+              nameRu: 'Вместе',
+              nameUz: 'Birga',
+              tariffId: 2,
+              crewGroupId: 12,
+              multiplier: 0.82,
+            ),
+            'savingVsStart': (baseCost * 0.18).roundToDouble(),
+            'savingPercentVsStart': 18,
+            'priceBadgeRu': 'На 18% дешевле Старт',
+            'priceBadgeUz': 'Startdan 18% arzon',
+          },
+          option(
+            key: 'comfort',
+            nameRu: 'Комфорт',
+            nameUz: 'Komfort',
+            tariffId: 3,
+            crewGroupId: 13,
+            multiplier: 1.20,
+          ),
+          option(
+            key: 'business',
+            nameRu: 'Бизнес',
+            nameUz: 'Biznes',
+            tariffId: 4,
+            crewGroupId: 14,
+            multiplier: 1.55,
+          ),
+          option(
+            key: 'delivery',
+            nameRu: 'Доставка',
+            nameUz: 'Yetkazib berish',
+            tariffId: 5,
+            crewGroupId: 15,
+            multiplier: 1.10,
+          ),
+          option(
+            key: 'cargo',
+            nameRu: 'Грузовой',
+            nameUz: 'Yuk tashish',
+            tariffId: 6,
+            crewGroupId: 16,
+            multiplier: 1.80,
+          ),
+        ],
+        'route': <String, dynamic>{
+          'full_route_coords': <dynamic>[
+            <String, dynamic>{'lat': aLat, 'lon': aLon},
+            <String, dynamic>{
+              'lat': (aLat + bLat) / 2 + 0.003,
+              'lon': (aLon + bLon) / 2 - 0.002,
+            },
+            <String, dynamic>{'lat': bLat, 'lon': bLon},
+          ],
+        },
+      };
+    }
+
     if (path == '/api/orders/estimate') {
       final a = Map<String, dynamic>.from(body['source'] as Map);
       final b = Map<String, dynamic>.from(body['destination'] as Map);
@@ -366,14 +570,53 @@ class ApiClient {
     }
     if (path == '/api/orders') {
       final a = Map<String, dynamic>.from(body['source'] as Map);
-      final b = Map<String, dynamic>.from(body['destination'] as Map);
+      final b = body['destination'] is Map
+          ? Map<String, dynamic>.from(body['destination'] as Map)
+          : Map<String, dynamic>.from(a);
+      final hasDestination = body['destination'] is Map;
+      final key = (body['tariffKey'] ?? 'start').toString();
+      const tariffIds = <String, int>{
+        'start': 1,
+        'together': 2,
+        'comfort': 3,
+        'business': 4,
+        'delivery': 5,
+        'cargo': 6,
+      };
+      const groupIds = <String, int>{
+        'start': 11,
+        'together': 12,
+        'comfort': 13,
+        'business': 14,
+        'delivery': 15,
+        'cargo': 16,
+      };
+      const multipliers = <String, double>{
+        'start': 1.00,
+        'together': 0.82,
+        'comfort': 1.20,
+        'business': 1.55,
+        'delivery': 1.10,
+        'cargo': 1.80,
+      };
+      final aLat = (a['lat'] as num).toDouble();
+      final aLon = (a['lon'] as num).toDouble();
+      final bLat = (b['lat'] as num).toDouble();
+      final bLon = (b['lon'] as num).toDouble();
+      final dist = math.sqrt(math.pow(aLat - bLat, 2) + math.pow(aLon - bLon, 2));
+      final baseCost = 12000 + dist * 560000;
+      final finalCost = (baseCost * (multipliers[key] ?? 1.0)).roundToDouble();
+
       final id = 30000 + DateTime.now().millisecondsSinceEpoch.remainder(9000);
       _demoStarted = DateTime.now();
       _demoOrder = <String, dynamic>{
         'order_id': id,
+        'tariff_key': key,
+        'tariff_id': tariffIds[key] ?? 1,
+        'crew_group_id': groupIds[key] ?? 11,
         'state_kind': 'new_order',
         'source': a['address'],
-        'destination': b['address'],
+        'destination': hasDestination ? b['address'] : '',
         'source_lat': a['lat'],
         'source_lon': a['lon'],
         'destination_lat': b['lat'],
@@ -381,7 +624,7 @@ class ApiClient {
         'car_mark': 'Chevrolet',
         'car_model': 'Cobalt',
         'car_number': '01 Y 001 TX',
-        'total_cost': 28000,
+        'total_cost': finalCost,
       };
       return <String, dynamic>{'order_id': id};
     }
@@ -466,10 +709,12 @@ class YangiTaxiApp extends StatefulWidget {
 
 class _YangiTaxiAppState extends State<YangiTaxiApp> {
   final storage = const FlutterSecureStorage();
-  final api = ApiClient('demo');
+  final api = ApiClient(defaultBackendUrl);
   bool loading = true;
   bool loggedIn = false;
   String lang = 'ru';
+  String themeSetting = 'system';
+  String rememberedPhone = '';
 
   @override
   void initState() {
@@ -480,9 +725,23 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
   Future<void> restore() async {
     final savedUrl = await storage.read(key: 'backend_url');
     final savedLang = await storage.read(key: 'lang');
-    final session = await storage.read(key: 'session');
-    api.setBaseUrl(savedUrl ?? 'demo');
+    final savedTheme = await storage.read(key: 'theme_mode');
+    final remember = await storage.read(key: 'remember_me');
+    final shouldRemember = remember == 'true';
+    final session = shouldRemember ? await storage.read(key: 'session') : null;
+    final savedPhone = shouldRemember ? await storage.read(key: 'remembered_phone') : null;
+    api.setBaseUrl(savedUrl ?? defaultBackendUrl);
     if (savedLang == 'uz' || savedLang == 'ru') lang = savedLang!;
+    if (savedTheme == 'light' || savedTheme == 'dark' || savedTheme == 'system') {
+      themeSetting = savedTheme!;
+    }
+    rememberedPhone = savedPhone ?? '';
+
+    if (!shouldRemember) {
+      await storage.delete(key: 'session');
+      await storage.delete(key: 'remembered_phone');
+    }
+
     if (session != null) {
       api.token = session;
       try {
@@ -491,6 +750,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
       } catch (_) {
         api.token = null;
         await storage.delete(key: 'session');
+        await storage.delete(key: 'remember_me');
       }
     }
     if (mounted) setState(() => loading = false);
@@ -502,10 +762,20 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     if (mounted) setState(() {});
   }
 
+  Future<void> saveTheme(String value) async {
+    if (value != 'light' && value != 'dark' && value != 'system') return;
+    themeSetting = value;
+    await storage.write(key: 'theme_mode', value: value);
+    if (mounted) setState(() {});
+  }
+
   Future<void> saveBackend(String value) async {
     api.setBaseUrl(value);
     await storage.write(key: 'backend_url', value: api.baseUrl);
     await storage.delete(key: 'session');
+    await storage.delete(key: 'remember_me');
+    await storage.delete(key: 'remembered_phone');
+    rememberedPhone = '';
     loggedIn = false;
     if (mounted) setState(() {});
   }
@@ -525,49 +795,100 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     }
   }
 
-  Future<void> saveToken(String value) async {
+  Future<void> saveToken(String value, bool remember, String phone) async {
     api.token = value;
-    await storage.write(key: 'session', value: value);
+
+    if (remember) {
+      rememberedPhone = phone.trim();
+      await storage.write(key: 'remember_me', value: 'true');
+      await storage.write(key: 'session', value: value);
+      await storage.write(key: 'remembered_phone', value: rememberedPhone);
+    } else {
+      rememberedPhone = '';
+      await storage.delete(key: 'remember_me');
+      await storage.delete(key: 'session');
+      await storage.delete(key: 'remembered_phone');
+    }
+
     await prepareLocationPermission();
     if (mounted) setState(() => loggedIn = true);
   }
 
   Future<void> logout() async {
     api.token = null;
+    rememberedPhone = '';
     await storage.delete(key: 'session');
+    await storage.delete(key: 'remember_me');
+    await storage.delete(key: 'remembered_phone');
     if (mounted) setState(() => loggedIn = false);
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF1F8A4C),
+      seedColor: yangiLime,
       brightness: Brightness.light,
-      surface: Colors.white,
+      surface: const Color(0xFFF7F8F8),
+    ).copyWith(
+      primary: yangiGraphite,
+      onPrimary: Colors.white,
+      secondary: yangiGreen,
+      surface: const Color(0xFFF7F8F8),
+      surfaceContainerLowest: Colors.white,
+      surfaceContainerLow: const Color(0xFFF1F3F3),
+      surfaceContainer: const Color(0xFFEBEEEE),
+      surfaceContainerHigh: const Color(0xFFE6E9E9),
+      surfaceContainerHighest: const Color(0xFFDDE1E1),
+      outline: const Color(0xFF9BA2A2),
+      outlineVariant: const Color(0xFFD0D5D5),
     );
+    final darkScheme = ColorScheme.fromSeed(
+      seedColor: yangiLime,
+      brightness: Brightness.dark,
+      surface: const Color(0xFF0B0D0E),
+    ).copyWith(
+      primary: yangiLime,
+      onPrimary: yangiGraphite,
+      secondary: yangiGreen,
+      surface: const Color(0xFF0B0D0E),
+      surfaceContainerLowest: const Color(0xFF090B0C),
+      surfaceContainerLow: const Color(0xFF111415),
+      surfaceContainer: const Color(0xFF151819),
+      surfaceContainerHigh: const Color(0xFF1A1E1F),
+      surfaceContainerHighest: const Color(0xFF222627),
+      outline: const Color(0xFF747B7D),
+      outlineVariant: const Color(0xFF303638),
+    );
+    final resolvedThemeMode = switch (themeSetting) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Yangi Taxi',
+      themeMode: resolvedThemeMode,
       theme: ThemeData(
         colorScheme: scheme,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF4F5F7),
+        scaffoldBackgroundColor: const Color(0xFFF7F8F8),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
+          backgroundColor: Color(0xFFF7F8F8),
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           centerTitle: false,
         ),
         navigationBarTheme: const NavigationBarThemeData(
           height: 68,
-          backgroundColor: Colors.white,
-          indicatorColor: Color(0xFFE5F4EA),
-          elevation: 8,
+          backgroundColor: Color(0xFFF7F8F8),
+          indicatorColor: Color(0xFFDFFF9A),
+          elevation: 0,
         ),
         cardTheme: const CardThemeData(
           elevation: 0,
           margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(20))),
+          color: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(22))),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
@@ -579,11 +900,60 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
           ),
         ),
       ),
+      darkTheme: ThemeData(
+        colorScheme: darkScheme,
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFF0B0D0E),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0B0D0E),
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+        ),
+        navigationBarTheme: const NavigationBarThemeData(
+          height: 68,
+          backgroundColor: Color(0xFF0B0D0E),
+          indicatorColor: Color(0xFF2E4A00),
+          elevation: 0,
+        ),
+        cardTheme: const CardThemeData(
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          color: Color(0xFF151819),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(22))),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: darkScheme.surfaceContainerHighest,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: darkScheme.outlineVariant),
+          ),
+        ),
+      ),
       home: loading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : loggedIn
-              ? Shell(api: api, lang: lang, onLang: saveLang, onBackend: saveBackend, onLogout: logout)
-              : LoginScreen(api: api, lang: lang, onLang: saveLang, onBackend: saveBackend, onToken: saveToken),
+              ? ExitConfirmScope(
+                  lang: lang,
+                  child: Shell(
+                    api: api,
+                    lang: lang,
+                    themeSetting: themeSetting,
+                    onLang: saveLang,
+                    onTheme: saveTheme,
+                    onBackend: saveBackend,
+                    onLogout: logout,
+                  ),
+                )
+              : LoginScreen(
+                  api: api,
+                  lang: lang,
+                  initialPhone: rememberedPhone,
+                  onLang: saveLang,
+                  onBackend: saveBackend,
+                  onToken: saveToken,
+                ),
     );
   }
 }
@@ -631,31 +1001,42 @@ class LoginScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.lang,
+    required this.initialPhone,
     required this.onLang,
     required this.onBackend,
     required this.onToken,
   });
   final ApiClient api;
   final String lang;
+  final String initialPhone;
   final ValueChanged<String> onLang;
   final Future<void> Function(String) onBackend;
-  final Future<void> Function(String) onToken;
+  final Future<void> Function(String, bool, String) onToken;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final phone = TextEditingController(text: '+998901234567');
-  final pass = TextEditingController(text: '123456');
+  late final TextEditingController phone;
+  final pass = TextEditingController();
   final name = TextEditingController();
   final smsCode = TextEditingController();
 
   bool register = false;
   bool smsSent = false;
   bool busy = false;
+  bool rememberMe = false;
+  bool passwordVisible = false;
   String? error;
   String? info;
+
+  @override
+  void initState() {
+    super.initState();
+    phone = TextEditingController(text: widget.initialPhone);
+    rememberMe = widget.initialPhone.trim().isNotEmpty;
+  }
 
   @override
   void dispose() {
@@ -729,7 +1110,7 @@ class _LoginScreenState extends State<LoginScreen> {
         'password': pass.text,
         'code': smsCode.text.trim(),
       });
-      await widget.onToken(data['token'].toString());
+      await widget.onToken(data['token'].toString(), rememberMe, phone.text.trim());
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -738,6 +1119,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> login() async {
+    if (phone.text.trim().isEmpty || pass.text.isEmpty) {
+      setState(() {
+        error = widget.lang == 'uz'
+            ? 'Telefon va parolni kiriting'
+            : 'Введите телефон и пароль';
+        info = null;
+      });
+      return;
+    }
+
     setState(() {
       busy = true;
       error = null;
@@ -748,7 +1139,7 @@ class _LoginScreenState extends State<LoginScreen> {
         'phone': phone.text.trim(),
         'password': pass.text,
       });
-      await widget.onToken(data['token'].toString());
+      await widget.onToken(data['token'].toString(), rememberMe, phone.text.trim());
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -770,8 +1161,23 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.all(22),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 440),
-                child: Card(
-                  elevation: 0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
+                    ),
+                    boxShadow: Theme.of(context).brightness == Brightness.dark
+                        ? const <BoxShadow>[]
+                        : const <BoxShadow>[
+                            BoxShadow(
+                              color: Color(0x12000000),
+                              blurRadius: 28,
+                              offset: Offset(0, 10),
+                            ),
+                          ],
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(22),
                     child: Column(
@@ -783,50 +1189,109 @@ class _LoginScreenState extends State<LoginScreen> {
                               width: 48,
                               height: 48,
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary,
+                                color: yangiLime,
                                 borderRadius: BorderRadius.circular(15),
                               ),
-                              child: const Icon(Icons.local_taxi, color: Colors.white),
+                              child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite),
                             ),
                             const SizedBox(width: 12),
-                            Expanded(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'Yangi Taxi',
-                                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                                ),
-                              ),
-                            ),
+                            const Expanded(child: YangiWordmark()),
                             IconButton(
                               onPressed: busy ? null : () => backendDialog(context, widget.api, widget.onBackend),
                               icon: const Icon(Icons.settings_outlined),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 7),
+                        Text(
+                          widget.lang == 'uz' ? 'Harakat erkinligi siz bilan' : 'Движение ближе к вам',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                         const SizedBox(height: 10),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: Chip(
-                                avatar: Icon(widget.api.isDemo ? Icons.science_outlined : Icons.cloud_done_outlined, size: 18),
-                                label: Text(
-                                  widget.api.isDemo ? tx(widget.lang, 'demo') : widget.api.baseUrl,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              Row(
+                                children: <Widget>[
+                                  Icon(
+                                    widget.api.isDemo ? Icons.science_outlined : Icons.cloud_done_outlined,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      widget.api.isDemo ? tx(widget.lang, 'demo') : widget.api.baseUrl,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            SegmentedButton<String>(
-                              segments: const <ButtonSegment<String>>[
-                                ButtonSegment<String>(value: 'ru', label: Text('RU')),
-                                ButtonSegment<String>(value: 'uz', label: Text('UZ')),
-                              ],
-                              selected: <String>{widget.lang},
-                              onSelectionChanged: busy ? null : (x) => widget.onLang(x.first),
-                            ),
-                          ],
+                              const SizedBox(height: 9),
+                              Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: Text(
+                                      widget.lang == 'uz' ? 'Ilova tili' : 'Язык приложения',
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  SegmentedButton<String>(
+                                    segments: const <ButtonSegment<String>>[
+                                      ButtonSegment<String>(value: 'ru', label: Text('RU')),
+                                      ButtonSegment<String>(value: 'uz', label: Text('UZ')),
+                                    ],
+                                    selected: <String>{widget.lang},
+                                    onSelectionChanged: busy ? null : (x) => widget.onLang(x.first),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          register
+                              ? (widget.lang == 'uz' ? 'Yangi akkaunt' : 'Новый аккаунт')
+                              : (widget.lang == 'uz' ? 'Xush kelibsiz' : 'С возвращением'),
+                          style: const TextStyle(
+                            fontSize: 24,
+                            height: 1.0,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.6,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          register
+                              ? (widget.lang == 'uz'
+                                  ? 'Telefon raqamingizni SMS orqali tasdiqlang'
+                                  : 'Подтвердите номер телефона по SMS')
+                              : (widget.lang == 'uz'
+                                  ? 'Safarni davom ettirish uchun tizimga kiring'
+                                  : 'Войдите, чтобы продолжить поездки'),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                         const SizedBox(height: 18),
                         if (register) ...<Widget>[
@@ -847,9 +1312,43 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextField(
                           controller: pass,
                           enabled: !smsSent && !busy,
-                          obscureText: true,
+                          obscureText: !passwordVisible,
                           onSubmitted: (_) => submit(),
-                          decoration: InputDecoration(labelText: tx(widget.lang, 'password')),
+                          decoration: InputDecoration(
+                            labelText: tx(widget.lang, 'password'),
+                            prefixIcon: const Icon(Icons.lock_outline_rounded),
+                            suffixIcon: IconButton(
+                              onPressed: busy || smsSent
+                                  ? null
+                                  : () => setState(() => passwordVisible = !passwordVisible),
+                              tooltip: passwordVisible
+                                  ? (widget.lang == 'uz' ? 'Parolni yashirish' : 'Скрыть пароль')
+                                  : (widget.lang == 'uz' ? 'Parolni ko‘rsatish' : 'Показать пароль'),
+                              icon: Icon(
+                                passwordVisible
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        CheckboxListTile(
+                          value: rememberMe,
+                          contentPadding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: Text(
+                            widget.lang == 'uz' ? 'Meni eslab qolish' : 'Запомнить меня',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          subtitle: Text(
+                            widget.lang == 'uz'
+                                ? 'Parol saqlanmaydi — faqat himoyalangan sessiya'
+                                : 'Пароль не сохраняется — только защищённая сессия',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          onChanged: busy || smsSent ? null : (value) => setState(() => rememberMe = value ?? false),
                         ),
                         if (register && smsSent) ...<Widget>[
                           const SizedBox(height: 12),
@@ -892,6 +1391,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         const SizedBox(height: 14),
                         FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: yangiLime,
+                            foregroundColor: yangiGraphite,
+                            minimumSize: const Size.fromHeight(52),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+                          ),
                           onPressed: busy ? null : submit,
                           icon: busy
                               ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -923,19 +1428,118 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 }
 
+
+const yangiLime = Color(0xFFA6FF00);
+const yangiGraphite = Color(0xFF0F1111);
+const yangiSoftGray = Color(0xFFF2F4F5);
+const yangiGreen = Color(0xFF13A83E);
+
+class ExitConfirmScope extends StatelessWidget {
+  const ExitConfirmScope({super.key, required this.lang, required this.child});
+  final String lang;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          final shouldExit = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              icon: const Icon(Icons.exit_to_app_rounded, size: 34),
+              title: Text(lang == 'uz' ? 'Ilovadan chiqasizmi?' : 'Выйти из приложения?'),
+              content: Text(
+                lang == 'uz'
+                    ? 'Yangi Taxi ilovasini yopmoqchimisiz?'
+                    : 'Вы действительно хотите закрыть Yangi Taxi?',
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: Text(lang == 'uz' ? 'Bekor' : 'Отмена'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: yangiLime,
+                    foregroundColor: yangiGraphite,
+                  ),
+                  child: Text(lang == 'uz' ? 'Chiqish' : 'Выйти'),
+                ),
+              ],
+            ),
+          );
+          if (shouldExit == true) SystemNavigator.pop();
+        },
+        child: child,
+      );
+}
+
+class YangiWordmark extends StatelessWidget {
+  const YangiWordmark({
+    super.key,
+    this.compact = false,
+    this.onDarkSurface = false,
+  });
+  final bool compact;
+  final bool onDarkSurface;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = compact ? 18.0 : 26.0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          'Yangi',
+          style: TextStyle(
+            fontSize: size,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.8,
+            color: onDarkSurface ? Colors.white : Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: compact ? 7 : 9, vertical: compact ? 3 : 5),
+          decoration: BoxDecoration(
+            color: yangiLime,
+            borderRadius: BorderRadius.circular(compact ? 8 : 11),
+          ),
+          child: Text(
+            'Taxi',
+            style: TextStyle(
+              fontSize: size,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.8,
+              color: yangiGraphite,
+              height: 0.95,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class Shell extends StatefulWidget {
   const Shell({
     super.key,
     required this.api,
     required this.lang,
+    required this.themeSetting,
     required this.onLang,
+    required this.onTheme,
     required this.onBackend,
     required this.onLogout,
     this.onMenu,
   });
   final ApiClient api;
   final String lang;
+  final String themeSetting;
   final ValueChanged<String> onLang;
+  final Future<void> Function(String) onTheme;
   final Future<void> Function(String) onBackend;
   final VoidCallback onLogout;
   final VoidCallback? onMenu;
@@ -952,8 +1556,13 @@ class _ShellState extends State<Shell> {
   void openMenu() => shellKey.currentState?.openDrawer();
 
   void selectTab(int value) {
-    Navigator.of(context).maybePop();
-    if (mounted) setState(() => tab = value);
+    final scaffold = shellKey.currentState;
+    if (scaffold?.isDrawerOpen == true) {
+      scaffold!.closeDrawer();
+    }
+    if (mounted && tab != value) {
+      setState(() => tab = value);
+    }
   }
 
   void orderCreated(int id) {
@@ -983,17 +1592,66 @@ class _ShellState extends State<Shell> {
     String? subtitle,
   }) {
     final selected = tab == index;
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final selectedBg = Color.alphaBlend(
+      yangiLime.withValues(alpha: dark ? 0.17 : 0.14),
+      theme.colorScheme.surface,
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      child: ListTile(
-        selected: selected,
-        selectedTileColor: const Color(0xFFE8F5EC),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        leading: Icon(icon, color: selected ? const Color(0xFF1F8A4C) : null),
-        title: Text(title, style: TextStyle(fontWeight: selected ? FontWeight.w900 : FontWeight.w700)),
-        subtitle: subtitle == null ? null : Text(subtitle),
-        trailing: selected ? const Icon(Icons.chevron_right_rounded, size: 20) : null,
-        onTap: () => selectTab(index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          color: selected ? selectedBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: ListTile(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          leading: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: selected
+                  ? yangiLime
+                  : theme.colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: selected ? yangiGraphite : theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          title: Text(
+            title,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+            ),
+          ),
+          subtitle: subtitle == null
+              ? null
+              : Text(
+                  subtitle,
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                ),
+          trailing: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: selected
+                ? Icon(
+                    Icons.chevron_right_rounded,
+                    key: const ValueKey<String>('selected'),
+                    size: 20,
+                    color: theme.colorScheme.onSurface,
+                  )
+                : const SizedBox(key: ValueKey<String>('idle'), width: 20),
+          ),
+          onTap: () => selectTab(index),
+        ),
       ),
     );
   }
@@ -1001,14 +1659,27 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      OrderScreen(api: widget.api, lang: widget.lang, onOrder: orderCreated, onMenu: openMenu),
+      OrderScreen(
+        api: widget.api,
+        lang: widget.lang,
+        onOrder: orderCreated,
+        onMenu: openMenu,
+        onProfile: () => selectTab(5),
+      ),
       RideScreen(api: widget.api, lang: widget.lang, orderId: activeId, onMenu: openMenu),
       HistoryScreen(api: widget.api, lang: widget.lang, onMenu: openMenu),
-      CardsScreen(api: widget.api, lang: widget.lang, onMenu: openMenu),
+      CardsScreen(
+        api: widget.api,
+        lang: widget.lang,
+        onMenu: openMenu,
+        onDone: () => selectTab(0),
+      ),
       SettingsScreen(
         api: widget.api,
         lang: widget.lang,
+        themeSetting: widget.themeSetting,
         onLang: widget.onLang,
+        onTheme: widget.onTheme,
         onBackend: widget.onBackend,
         onMenu: openMenu,
       ),
@@ -1022,11 +1693,32 @@ class _ShellState extends State<Shell> {
       ),
     ];
 
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+
     return Scaffold(
       key: shellKey,
+      drawerScrimColor: Colors.black.withValues(alpha: dark ? 0.58 : 0.34),
+      drawerEdgeDragWidth: 44,
       drawer: Drawer(
-        backgroundColor: Colors.white,
-        child: SafeArea(
+        width: math.min(370.0, MediaQuery.sizeOf(context).width * 0.88),
+        elevation: 18,
+        backgroundColor: theme.colorScheme.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
+        ),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, child) => Opacity(
+            opacity: value,
+            child: Transform.translate(
+              offset: Offset(-14 * (1 - value), 0),
+              child: child,
+            ),
+          ),
+          child: SafeArea(
           child: Column(
             children: <Widget>[
               Padding(
@@ -1037,26 +1729,29 @@ class _ShellState extends State<Shell> {
                       width: 46,
                       height: 46,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF111827),
+                        color: yangiLime,
                         borderRadius: BorderRadius.circular(15),
                       ),
-                      child: const Icon(Icons.local_taxi_rounded, color: Colors.white),
+                      child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text('Yangi Taxi', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-                          SizedBox(height: 2),
-                          Text('Passenger', style: TextStyle(color: Color(0xFF8B8F97), fontSize: 12)),
+                          const YangiWordmark(compact: true),
+                          const SizedBox(height: 3),
+                          Text(
+                            widget.lang == 'uz' ? 'Harakat sizga yaqinroq' : 'Движение ближе к вам',
+                            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
+                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 18),
+              Divider(height: 18, color: theme.colorScheme.outlineVariant),
               Expanded(
                 child: ListView(
                   padding: EdgeInsets.zero,
@@ -1066,14 +1761,19 @@ class _ShellState extends State<Shell> {
                     menuItem(index: 1, icon: Icons.local_taxi_rounded, title: widget.lang == 'uz' ? 'Joriy safar' : 'Текущая поездка'),
                     menuItem(index: 2, icon: Icons.history_rounded, title: widget.lang == 'uz' ? 'Safarlar tarixi' : 'История поездок'),
                     menuSection(widget.lang == 'uz' ? 'TO‘LOV' : 'ОПЛАТА'),
-                    menuItem(index: 3, icon: Icons.credit_card_rounded, title: widget.lang == 'uz' ? 'Kartalar' : 'Карты', subtitle: 'ATMOS'),
+                    menuItem(
+                      index: 3,
+                      icon: Icons.account_balance_wallet_rounded,
+                      title: widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+                      subtitle: widget.lang == 'uz' ? 'Kartalar va naqd' : 'Карты и наличные',
+                    ),
                     menuSection(widget.lang == 'uz' ? 'AKKAUNT' : 'АККАУНТ'),
                     menuItem(index: 5, icon: Icons.person_rounded, title: widget.lang == 'uz' ? 'Profil' : 'Профиль'),
                     menuItem(index: 4, icon: Icons.settings_rounded, title: widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки'),
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              Divider(height: 1, color: theme.colorScheme.outlineVariant),
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: ListTile(
@@ -1086,8 +1786,526 @@ class _ShellState extends State<Shell> {
             ],
           ),
         ),
+        ),
       ),
       body: IndexedStack(index: tab, children: pages),
+      bottomNavigationBar: (tab == 2 || tab == 5) ? NavigationBar(
+        selectedIndex: tab == 2 ? 2 : 3,
+        onDestinationSelected: (index) {
+          final target = switch (index) {
+            0 => 0,
+            1 => 1,
+            2 => 2,
+            _ => 5,
+          };
+          if (mounted) setState(() => tab = target);
+        },
+        destinations: <NavigationDestination>[
+          NavigationDestination(
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(Icons.home_rounded),
+            label: widget.lang == 'uz' ? 'Asosiy' : 'Главная',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.local_taxi_outlined),
+            selectedIcon: const Icon(Icons.local_taxi_rounded),
+            label: widget.lang == 'uz' ? 'Safar' : 'Поездка',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.history_rounded),
+            selectedIcon: const Icon(Icons.history_toggle_off_rounded),
+            label: widget.lang == 'uz' ? 'Tarix' : 'История',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.person_outline_rounded),
+            selectedIcon: const Icon(Icons.person_rounded),
+            label: widget.lang == 'uz' ? 'Profil' : 'Профиль',
+          ),
+        ],
+      ) : null,
+    );
+  }
+}
+
+
+const _yangiLightMapStyle = '''
+[
+  {"stylers":{"saturation":-0.20,"lightness":0.05}},
+  {"tags":{"all":["poi"]},"elements":"label.icon","stylers":{"scale":0.78,"opacity":0.72}},
+  {"tags":{"all":["poi"]},"elements":"label.text.fill","stylers":{"color":"#676B72"}},
+  {"tags":{"all":["road"]},"elements":"geometry","stylers":{"saturation":-0.35,"lightness":0.10}},
+  {"tags":{"all":["park"]},"elements":"geometry.fill","stylers":{"color":"#E8F2E6"}},
+  {"tags":{"all":["water"]},"elements":"geometry.fill","stylers":{"color":"#DCEBF1"}},
+  {"tags":{"all":["building"]},"elements":"geometry.fill","stylers":{"color":"#ECEBE7"}}
+]
+''';
+
+const _yangiDarkMapStyle = '''
+[
+  {"stylers":{"saturation":-0.38,"lightness":-0.12}},
+  {"tags":{"all":["poi"]},"elements":"label.icon","stylers":{"scale":0.75,"opacity":0.62}},
+  {"tags":{"all":["road"]},"elements":"geometry","stylers":{"saturation":-0.45}},
+  {"tags":{"all":["park"]},"elements":"geometry.fill","stylers":{"color":"#1D3025"}},
+  {"tags":{"all":["water"]},"elements":"geometry.fill","stylers":{"color":"#152A33"}}
+]
+''';
+
+void _applyYangiMapAppearance(ym.Map map, bool dark) {
+  map.mapType = ym.MapType.VectorMap;
+  map.mode = ym.MapMode.Driving;
+  map.set2DMode(true);
+  map.hdModeEnabled = true;
+  map.nightModeEnabled = dark;
+  map.poiLimit = 28;
+  map.fastTapEnabled = true;
+  map.rotateGesturesEnabled = false;
+  map.tiltGesturesEnabled = false;
+  map.setMapStyle(dark ? _yangiDarkMapStyle : _yangiLightMapStyle);
+}
+
+
+class _MapPinMarker extends StatelessWidget {
+  const _MapPinMarker({
+    required this.pickup,
+    this.label = '',
+    this.caption = '',
+  });
+
+  final bool pickup;
+  final String label;
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = pickup ? yangiGreen : yangiGraphite;
+    final markerAccent = pickup ? yangiGreen : yangiLime;
+    final hasLabel = label.trim().isNotEmpty;
+
+    Widget pin() => SizedBox(
+          width: 54,
+          height: 68,
+          child: Stack(
+            alignment: Alignment.topCenter,
+            children: <Widget>[
+              Positioned(
+                top: 4,
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: fill.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 10,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: fill,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: pickup ? Colors.white : yangiLime, width: 3),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(color: Color(0x30000000), blurRadius: 7, offset: Offset(0, 3)),
+                    ],
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 11,
+                      height: 11,
+                      decoration: BoxDecoration(
+                        color: pickup ? Colors.white : yangiLime,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(top: 41, child: Container(width: 4, height: 14, color: markerAccent)),
+              Positioned(
+                top: 53,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: markerAccent, width: 3),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+    if (!hasLabel) return pin();
+
+    final theme = Theme.of(context);
+    final card = Container(
+      width: 174,
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(color: Color(0x28000000), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: markerAccent, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  caption.isNotEmpty ? caption : (pickup ? 'Откуда' : 'Куда'),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.1,
+                    fontWeight: FontWeight.w900,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return SizedBox(
+      width: 228,
+      height: 72,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          if (pickup) ...<Widget>[
+            Positioned(left: 0, bottom: 0, child: pin()),
+            Positioned(left: 42, top: 4, child: card),
+          ] else ...<Widget>[
+            Positioned(right: 0, bottom: 0, child: pin()),
+            Positioned(right: 42, top: 4, child: card),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MapCarMarker extends StatelessWidget {
+  const _MapCarMarker({required this.kind, this.driver = false});
+  final String kind;
+  final bool driver;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = switch (kind) {
+      'business' => const Color(0xFF22252A),
+      'delivery' => yangiLime,
+      'cargo' => const Color(0xFF43484F),
+      'together' => yangiLime,
+      _ => yangiLime,
+    };
+    final asset = switch (kind) {
+      'together' => 'assets/map_car_together.webp',
+      'comfort' => 'assets/map_car_comfort.webp',
+      'business' => 'assets/map_car_business.webp',
+      'delivery' => 'assets/map_car_delivery.webp',
+      'cargo' => 'assets/map_car_cargo.webp',
+      _ => 'assets/map_car_start.webp',
+    };
+
+    return SizedBox(
+      width: driver ? 48 : 40,
+      height: driver ? 54 : 46,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Positioned(
+            bottom: 2,
+            child: Container(
+              width: driver ? 34 : 29,
+              height: driver ? 13 : 11,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.20),
+                borderRadius: BorderRadius.circular(50),
+              ),
+            ),
+          ),
+          Image.asset(
+            asset,
+            width: driver ? 46 : 38,
+            height: driver ? 50 : 43,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+            errorBuilder: (_, __, ___) => Container(
+              width: driver ? 40 : 34,
+              height: driver ? 48 : 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: accent, width: 3),
+              ),
+              child: const Icon(Icons.local_taxi_rounded, color: yangiGraphite),
+            ),
+          ),
+          if (kind == 'business')
+            Positioned(
+              top: 1,
+              child: Container(
+                width: 18,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: accent,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+          if (driver)
+            Positioned(
+              right: -1,
+              top: 0,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: yangiLime,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(color: Color(0x33000000), blurRadius: 4),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TariffVehicleArt extends StatelessWidget {
+  const _TariffVehicleArt({required this.kind, required this.selected, required this.available});
+  final String kind;
+  final bool selected;
+  final bool available;
+
+  String get asset => switch (kind) {
+        'comfort' => 'assets/tariff_comfort.webp',
+        'business' => 'assets/tariff_business_v2.webp',
+        'delivery' => 'assets/tariff_delivery.webp',
+        'cargo' => 'assets/tariff_cargo.webp',
+        _ => 'assets/tariff_start.webp',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: available ? 1 : 0.42,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+        child: Image.asset(
+          asset,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+          errorBuilder: (_, __, ___) => CustomPaint(
+            painter: _TariffVehiclePainter(kind: kind, selected: selected),
+            size: const Size(112, 48),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TariffVehiclePainter extends CustomPainter {
+  const _TariffVehiclePainter({required this.kind, required this.selected});
+  final String kind;
+  final bool selected;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final sx = size.width / 112;
+    final sy = size.height / 48;
+    canvas.save();
+    canvas.scale(sx, sy);
+
+    canvas.drawOval(const Rect.fromLTWH(12, 38, 91, 7), Paint()..color = const Color(0x22000000));
+
+    final body = Paint()..color = _bodyColor(kind);
+    final dark = Paint()..color = const Color(0xFF252A30);
+    final glass = Paint()..color = const Color(0xFF4B5864);
+    final wheel = Paint()..color = const Color(0xFF151719);
+    final rim = Paint()..color = const Color(0xFFAEB4BB);
+    final yellow = Paint()..color = const Color(0xFFFFD900);
+
+    if (kind == 'cargo') {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(13, 13, 61, 25), const Radius.circular(3)),
+        yellow,
+      );
+      final cab = Path()
+        ..moveTo(74, 20)
+        ..lineTo(91, 20)
+        ..lineTo(104, 30)
+        ..lineTo(104, 38)
+        ..lineTo(74, 38)
+        ..close();
+      canvas.drawPath(cab, dark);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(83, 23, 13, 8), const Radius.circular(2)),
+        glass,
+      );
+      _wheel(canvas, 30, 39, wheel, rim);
+      _wheel(canvas, 87, 39, wheel, rim);
+    } else if (kind == 'delivery') {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(20, 13, 65, 25), const Radius.circular(7)),
+        yellow,
+      );
+      final nose = Path()
+        ..moveTo(85, 23)
+        ..lineTo(98, 25)
+        ..lineTo(106, 33)
+        ..lineTo(106, 38)
+        ..lineTo(84, 38)
+        ..close();
+      canvas.drawPath(nose, yellow);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(90, 26, 10, 6), const Radius.circular(2)),
+        glass,
+      );
+      canvas.drawRect(const Rect.fromLTWH(44, 18, 15, 13), Paint()..color = Colors.white);
+      final boxLine = Paint()..color = const Color(0x99252A30)..strokeWidth = 1.2;
+      canvas.drawLine(const Offset(51.5, 18), const Offset(51.5, 31), boxLine);
+      canvas.drawLine(const Offset(44, 24.5), const Offset(59, 24.5), boxLine);
+      _wheel(canvas, 34, 39, wheel, rim);
+      _wheel(canvas, 89, 39, wheel, rim);
+    } else {
+      final compact = kind == 'start' || kind == 'together';
+      final premium = kind == 'business';
+      final path = Path()
+        ..moveTo(8, 35)
+        ..lineTo(16, 27)
+        ..lineTo(compact ? 34 : 31, compact ? 19 : 17)
+        ..lineTo(compact ? 68 : 73, compact ? 19 : 17)
+        ..lineTo(86, 24)
+        ..lineTo(104, 33)
+        ..lineTo(106, 38)
+        ..lineTo(10, 38)
+        ..close();
+      canvas.drawPath(path, body);
+      final frontWindow = Path()
+        ..moveTo(compact ? 38 : 35, compact ? 21 : 19)
+        ..lineTo(54, compact ? 21 : 19)
+        ..lineTo(54, 29)
+        ..lineTo(31, 29)
+        ..close();
+      canvas.drawPath(frontWindow, glass);
+      final rearWindow = Path()
+        ..moveTo(57, compact ? 21 : 19)
+        ..lineTo(compact ? 68 : 72, compact ? 21 : 19)
+        ..lineTo(82, 28)
+        ..lineTo(57, 29)
+        ..close();
+      canvas.drawPath(rearWindow, glass);
+      if (premium) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(const Rect.fromLTWH(47, 33, 20, 1.8), const Radius.circular(1)),
+          Paint()..color = const Color(0xFFC8A44D),
+        );
+      }
+      if (kind == 'comfort') {
+        final accent = Path()
+          ..moveTo(23, 31)
+          ..lineTo(36, 22)
+          ..lineTo(42, 31)
+          ..close();
+        canvas.drawPath(accent, yellow);
+      }
+      if (kind == 'together') {
+        canvas.drawCircle(const Offset(64, 24), 2.2, yellow);
+        canvas.drawCircle(const Offset(71, 24), 2.2, yellow);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(const Rect.fromLTWH(60, 27, 15, 4), const Radius.circular(2)),
+          yellow,
+        );
+      }
+      _wheel(canvas, 28, 39, wheel, rim);
+      _wheel(canvas, 83, 39, wheel, rim);
+    }
+
+    canvas.restore();
+  }
+
+  void _wheel(Canvas canvas, double x, double y, Paint wheel, Paint rim) {
+    canvas.drawCircle(Offset(x, y), 7, wheel);
+    canvas.drawCircle(Offset(x, y), 3.5, rim);
+    canvas.drawCircle(Offset(x, y), 1.4, Paint()..color = const Color(0xFF555B62));
+  }
+
+  Color _bodyColor(String key) {
+    switch (key) {
+      case 'comfort':
+        return const Color(0xFFD9DEE3);
+      case 'business':
+        return const Color(0xFF202328);
+      default:
+        return const Color(0xFFFFD900);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TariffVehiclePainter oldDelegate) =>
+      oldDelegate.kind != kind || oldDelegate.selected != selected;
+}
+
+class _TariffGlyph extends StatelessWidget {
+  const _TariffGlyph({required this.kind, required this.selected});
+  final String kind;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = switch (kind) {
+      'together' => Icons.people_alt_rounded,
+      'comfort' => Icons.airline_seat_recline_extra_rounded,
+      'business' => Icons.workspace_premium_rounded,
+      'delivery' => Icons.inventory_2_rounded,
+      'cargo' => Icons.local_shipping_rounded,
+      _ => Icons.local_taxi_rounded,
+    };
+    return Container(
+      width: 29,
+      height: 29,
+      decoration: BoxDecoration(
+        color: selected ? Colors.white.withValues(alpha: 0.78) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(icon, size: 17, color: const Color(0xFF17191C)),
     );
   }
 }
@@ -1099,16 +2317,26 @@ class TaxiYandexMap extends StatefulWidget {
     this.route = const <ym.Point>[],
     this.from,
     this.to,
+    this.fromLabel = '',
+    this.toLabel = '',
+    this.fromCaption = 'Откуда',
+    this.toCaption = 'Куда',
     this.driver,
     this.nearbyCars = const <NearbyCrew>[],
+    this.vehicleKind = 'start',
     this.zoom = 14,
   });
   final ym.Point center;
   final List<ym.Point> route;
   final ym.Point? from;
   final ym.Point? to;
+  final String fromLabel;
+  final String toLabel;
+  final String fromCaption;
+  final String toCaption;
   final ym.Point? driver;
   final List<NearbyCrew> nearbyCars;
+  final String vehicleKind;
   final double zoom;
 
   @override
@@ -1117,21 +2345,91 @@ class TaxiYandexMap extends StatefulWidget {
 
 class _TaxiYandexMapState extends State<TaxiYandexMap> {
   ym.MapWindow? mapWindow;
-  late final yi.ImageProvider carIcon;
-  late final yi.ImageProvider pinIcon;
+  bool darkMode = false;
+  final Map<String, yv.ViewProvider> _providers = <String, yv.ViewProvider>{};
+
+  yv.ViewProvider _pinProvider(bool pickup, String label, String caption) {
+    final cleanLabel = label.trim();
+    final cleanCaption = caption.trim();
+    final key = 'pin-' +
+        (pickup ? 'pickup' : 'destination') +
+        '-' +
+        cleanLabel.hashCode.toString() +
+        '-' +
+        cleanCaption.hashCode.toString();
+    return _providers.putIfAbsent(
+      key,
+      () => yv.ViewProvider(
+        id: 'yangi-' + key,
+        cacheable: cleanLabel.isEmpty,
+        builder: () => _MapPinMarker(
+          pickup: pickup,
+          label: cleanLabel,
+          caption: cleanCaption,
+        ),
+      ),
+    );
+  }
+
+  yv.ViewProvider _carProvider(String kind, {bool driver = false}) => _providers.putIfAbsent(
+        'car-' + kind + '-' + driver.toString(),
+        () => yv.ViewProvider(
+          id: 'yangi-car-' + kind + '-' + driver.toString(),
+          cacheable: true,
+          builder: () => _MapCarMarker(kind: kind, driver: driver),
+        ),
+      );
 
   @override
   void initState() {
     super.initState();
-    carIcon = yi.ImageProvider.fromImageProvider(const AssetImage('assets/car.png'));
-    pinIcon = yi.ImageProvider.fromImageProvider(const AssetImage('assets/pin.png'));
     if (yandexMapKitApiKey.isNotEmpty) ym_factory.mapkit.onStart();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextDark = Theme.of(context).brightness == Brightness.dark;
+    if (nextDark != darkMode) {
+      darkMode = nextDark;
+      final window = mapWindow;
+      if (window != null) {
+        _applyYangiMapAppearance(window.map, darkMode);
+        _render(focusRoute: false);
+      }
+    }
+  }
+
+  bool _samePoint(ym.Point? a, ym.Point? b) {
+    if (a == null || b == null) return a == null && b == null;
+    return (a.latitude - b.latitude).abs() < 0.0000001 &&
+        (a.longitude - b.longitude).abs() < 0.0000001;
+  }
+
+  bool _sameRoute(List<ym.Point> a, List<ym.Point> b) {
+    if (a.length != b.length) return false;
+    if (a.isEmpty) return true;
+    for (var i = 0; i < a.length; i++) {
+      if (!_samePoint(a[i], b[i])) return false;
+    }
+    return true;
   }
 
   @override
   void didUpdateWidget(covariant TaxiYandexMap oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (mapWindow != null) _render(focusRoute: false);
+    if (mapWindow == null) return;
+
+    final routeChanged = !_sameRoute(oldWidget.route, widget.route);
+    final endpointsChanged =
+        !_samePoint(oldWidget.from, widget.from) ||
+        !_samePoint(oldWidget.to, widget.to);
+    final centerChanged = !_samePoint(oldWidget.center, widget.center);
+
+    _render(
+      focusRoute: widget.route.length > 1 && (routeChanged || endpointsChanged),
+      moveCamera: routeChanged || endpointsChanged || centerChanged,
+    );
   }
 
   @override
@@ -1140,67 +2438,107 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
     super.dispose();
   }
 
-  void _render({bool focusRoute = true}) {
+  void _render({bool focusRoute = true, bool moveCamera = true}) {
     final window = mapWindow;
     if (window == null) return;
     final map = window.map;
     map.mapObjects.clear();
 
-    void addTextPlacemark(ym.Point point, String text) {
-      map.mapObjects.addPlacemark()
-        ..geometry = point
-        ..setText(text);
-    }
-
     if (widget.route.length > 1) {
       final polyline = ym.Polyline(widget.route);
       map.mapObjects.addPolylineWithGeometry(polyline)
-        ..strokeWidth = 5.0
-        ..setStrokeColor(const Color(0xFF238B45));
+        ..strokeWidth = 7.5
+        ..setStrokeColor(darkMode ? const Color(0xCC121416) : const Color(0xCCFFFFFF));
+      map.mapObjects.addPolylineWithGeometry(polyline)
+        ..strokeWidth = 4.5
+        ..setStrokeColor(const Color(0xFF18B66A));
       if (focusRoute) {
-        map.move(map.cameraPositionForGeometry(ym.Geometry.fromPolyline(polyline)));
+        final width = window.width().toDouble();
+        final height = window.height().toDouble();
+        final routeFocus = width > 0 && height > 0
+            ? ym.ScreenRect(
+                ym.ScreenPoint(x: width * 0.06, y: height * 0.12),
+                ym.ScreenPoint(x: width * 0.94, y: height * 0.53),
+              )
+            : null;
+        window.focusRect = routeFocus;
+        final fit = map.cameraPositionForGeometry(
+          ym.Geometry.fromPolyline(polyline),
+          focusRect: routeFocus,
+          azimuth: 0,
+          tilt: 0,
+        );
+        map.move(
+          ym.CameraPosition(
+            fit.target,
+            zoom: math.max(10.0, fit.zoom - 0.18),
+            azimuth: 0,
+            tilt: 0,
+          ),
+        );
       }
     }
-    if (widget.from != null) addTextPlacemark(widget.from!, '●');
-    if (widget.to != null) {
+
+    if (widget.from != null) {
       map.mapObjects.addPlacemark()
-        ..geometry = widget.to!
-        ..setIconWithStyle(
-          pinIcon,
-          const ym.IconStyle(
-            anchor: math.Point<double>(0.5, 1.0),
-            scale: 0.55,
-            zIndex: 20,
+        ..geometry = widget.from!
+        ..setViewWithStyle(
+          _pinProvider(true, widget.fromLabel, widget.fromCaption),
+          ym.IconStyle(
+            anchor: widget.fromLabel.trim().isEmpty
+                ? const math.Point<double>(0.5, 1.0)
+                : const math.Point<double>(0.115, 1.0),
+            scale: widget.fromLabel.trim().isEmpty ? 0.82 : 0.88,
+            zIndex: 22,
           ),
         );
     }
+
+    if (widget.to != null) {
+      map.mapObjects.addPlacemark()
+        ..geometry = widget.to!
+        ..setViewWithStyle(
+          _pinProvider(false, widget.toLabel, widget.toCaption),
+          ym.IconStyle(
+            anchor: widget.toLabel.trim().isEmpty
+                ? const math.Point<double>(0.5, 1.0)
+                : const math.Point<double>(0.885, 1.0),
+            scale: widget.toLabel.trim().isEmpty ? 0.82 : 0.88,
+            zIndex: 23,
+          ),
+        );
+    }
+
     for (final car in widget.nearbyCars) {
       final placemark = map.mapObjects.addPlacemark()
         ..geometry = car.point
         ..direction = car.direction >= 0 ? car.direction : 0;
-      placemark.setIconWithStyle(
-        carIcon,
+      placemark.setViewWithStyle(
+        _carProvider(widget.vehicleKind),
         const ym.IconStyle(
           anchor: math.Point<double>(0.5, 0.5),
-          scale: 0.42,
+          scale: 0.92,
           zIndex: 15,
+          rotationType: ym.RotationType.Rotate,
         ),
       );
     }
+
     if (widget.driver != null) {
       map.mapObjects.addPlacemark()
         ..geometry = widget.driver!
-        ..setIconWithStyle(
-          carIcon,
+        ..setViewWithStyle(
+          _carProvider(widget.vehicleKind, driver: true),
           const ym.IconStyle(
             anchor: math.Point<double>(0.5, 0.5),
-            scale: 0.50,
+            scale: 1.00,
             zIndex: 30,
+            rotationType: ym.RotationType.Rotate,
           ),
         );
     }
 
-    if (!focusRoute || widget.route.length < 2) {
+    if (moveCamera && widget.route.length < 2) {
       map.move(ym.CameraPosition(widget.center, zoom: widget.zoom, azimuth: 0, tilt: 0));
     }
   }
@@ -1209,15 +2547,18 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
   Widget build(BuildContext context) {
     if (yandexMapKitApiKey.isEmpty) {
       return Container(
-        color: const Color(0xFFEAF4EE),
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         alignment: Alignment.center,
         padding: const EdgeInsets.all(24),
         child: const Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.map_outlined, size: 52),
-            SizedBox(height: 12),
-            Text('Яндекс Карты подключены. Для отображения карты нужен MapKit API-ключ.', textAlign: TextAlign.center),
+            Icon(Icons.map_outlined, size: 46),
+            SizedBox(height: 10),
+            Text(
+              'Для отображения карты нужен Yandex MapKit API-ключ.',
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       );
@@ -1225,6 +2566,7 @@ class _TaxiYandexMapState extends State<TaxiYandexMap> {
     return ym_widget.YandexMap(
       onMapCreated: (window) {
         mapWindow = window;
+        _applyYangiMapAppearance(window.map, darkMode);
         _render();
       },
     );
@@ -1238,11 +2580,13 @@ class OrderScreen extends StatefulWidget {
     required this.lang,
     required this.onOrder,
     required this.onMenu,
+    required this.onProfile,
   });
   final ApiClient api;
   final String lang;
   final ValueChanged<int> onOrder;
   final VoidCallback onMenu;
+  final VoidCallback onProfile;
 
   @override
   State<OrderScreen> createState() => _OrderScreenState();
@@ -1253,6 +2597,8 @@ class _OrderScreenState extends State<OrderScreen> {
   Place? to;
   double? cost;
   List<ym.Point> route = <ym.Point>[];
+  double? routeDistanceKm;
+  int? routeMinutes;
   bool busy = false;
   bool locating = false;
   String? error;
@@ -1264,6 +2610,7 @@ class _OrderScreenState extends State<OrderScreen> {
   bool estimating = false;
   Timer? estimateTimer;
   int estimateGeneration = 0;
+  List<Map<String, dynamic>> tariffCatalog = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> tariffOptions = <Map<String, dynamic>>[];
   String selectedTariffKey = 'start';
   String paymentMethod = 'cash';
@@ -1271,15 +2618,22 @@ class _OrderScreenState extends State<OrderScreen> {
   bool cardBindingAvailable = false;
   List<Map<String, dynamic>> cards = <Map<String, dynamic>>[];
   int selectedCardId = 0;
+  bool pickupPinnedByUser = false;
   late final ys.SearchManager locationSearchManager;
   ys.SearchSession? locationSearchSession;
+  yd.DrivingRouter? drivingRouter;
+  yd.DrivingSession? drivingSession;
 
   @override
   void initState() {
     super.initState();
     locationSearchManager = ys.SearchFactory.instance.createSearchManager(ys.SearchManagerType.Online);
+    if (yandexMapKitApiKey.isNotEmpty) {
+      drivingRouter = yd.DirectionsFactory.instance.createDrivingRouter(yd.DrivingRouterType.Combined);
+    }
     loadPaymentConfig();
     loadCards();
+    loadTariffCatalog();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       detectMyLocation(auto: true);
     });
@@ -1293,6 +2647,7 @@ class _OrderScreenState extends State<OrderScreen> {
     nearbyCarsTimer?.cancel();
     estimateTimer?.cancel();
     locationSearchSession?.cancel();
+    drivingSession?.cancel();
     super.dispose();
   }
 
@@ -1301,6 +2656,26 @@ class _OrderScreenState extends State<OrderScreen> {
         isScrollControlled: true,
         builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
       );
+
+  Future<void> ensurePickupFromCurrentLocation() async {
+    if (from != null) return;
+    if (currentLocation == null) {
+      await detectMyLocation(auto: false);
+      if (from != null) return;
+    }
+    final point = currentLocation;
+    if (point == null) return;
+    final place = await reverseCurrentLocation(point);
+    if (!mounted) return;
+    setState(() {
+      from = place;
+      cost = null;
+      route = <ym.Point>[];
+      routeDistanceKm = null;
+      routeMinutes = null;
+    });
+    await loadNearbyCars();
+  }
 
   Future<void> pickRoutePointOnMap({required bool pickup}) async {
     final title = pickup ? tx(widget.lang, 'from') : tx(widget.lang, 'to');
@@ -1334,11 +2709,14 @@ class _OrderScreenState extends State<OrderScreen> {
     setState(() {
       if (pickup) {
         from = place;
+        pickupPinnedByUser = true;
       } else {
         to = place;
       }
       cost = null;
       route = <ym.Point>[];
+      routeDistanceKm = null;
+      routeMinutes = null;
       error = null;
     });
 
@@ -1387,6 +2765,101 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
+  Future<void> loadTariffCatalog() async {
+    try {
+      final data = await widget.api.get('/api/tariffs');
+      if (!mounted || data is! List) return;
+      final loaded = data
+          .whereType<Map>()
+          .map((x) => Map<String, dynamic>.from(x))
+          .toList();
+      if (loaded.isEmpty) return;
+
+      String nextKey = selectedTariffKey;
+      final currentAvailable = loaded.any(
+        (x) => (x['key'] ?? '').toString() == selectedTariffKey && x['available'] == true,
+      );
+      if (!currentAvailable) {
+        for (final item in loaded) {
+          if (item['available'] == true) {
+            nextKey = (item['key'] ?? 'start').toString();
+            break;
+          }
+        }
+      }
+
+      setState(() {
+        tariffCatalog = loaded;
+        selectedTariffKey = nextKey;
+      });
+    } catch (_) {
+      // Older backends may not expose /api/tariffs. Route estimates still work.
+    }
+  }
+
+  List<Map<String, dynamic>> get visibleTariffs =>
+      tariffOptions.isNotEmpty ? tariffOptions : tariffCatalog;
+
+  List<Map<String, dynamic>> _validateEstimatedTariffs(dynamic rawOptions) {
+    if (rawOptions is! List) return <Map<String, dynamic>>[];
+
+    const order = <String>[
+      'start',
+      'together',
+      'comfort',
+      'business',
+      'delivery',
+      'cargo',
+    ];
+    final byKey = <String, Map<String, dynamic>>{};
+
+    for (final raw in rawOptions.whereType<Map>()) {
+      final item = Map<String, dynamic>.from(raw);
+      final key = (item['key'] ?? '').toString().trim().toLowerCase();
+      if (!order.contains(key)) continue;
+
+      final price = _routeNumber(item['cost']);
+      final tariffId = item['tariffId'] is num
+          ? (item['tariffId'] as num).toInt()
+          : int.tryParse((item['tariffId'] ?? '').toString());
+      final crewGroupId = item['crewGroupId'] is num
+          ? (item['crewGroupId'] as num).toInt()
+          : int.tryParse((item['crewGroupId'] ?? '').toString());
+
+      final mappingValid =
+          (tariffId == null || tariffId > 0) &&
+          (crewGroupId == null || crewGroupId > 0);
+      final validPrice = price != null && price.isFinite && price > 0;
+
+      item['key'] = key;
+      item['available'] =
+          item['available'] == true && mappingValid && validPrice;
+      if (price != null && price.isFinite) item['cost'] = price;
+
+      byKey[key] = item;
+    }
+
+    final result = <Map<String, dynamic>>[
+      for (final key in order)
+        if (byKey[key] != null) byKey[key]!,
+    ];
+
+    Map<String, dynamic>? start;
+    Map<String, dynamic>? together;
+    for (final item in result) {
+      if (item['key'] == 'start') start = item;
+      if (item['key'] == 'together') together = item;
+    }
+    final startCost = _routeNumber(start?['cost']);
+    final togetherCost = _routeNumber(together?['cost']);
+    if (startCost != null && startCost > 0 && togetherCost != null && togetherCost > 0) {
+      final saving = ((startCost - togetherCost) / startCost * 100).clamp(-999.0, 999.0);
+      together!['effectiveSavingPercentVsStart'] = saving;
+    }
+
+    return result;
+  }
+
   Map<String, dynamic>? get selectedCard {
     for (final card in cards) {
       if ((card['cardId'] as num?)?.toInt() == selectedCardId) return card;
@@ -1395,24 +2868,39 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> openCardsManager() async {
+    String? nextMethod;
+    int? nextCardId;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => CardsScreen(api: widget.api, lang: widget.lang),
+        builder: (_) => CardsScreen(
+          api: widget.api,
+          lang: widget.lang,
+          initialPaymentMethod: paymentMethod,
+          initialCardId: selectedCardId,
+          onPaymentChanged: (method, cardId) {
+            nextMethod = method;
+            nextCardId = cardId;
+          },
+        ),
       ),
     );
     await loadCards();
-    if (cards.isNotEmpty && mounted) {
-      setState(() => paymentMethod = 'card');
-    }
+    if (!mounted || nextMethod == null) return;
+    setState(() {
+      paymentMethod = nextMethod!;
+      if (nextMethod == 'card' && nextCardId != null && nextCardId! > 0) {
+        selectedCardId = nextCardId!;
+      }
+    });
   }
 
   Map<String, dynamic>? get selectedTariff {
-    for (final option in tariffOptions) {
+    for (final option in visibleTariffs) {
       if ((option['key'] ?? '').toString() == selectedTariffKey && option['available'] == true) {
         return option;
       }
     }
-    for (final option in tariffOptions) {
+    for (final option in visibleTariffs) {
       if (option['available'] == true) return option;
     }
     return null;
@@ -1420,6 +2908,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
   IconData tariffIcon(String key) {
     switch (key) {
+      case 'together':
+        return Icons.groups_rounded;
       case 'comfort':
         return Icons.airline_seat_recline_extra_rounded;
       case 'business':
@@ -1433,9 +2923,259 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
+  String tariffAsset(String key) => switch (key) {
+        'together' => 'assets/map_car_together.webp',
+        'comfort' => 'assets/map_car_comfort.webp',
+        'business' => 'assets/map_car_business.webp',
+        'delivery' => 'assets/map_car_delivery.webp',
+        'cargo' => 'assets/map_car_cargo.webp',
+        _ => 'assets/map_car_start.webp',
+      };
+
+  int tariffPassengers(String key) {
+    switch (key) {
+      case 'cargo':
+        return 2;
+      case 'delivery':
+        return 1;
+      default:
+        return 4;
+    }
+  }
+
+  int tariffBaggage(String key) {
+    switch (key) {
+      case 'business':
+      case 'comfort':
+        return 3;
+      case 'cargo':
+        return 6;
+      case 'delivery':
+        return 1;
+      default:
+        return 2;
+    }
+  }
+
+  String tariffDescription(String key) {
+    if (widget.lang == 'uz') {
+      return switch (key) {
+        'together' => 'Birga borish — yanada tejamkor',
+        'comfort' => 'Ko‘proq joy va qulaylik',
+        'business' => 'Premium xizmat va avtomobil',
+        'delivery' => 'Posilka va kichik yuklar uchun',
+        'cargo' => 'Katta yuklarni tashish uchun',
+        _ => 'Har kun uchun tez va qulay',
+      };
+    }
+    return switch (key) {
+      'together' => 'Выгоднее для совместной поездки',
+      'comfort' => 'Больше пространства и комфорта',
+      'business' => 'Премиальный сервис и автомобиль',
+      'delivery' => 'Для посылок и небольших грузов',
+      'cargo' => 'Для перевозки крупных грузов',
+      _ => 'Быстро и выгодно на каждый день',
+    };
+  }
+
+  String moneyLabel(num? value) {
+    if (value == null) return '—';
+    final digits = value.round().toString();
+    final out = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) out.write(' ');
+      out.write(digits[i]);
+    }
+    return out.toString() + ' so‘m';
+  }
+
+  void swapRoutePoints() {
+    if (from == null || to == null) return;
+    setState(() {
+      final oldFrom = from;
+      from = to;
+      to = oldFrom;
+      pickupPinnedByUser = true;
+      cost = null;
+      route = <ym.Point>[];
+      routeDistanceKm = null;
+      routeMinutes = null;
+      error = null;
+    });
+    loadNearbyCars();
+    scheduleEstimate(delay: Duration.zero);
+  }
+
+  void clearDestination() {
+    if (to == null) return;
+    setState(() {
+      to = null;
+      cost = null;
+      route = <ym.Point>[];
+      tariffOptions = <Map<String, dynamic>>[];
+      routeDistanceKm = null;
+      routeMinutes = null;
+      error = null;
+    });
+  }
+
+  double _distanceBetween(ym.Point a, ym.Point b) {
+    const earthKm = 6371.0;
+    final lat1 = a.latitude * math.pi / 180;
+    final lat2 = b.latitude * math.pi / 180;
+    final dLat = (b.latitude - a.latitude) * math.pi / 180;
+    final dLon = (b.longitude - a.longitude) * math.pi / 180;
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1) * math.cos(lat2) *
+            math.sin(dLon / 2) * math.sin(dLon / 2);
+    return 2 * earthKm * math.asin(math.sqrt(h.clamp(0.0, 1.0)));
+  }
+
+  double _polylineDistance(List<ym.Point> points) {
+    if (points.length < 2) return 0;
+    double total = 0;
+    for (var i = 1; i < points.length; i++) {
+      total += _distanceBetween(points[i - 1], points[i]);
+    }
+    return total;
+  }
+
+  double? _routeNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value.trim().replaceAll(',', '.'));
+    }
+    return null;
+  }
+
+  bool _validCoordinate(double lat, double lon) =>
+      lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+
+  ym.Point? _routePointFromRaw(dynamic raw, Place source, Place destination) {
+    double? lat;
+    double? lon;
+
+    if (raw is Map) {
+      final coords = raw['coords'];
+      if (coords is Map) {
+        lat = _routeNumber(coords['lat'] ?? coords['latitude'] ?? coords['y']);
+        lon = _routeNumber(coords['lon'] ?? coords['lng'] ?? coords['longitude'] ?? coords['x']);
+      }
+      lat ??= _routeNumber(raw['lat'] ?? raw['latitude'] ?? raw['y']);
+      lon ??= _routeNumber(raw['lon'] ?? raw['lng'] ?? raw['longitude'] ?? raw['x']);
+    } else if (raw is List && raw.length >= 2) {
+      final a = _routeNumber(raw[0]);
+      final b = _routeNumber(raw[1]);
+      if (a != null && b != null) {
+        final midpoint = ym.Point(
+          latitude: (source.lat + destination.lat) / 2,
+          longitude: (source.lon + destination.lon) / 2,
+        );
+        final first = _validCoordinate(a, b) ? ym.Point(latitude: a, longitude: b) : null;
+        final swapped = _validCoordinate(b, a) ? ym.Point(latitude: b, longitude: a) : null;
+        if (first != null && swapped != null) {
+          return _distanceBetween(first, midpoint) <= _distanceBetween(swapped, midpoint)
+              ? first
+              : swapped;
+        }
+        return first ?? swapped;
+      }
+    } else if (raw is String) {
+      final pieces = raw
+          .trim()
+          .split(RegExp(r'[;,\s]+'))
+          .where((x) => x.isNotEmpty)
+          .toList();
+      if (pieces.length >= 2) {
+        final a = _routeNumber(pieces[0]);
+        final b = _routeNumber(pieces[1]);
+        if (a != null && b != null) {
+          if (_validCoordinate(a, b)) {
+            lat = a;
+            lon = b;
+          } else if (_validCoordinate(b, a)) {
+            lat = b;
+            lon = a;
+          }
+        }
+      }
+    }
+
+    if (lat == null || lon == null || !_validCoordinate(lat, lon)) return null;
+    return ym.Point(latitude: lat, longitude: lon);
+  }
+
+  List<ym.Point> _normalizeRoutePoints(
+    dynamic routeData,
+    Place source,
+    Place destination,
+  ) {
+    dynamic rawPoints;
+    if (routeData is Map) {
+      final root = routeData['data'] is Map ? routeData['data'] as Map : routeData;
+      rawPoints = root['full_route_coords'] ??
+          root['route_coords'] ??
+          root['coords'] ??
+          root['points'] ??
+          root['geometry'];
+      if (rawPoints is Map) {
+        rawPoints = rawPoints['points'] ?? rawPoints['coordinates'] ?? rawPoints['coords'];
+      }
+    } else {
+      rawPoints = routeData;
+    }
+
+    final points = <ym.Point>[];
+    if (rawPoints is List) {
+      for (final raw in rawPoints) {
+        final p = _routePointFromRaw(raw, source, destination);
+        if (p == null) continue;
+        if (points.isEmpty || _distanceBetween(points.last, p) > 0.003) {
+          points.add(p);
+        }
+      }
+    }
+
+    final sourcePoint = source.point;
+    final destinationPoint = destination.point;
+
+    if (points.length >= 2) {
+      final normalScore =
+          _distanceBetween(points.first, sourcePoint) +
+          _distanceBetween(points.last, destinationPoint);
+      final reversedScore =
+          _distanceBetween(points.first, destinationPoint) +
+          _distanceBetween(points.last, sourcePoint);
+      if (reversedScore + 0.05 < normalScore) {
+        final reversed = points.reversed.toList();
+        points
+          ..clear()
+          ..addAll(reversed);
+      }
+    }
+
+    if (points.isEmpty) {
+      return <ym.Point>[];
+    }
+
+    if (_distanceBetween(points.first, sourcePoint) > 0.15) {
+      points.insert(0, sourcePoint);
+    } else {
+      points[0] = sourcePoint;
+    }
+
+    if (_distanceBetween(points.last, destinationPoint) > 0.15) {
+      points.add(destinationPoint);
+    } else {
+      points[points.length - 1] = destinationPoint;
+    }
+
+    return points;
+  }
+
   void selectTariff(String key) {
     Map<String, dynamic>? option;
-    for (final item in tariffOptions) {
+    for (final item in visibleTariffs) {
       if ((item['key'] ?? '').toString() == key) {
         option = item;
         break;
@@ -1448,6 +3188,51 @@ class _OrderScreenState extends State<OrderScreen> {
     });
   }
 
+  String get selectedServiceMode {
+    if (selectedTariffKey == 'together') return 'together';
+    if (selectedTariffKey == 'delivery') return 'delivery';
+    if (selectedTariffKey == 'cargo') return 'cargo';
+    return 'taxi';
+  }
+
+  void selectServiceMode(String mode) {
+    final target = switch (mode) {
+      'together' => 'together',
+      'delivery' => 'delivery',
+      'cargo' => 'cargo',
+      _ => 'start',
+    };
+
+    Map<String, dynamic>? option;
+    for (final item in visibleTariffs) {
+      if ((item['key'] ?? '').toString() == target) {
+        option = item;
+        break;
+      }
+    }
+
+    setState(() {
+      selectedTariffKey = target;
+      cost = option != null && option['available'] == true
+          ? (option['cost'] as num?)?.toDouble()
+          : null;
+      error = null;
+    });
+
+    if (from != null && to != null) {
+      scheduleEstimate(delay: Duration.zero);
+    }
+  }
+
+  List<Map<String, dynamic>> get serviceTariffs {
+    final mode = selectedServiceMode;
+    return visibleTariffs.where((item) {
+      final key = (item['key'] ?? '').toString();
+      if (mode == 'taxi') return key == 'start' || key == 'comfort' || key == 'business';
+      return key == mode;
+    }).toList();
+  }
+
   void scheduleEstimate({Duration delay = const Duration(milliseconds: 250)}) {
     estimateTimer?.cancel();
     if (from == null || to == null) {
@@ -1457,6 +3242,8 @@ class _OrderScreenState extends State<OrderScreen> {
           cost = null;
           tariffOptions = <Map<String, dynamic>>[];
           route = <ym.Point>[];
+          routeDistanceKm = null;
+          routeMinutes = null;
         });
       }
       return;
@@ -1562,11 +3349,13 @@ class _OrderScreenState extends State<OrderScreen> {
     try {
       final place = await reverseCurrentLocation(point);
       if (!mounted) return;
-      if (from == null) {
+      if (!pickupPinnedByUser) {
         setState(() {
           from = place;
           cost = null;
           route = <ym.Point>[];
+          routeDistanceKm = null;
+          routeMinutes = null;
         });
       }
       await loadNearbyCars();
@@ -1576,6 +3365,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> detectMyLocation({bool auto = false}) async {
     if (locating) return;
+    if (!auto) pickupPinnedByUser = false;
     if (mounted) {
       setState(() {
         locating = true;
@@ -1651,11 +3441,13 @@ class _OrderScreenState extends State<OrderScreen> {
       final place = await reverseCurrentLocation(point);
       if (!mounted) return;
 
-      if (!auto || from == null) {
+      if (!pickupPinnedByUser) {
         setState(() {
           from = place;
           cost = null;
           route = <ym.Point>[];
+          routeDistanceKm = null;
+          routeMinutes = null;
           locationHint = position.accuracy > 100
               ? (widget.lang == 'uz'
                   ? 'Joylashuv aniqligi taxminan ${position.accuracy.toStringAsFixed(0)} m'
@@ -1687,6 +3479,72 @@ class _OrderScreenState extends State<OrderScreen> {
     await Geolocator.openAppSettings();
   }
 
+  bool _routeLooksLikeRoadGeometry(List<ym.Point> points) {
+    if (points.length < 6) return false;
+    final direct = _distanceBetween(points.first, points.last);
+    final along = _polylineDistance(points);
+    if (direct < 0.08) return true;
+    return along >= direct * 1.008;
+  }
+
+  void _logLiveRoute(Place source, Place destination, List<ym.Point> points, String sourceName) {
+    if (widget.api.isDemo) return;
+    String p(ym.Point x) =>
+        x.latitude.toStringAsFixed(6) + ',' + x.longitude.toStringAsFixed(6);
+    final first = points.take(3).map(p).join(' | ');
+    final last = points.reversed.take(3).toList().reversed.map(p).join(' | ');
+    debugPrint(
+      '[Yangi route] source=' + p(source.point) +
+      ' destination=' + p(destination.point) +
+      ' sourceName=' + sourceName +
+      ' points=' + points.length.toString() +
+      ' first=[' + first + '] last=[' + last + ']',
+    );
+  }
+
+  Future<List<ym.Point>> _buildYandexDrivingRoute(
+    Place source,
+    Place destination,
+  ) async {
+    final router = drivingRouter;
+    if (router == null) return <ym.Point>[];
+
+    final completer = Completer<List<ym.Point>>();
+    drivingSession?.cancel();
+
+    final listener = yd.DrivingSessionRouteListener(
+      onDrivingRoutes: (routes) {
+        if (completer.isCompleted) return;
+        if (routes.isEmpty) {
+          completer.complete(<ym.Point>[]);
+          return;
+        }
+        completer.complete(routes.first.geometry.points);
+      },
+      onDrivingRoutesError: (_) {
+        if (!completer.isCompleted) completer.complete(<ym.Point>[]);
+      },
+    );
+
+    drivingSession = router.requestRoutes(
+      const yd.DrivingOptions(routesCount: 1),
+      const yd.DrivingVehicleOptions(),
+      listener,
+      points: <ym.RequestPoint>[
+        ym.RequestPoint(source.point, ym.RequestPointType.Waypoint, null, null, null),
+        ym.RequestPoint(destination.point, ym.RequestPointType.Waypoint, null, null, null),
+      ],
+    );
+
+    return completer.future.timeout(
+      const Duration(seconds: 12),
+      onTimeout: () {
+        drivingSession?.cancel();
+        return <ym.Point>[];
+      },
+    );
+  }
+
   Future<void> estimate({int? generation}) async {
     if (from == null || to == null) return;
     final currentGeneration = generation ?? ++estimateGeneration;
@@ -1707,27 +3565,24 @@ class _OrderScreenState extends State<OrderScreen> {
       if (currentGeneration != estimateGeneration || !mounted) return;
 
       final mapData = data['route'];
-      final points = <ym.Point>[];
-      if (mapData is Map && mapData['full_route_coords'] is List) {
-        for (final dynamic x in mapData['full_route_coords'] as List) {
-          if (x is Map && x['lat'] != null && x['lon'] != null) {
-            points.add(
-              ym.Point(
-                latitude: (x['lat'] as num).toDouble(),
-                longitude: (x['lon'] as num).toDouble(),
-              ),
-            );
-          }
-        }
+      final taxiMasterPoints = _normalizeRoutePoints(mapData, source, destination);
+      _logLiveRoute(source, destination, taxiMasterPoints, 'TaxiMaster');
+
+      var points = <ym.Point>[];
+      final roadPoints = await _buildYandexDrivingRoute(source, destination);
+      if (currentGeneration != estimateGeneration || !mounted) return;
+      if (roadPoints.length > 1) {
+        points = roadPoints;
+        _logLiveRoute(source, destination, points, 'YandexDrivingRouter');
+      } else if (_routeLooksLikeRoadGeometry(taxiMasterPoints)) {
+        points = taxiMasterPoints;
+        _logLiveRoute(source, destination, points, 'TaxiMasterFallback');
+      } else {
+        _logLiveRoute(source, destination, points, 'unavailable');
       }
 
       final rawOptions = data['options'];
-      final options = rawOptions is List
-          ? rawOptions
-              .whereType<Map>()
-              .map((x) => Map<String, dynamic>.from(x))
-              .toList()
-          : <Map<String, dynamic>>[];
+      final options = _validateEstimatedTariffs(rawOptions);
 
       Map<String, dynamic>? active;
       for (final item in options) {
@@ -1741,9 +3596,27 @@ class _OrderScreenState extends State<OrderScreen> {
             orElse: () => null,
           );
 
+      double? distanceFromApi;
+      if (mapData is Map) {
+        final explicitDistance =
+            _routeNumber(mapData['distance_km'] ?? mapData['distanceKm'] ?? mapData['distance']);
+        final cityDistance = _routeNumber(mapData['city_dist']) ?? 0;
+        final countryDistance = _routeNumber(mapData['country_dist']) ?? 0;
+        final taxiMasterDistance = cityDistance + countryDistance;
+        distanceFromApi = explicitDistance ?? (taxiMasterDistance > 0 ? taxiMasterDistance : null);
+      }
+      final minutesFromApi = mapData is Map
+          ? ((mapData['duration_minutes'] ?? mapData['duration_min'] ?? mapData['time_min'] ?? mapData['minutes']) as num?)?.toInt()
+          : null;
+      final computedDistance = distanceFromApi ?? _polylineDistance(points);
+      final computedMinutes = minutesFromApi ??
+          (computedDistance > 0 ? math.max(1, (computedDistance / 28 * 60).round()) : null);
+
       setState(() {
         tariffOptions = options;
         route = points;
+        routeDistanceKm = computedDistance > 0 ? computedDistance : null;
+        routeMinutes = computedMinutes;
         if (active != null) {
           selectedTariffKey = (active!['key'] ?? 'start').toString();
           cost = (active!['cost'] as num?)?.toDouble();
@@ -1759,6 +3632,8 @@ class _OrderScreenState extends State<OrderScreen> {
         setState(() {
           cost = null;
           tariffOptions = <Map<String, dynamic>>[];
+          routeDistanceKm = null;
+          routeMinutes = null;
           error = e.toString();
         });
       }
@@ -1879,7 +3754,8 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> createOrder() async {
-    if (from == null || to == null) return;
+    final deliveryWithoutDestination = selectedTariffKey == 'delivery' && to == null;
+    if (from == null || (to == null && !deliveryWithoutDestination)) return;
     setState(() {
       busy = true;
       error = null;
@@ -1887,7 +3763,7 @@ class _OrderScreenState extends State<OrderScreen> {
     try {
       final data = await widget.api.post('/api/orders', <String, dynamic>{
         'source': from!.toJson(),
-        'destination': to!.toJson(),
+        if (to != null) 'destination': to!.toJson(),
         'tariffKey': selectedTariffKey,
         'paymentMethod': paymentMethod,
         if (paymentMethod == 'card' && selectedCardId > 0) 'cardId': selectedCardId,
@@ -1925,13 +3801,88 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
+
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
     final center = from?.point ?? currentLocation ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
     final canUseCard = atmosEnabled && cardBindingAvailable;
     final destinationReady = to != null;
+    final destinationOptional = selectedTariffKey == 'delivery';
+    final routeReadyForOrder = from != null && (destinationReady || destinationOptional);
+    final tariffs = visibleTariffs;
+    final activeTariff = selectedTariff;
+    final activeTariffAvailable = activeTariff?['available'] == true;
+    final selectedPrice = (activeTariff?['cost'] as num?)?.toDouble() ?? cost;
+
+    String orderButtonLabel() {
+      if (busy) {
+        return widget.lang == 'uz' ? 'Buyurtma yaratilmoqda…' : 'Создаём заказ…';
+      }
+      if (from == null) {
+        return widget.lang == 'uz' ? 'Joylashuv aniqlanmoqda…' : 'Определяем местоположение…';
+      }
+      if (!destinationReady && !destinationOptional) {
+        return widget.lang == 'uz' ? 'Manzilni tanlang' : 'Выберите адрес назначения';
+      }
+      if (!activeTariffAvailable) {
+        return widget.lang == 'uz' ? 'Tarif mavjud emas' : 'Тариф недоступен';
+      }
+      if (destinationReady && cost == null) {
+        return widget.lang == 'uz' ? 'Narxni hisoblash' : 'Рассчитать стоимость';
+      }
+      return widget.lang == 'uz' ? 'Yangi Taxi buyurtma qilish' : 'Заказать Yangi Taxi';
+    }
+    final distanceLabel = routeDistanceKm == null ? '—' : '${routeDistanceKm!.toStringAsFixed(1)} ${widget.lang == 'uz' ? 'km' : 'км'}';
+    final minutesLabel = routeMinutes == null ? '—' : '${routeMinutes!} ${widget.lang == 'uz' ? 'daq' : 'мин'}';
+
+    Widget metric(IconData icon, String value, String label) {
+      return Expanded(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: dark ? const Color(0xFF202425) : Colors.white,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(icon, size: 19, color: scheme.onSurface),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    value,
+                    maxLines: 1,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                  ),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: <Widget>[
           Positioned.fill(
@@ -1940,257 +3891,261 @@ class _OrderScreenState extends State<OrderScreen> {
               route: route,
               from: from?.point,
               to: to?.point,
+              fromLabel: from?.address ?? '',
+              toLabel: to?.address ?? '',
+              fromCaption: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
+              toCaption: widget.lang == 'uz' ? 'Qayerga' : 'Куда',
               nearbyCars: nearbyCars,
-              zoom: destinationReady ? 13 : 15,
+              vehicleKind: selectedTariffKey,
+              zoom: destinationReady ? 13.7 : 15,
             ),
           ),
 
-          // Compact floating header. The map remains the main surface.
           Positioned(
-            top: 12,
+            top: 8,
             left: 12,
             right: 12,
             child: SafeArea(
               bottom: false,
               child: Row(
                 children: <Widget>[
-                  Material(
-                    color: Colors.white,
-                    elevation: 6,
-                    shadowColor: const Color(0x22000000),
-                    borderRadius: BorderRadius.circular(22),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(22),
-                      onTap: widget.onMenu,
-                      child: const Padding(
-                        padding: EdgeInsets.fromLTRB(10, 8, 14, 8),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(Icons.menu_rounded, size: 24),
-                            SizedBox(width: 8),
-                            Text('Yangi Taxi', style: TextStyle(fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                      ),
-                    ),
+                  _roundMapButton(
+                    icon: Icons.menu_rounded,
+                    onTap: widget.onMenu,
+                    tooltip: widget.lang == 'uz' ? 'Menyu' : 'Меню',
                   ),
                   const Spacer(),
-                  Material(
-                    color: Colors.white,
-                    elevation: 6,
-                    shadowColor: const Color(0x22000000),
-                    shape: const CircleBorder(),
-                    child: IconButton(
-                      onPressed: locating ? null : () => detectMyLocation(),
-                      tooltip: widget.lang == 'uz' ? 'Mening joylashuvim' : 'Моё местоположение',
-                      icon: locating
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.my_location_rounded),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: const Color(0xF20A0C0D),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: const Color(0xFF2A2F30)),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(
+                          color: Color(0x42000000),
+                          blurRadius: 22,
+                          offset: Offset(0, 8),
+                        ),
+                      ],
                     ),
+                    child: const YangiWordmark(onDarkSurface: true),
+                  ),
+                  const Spacer(),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: <Widget>[
+                      _roundMapButton(
+                        icon: Icons.person_rounded,
+                        onTap: widget.onProfile,
+                        tooltip: widget.lang == 'uz' ? 'Profil' : 'Профиль',
+                      ),
+                      const Positioned(
+                        right: 1,
+                        bottom: 3,
+                        child: CircleAvatar(radius: 5, backgroundColor: yangiLime),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ),
 
-          Align(
-            alignment: Alignment.bottomCenter,
+          Positioned(
+            right: 18,
+            bottom: MediaQuery.of(context).size.height * (destinationReady ? 0.62 : 0.49),
             child: SafeArea(
-              top: false,
-              minimum: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 720),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.all(Radius.circular(28)),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: Color(0x26000000),
-                      blurRadius: 28,
-                      offset: Offset(0, -8),
+              child: _roundMapButton(
+                icon: Icons.my_location_rounded,
+                onTap: locating ? null : () => detectMyLocation(),
+                tooltip: widget.lang == 'uz' ? 'Mening joylashuvim' : 'Моё местоположение',
+                large: true,
+              ),
+            ),
+          ),
+
+          DraggableScrollableSheet(
+            initialChildSize: destinationReady ? 0.60 : 0.46,
+            minChildSize: destinationReady ? 0.48 : 0.36,
+            maxChildSize: 0.88,
+            snap: true,
+            snapSizes: destinationReady
+                ? const <double>[0.48, 0.60, 0.88]
+                : const <double>[0.36, 0.46, 0.88],
+            builder: (context, scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: dark ? const Color(0xFF0C0E0F) : const Color(0xFFF9FAFA),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                  border: Border(
+                    top: BorderSide(
+                      color: dark ? const Color(0xFF292E30) : const Color(0x14000000),
                     ),
+                  ),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(color: Color(0x48000000), blurRadius: 32, offset: Offset(0, -10)),
                   ],
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD7D9DD),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
+                child: Column(
+                  children: <Widget>[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 43,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD1D5DB),
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      const SizedBox(height: 11),
-                      Row(
+                    ),
+                    const SizedBox(height: 6),
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
                         children: <Widget>[
-                          Expanded(
-                            child: Text(
-                              widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда едем?',
-                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.7,
-                                  ),
+                          Text(
+                            destinationReady
+                                ? (widget.lang == 'uz'
+                                    ? 'Yo‘nalishni tekshiring'
+                                    : 'Проверьте маршрут')
+                                : (widget.lang == 'uz'
+                                    ? 'Qayerga boramiz?'
+                                    : 'Куда поедем?'),
+                            style: const TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.7,
+                              height: 1.05,
                             ),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF2F3F5),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                const Icon(Icons.schedule_rounded, size: 16),
-                                const SizedBox(width: 5),
-                                Text(
-                                  widget.lang == 'uz' ? 'Hozir' : 'Сейчас',
-                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-                                ),
-                              ],
+                          const SizedBox(height: 5),
+                          Text(
+                            widget.lang == 'uz'
+                                ? 'Manzillarni buyurtmagacha istalgan payt o‘zgartirish mumkin'
+                                : 'Адреса можно изменить в любой момент до заказа',
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Both route rows have their own Map button directly next
-                      // to the address, matching the interaction the user expects.
-                      routeAddressRow(
-                        context,
-                        pickup: true,
-                        label: from?.address ?? (widget.lang == 'uz' ? 'Qayerdan' : 'Откуда'),
-                        onAddressTap: () async {
-                          final p = await selectAddress(tx(widget.lang, 'from'), from);
-                          if (p != null && mounted) {
-                            setState(() {
-                              from = p;
-                              cost = null;
-                              route = <ym.Point>[];
-                            });
-                            loadNearbyCars();
-                            scheduleEstimate();
-                          }
-                        },
-                        onMapTap: () => pickRoutePointOnMap(pickup: true),
-                      ),
-                      const SizedBox(height: 8),
-                      routeAddressRow(
-                        context,
-                        pickup: false,
-                        label: to?.address ?? (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
-                        onAddressTap: () async {
-                          final p = await selectAddress(tx(widget.lang, 'to'), to);
-                          if (p != null && mounted) {
-                            setState(() {
-                              to = p;
-                              cost = null;
-                              route = <ym.Point>[];
-                            });
-                            scheduleEstimate();
-                          }
-                        },
-                        onMapTap: () => pickRoutePointOnMap(pickup: false),
-                      ),
-
-                      if (estimating && from != null && to != null) ...<Widget>[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF3F4F6),
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Row(
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: <Widget>[
-                              const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                              Expanded(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: scheme.surfaceContainerHigh,
+                                    borderRadius: BorderRadius.circular(22),
+                                    border: Border.all(
+                                      color: dark
+                                          ? const Color(0xFF303638)
+                                          : scheme.outlineVariant.withValues(alpha: 0.75),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: <Widget>[
+                                      _addressLine(
+                                        pickup: true,
+                                        title: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
+                                        value: from?.address ??
+                                            (locating
+                                                ? (widget.lang == 'uz'
+                                                    ? 'Joylashuv aniqlanmoqda…'
+                                                    : 'Определяем местоположение…')
+                                                : (widget.lang == 'uz'
+                                                    ? 'Joriy joylashuv'
+                                                    : 'Текущее местоположение')),
+                                        onTap: () async {
+                                          final p = await selectAddress(tx(widget.lang, 'from'), from);
+                                          if (p != null && mounted) {
+                                            setState(() {
+                                              from = p;
+                                              pickupPinnedByUser = true;
+                                              cost = null;
+                                              route = <ym.Point>[];
+                                              routeDistanceKm = null;
+                                              routeMinutes = null;
+                                            });
+                                            await loadNearbyCars();
+                                            scheduleEstimate();
+                                          }
+                                        },
+                                        onMapTap: () => pickRoutePointOnMap(pickup: true),
+                                      ),
+                                      Divider(
+                                        height: 1,
+                                        indent: 45,
+                                        endIndent: 12,
+                                        color: scheme.outlineVariant.withValues(alpha: 0.65),
+                                      ),
+                                      _addressLine(
+                                        pickup: false,
+                                        title: selectedTariffKey == 'delivery'
+                                            ? (widget.lang == 'uz'
+                                                ? 'Qayerga — ixtiyoriy'
+                                                : 'Куда — необязательно')
+                                            : (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
+                                        value: to?.address ??
+                                            (selectedTariffKey == 'delivery'
+                                                ? (widget.lang == 'uz'
+                                                    ? 'Keyinroq ko‘rsatish mumkin'
+                                                    : 'Можно указать позже')
+                                                : (widget.lang == 'uz'
+                                                    ? 'Manzilni tanlang'
+                                                    : 'Выберите адрес')),
+                                        onTap: () async {
+                                          final p = await selectAddress(
+                                            tx(widget.lang, 'to'),
+                                            to ?? from,
+                                          );
+                                          if (p != null && mounted) {
+                                            setState(() {
+                                              to = p;
+                                              cost = null;
+                                              route = <ym.Point>[];
+                                              routeDistanceKm = null;
+                                              routeMinutes = null;
+                                            });
+                                            scheduleEstimate();
+                                          }
+                                        },
+                                        onMapTap: () => pickRoutePointOnMap(pickup: false),
+                                        onClear: to == null ? null : clearDestination,
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              const SizedBox(width: 12),
-                              Text(
-                                widget.lang == 'uz' ? 'Narx hisoblanmoqda…' : 'Рассчитываем стоимость…',
-                                style: const TextStyle(fontWeight: FontWeight.w800),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      if (tariffOptions.isNotEmpty && !estimating) ...<Widget>[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 112,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: tariffOptions.length,
-                            separatorBuilder: (_, __) => const SizedBox(width: 8),
-                            itemBuilder: (context, index) {
-                              final option = tariffOptions[index];
-                              final key = (option['key'] ?? '').toString();
-                              final available = option['available'] == true;
-                              final selected = available && key == selectedTariffKey;
-                              final price = (option['cost'] as num?)?.toDouble();
-                              final title = widget.lang == 'uz'
-                                  ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
-                                  : (option['nameRu'] ?? key).toString();
-
-                              return SizedBox(
-                                width: 112,
-                                child: Material(
-                                  color: selected
-                                      ? const Color(0xFF111827)
-                                      : (available ? const Color(0xFFF3F4F6) : const Color(0xFFF7F7F8)),
-                                  borderRadius: BorderRadius.circular(19),
+                              if (destinationReady) ...<Widget>[
+                                const SizedBox(width: 9),
+                                Material(
+                                  color: scheme.surfaceContainerHigh,
+                                  borderRadius: BorderRadius.circular(20),
                                   child: InkWell(
-                                    onTap: available ? () => selectTariff(key) : null,
-                                    borderRadius: BorderRadius.circular(19),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
+                                    onTap: swapRoutePoints,
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: SizedBox(
+                                      width: 48,
+                                      height: 133,
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisAlignment: MainAxisAlignment.center,
                                         children: <Widget>[
                                           Icon(
-                                            tariffIcon(key),
+                                            Icons.swap_vert_rounded,
+                                            color: scheme.onSurface,
                                             size: 25,
-                                            color: selected
-                                                ? Colors.white
-                                                : (available ? const Color(0xFF111827) : const Color(0xFFB7BBC2)),
                                           ),
-                                          const Spacer(),
+                                          const SizedBox(height: 4),
                                           Text(
-                                            title,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                            widget.lang == 'uz' ? 'Almash' : 'Поменять',
+                                            textAlign: TextAlign.center,
                                             style: TextStyle(
-                                              fontWeight: FontWeight.w900,
-                                              color: selected
-                                                  ? Colors.white
-                                                  : (available ? const Color(0xFF111827) : const Color(0xFF9CA3AF)),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            available && price != null
-                                                ? price.toStringAsFixed(0) + ' UZS'
-                                                : (widget.lang == 'uz' ? 'Mavjud emas' : 'Недоступен'),
-                                            maxLines: 1,
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: selected
-                                                  ? Colors.white70
-                                                  : (available ? const Color(0xFF6B7280) : const Color(0xFFB7BBC2)),
+                                              fontSize: 8.5,
+                                              color: scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w800,
                                             ),
                                           ),
                                         ],
@@ -2198,119 +4153,1226 @@ class _OrderScreenState extends State<OrderScreen> {
                                     ),
                                   ),
                                 ),
-                              );
-                            },
+                              ],
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 9),
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: _paymentChoice(
-                                context,
-                                value: 'cash',
-                                icon: Icons.payments_rounded,
-                                title: widget.lang == 'uz' ? 'Naqd' : 'Наличные',
-                                enabled: true,
+                          if (destinationReady) ...<Widget>[
+                            const SizedBox(height: 10),
+                            Container(
+                              height: 68,
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: scheme.outlineVariant.withValues(alpha: 0.55),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _paymentChoice(
-                                context,
-                                value: 'card',
-                                icon: Icons.credit_card_rounded,
-                                title: selectedCard == null ? 'ATMOS' : (selectedCard!['maskedPan'] ?? 'ATMOS').toString(),
-                                enabled: canUseCard,
-                                subtitle: !canUseCard
-                                    ? (widget.lang == 'uz' ? 'Ulanmoqda' : 'Подключается')
-                                    : (selectedCard == null
-                                        ? (widget.lang == 'uz' ? 'Karta qo‘shish' : 'Добавить карту')
-                                        : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта')),
-                                onTap: () async {
-                                  if (selectedCard == null) {
-                                    await openCardsManager();
-                                  } else {
-                                    setState(() => paymentMethod = 'card');
-                                  }
-                                },
+                              child: Row(
+                                children: <Widget>[
+                                  metric(
+                                    Icons.route_rounded,
+                                    distanceLabel,
+                                    widget.lang == 'uz' ? 'Masofa' : 'Расстояние',
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 34,
+                                    color: scheme.outlineVariant.withValues(alpha: 0.7),
+                                  ),
+                                  metric(
+                                    Icons.schedule_rounded,
+                                    minutesLabel,
+                                    widget.lang == 'uz' ? 'Vaqt' : 'В пути',
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 34,
+                                    color: scheme.outlineVariant.withValues(alpha: 0.7),
+                                  ),
+                                  metric(
+                                    Icons.navigation_rounded,
+                                    widget.lang == 'uz' ? 'Eng tez' : 'Быстрый',
+                                    widget.lang == 'uz' ? 'Yo‘nalish' : 'Маршрут',
+                                  ),
+                                ],
                               ),
                             ),
                           ],
-                        ),
-                      ],
+                          const SizedBox(height: 14),
 
-                      if (locationHint != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: InkWell(
-                            onTap: openLocationSettings,
-                            child: Row(
-                              children: <Widget>[
-                                const Icon(Icons.location_searching_rounded, size: 18),
-                                const SizedBox(width: 7),
-                                Expanded(
-                                  child: Text(
-                                    locationHint!,
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  widget.lang == 'uz' ? 'Tarifni tanlang' : 'Выберите тариф',
+                                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, letterSpacing: -0.4),
                                 ),
-                                const Icon(Icons.settings_outlined, size: 17),
-                              ],
+                              ),
+                              TextButton.icon(
+                                onPressed: _showTariffComparisonSheet,
+                                icon: const Icon(Icons.tune_rounded, size: 18),
+                                label: Text(widget.lang == 'uz' ? 'Taqqoslash' : 'Сравнить'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: yangiGreen,
+                                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+
+                          if (estimating && destinationReady)
+                            SizedBox(
+                              height: 214,
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    const CircularProgressIndicator(strokeWidth: 2.5),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      widget.lang == 'uz'
+                                          ? 'TaxiMaster narxlarni hisoblamoqda'
+                                          : 'TaxiMaster рассчитывает цены',
+                                      style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          else
+                            SizedBox(
+                              height: 214,
+                              child: ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(2, 0, 14, 0),
+                                clipBehavior: Clip.hardEdge,
+                                physics: const BouncingScrollPhysics(),
+                                scrollDirection: Axis.horizontal,
+                                itemCount: tariffs.length,
+                                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                                itemBuilder: (context, index) {
+                                  final option = tariffs[index];
+                                  final key = (option['key'] ?? '').toString();
+                                  final available = option['available'] == true;
+                                  final isSelected = available && key == selectedTariffKey;
+                                  final price = (option['cost'] as num?)?.toDouble();
+                                  final title = widget.lang == 'uz'
+                                      ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
+                                      : (option['nameRu'] ?? key).toString();
+                                  final saving =
+                                      (option['effectiveSavingPercentVsStart'] as num?)?.toDouble();
+
+                                  return SizedBox(
+                                    width: 148,
+                                    child: Opacity(
+                                      opacity: available ? 1 : 0.52,
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 180),
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? Color.alphaBlend(
+                                                  yangiLime.withValues(alpha: dark ? 0.12 : 0.09),
+                                                  scheme.surfaceContainerLow,
+                                                )
+                                              : scheme.surfaceContainerLow,
+                                          borderRadius: BorderRadius.circular(22),
+                                          border: Border.all(
+                                            color: isSelected
+                                                ? yangiLime
+                                                : scheme.outlineVariant.withValues(alpha: 0.85),
+                                            width: isSelected ? 2.2 : 1,
+                                          ),
+                                          boxShadow: isSelected
+                                              ? <BoxShadow>[
+                                                  BoxShadow(
+                                                    color: yangiLime.withValues(alpha: dark ? 0.16 : 0.11),
+                                                    blurRadius: 18,
+                                                    spreadRadius: 1,
+                                                  ),
+                                                ]
+                                              : null,
+                                        ),
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          borderRadius: BorderRadius.circular(22),
+                                          clipBehavior: Clip.antiAlias,
+                                          child: InkWell(
+                                            onTap: available ? () => selectTariff(key) : null,
+                                            child: Padding(
+                                              padding: const EdgeInsets.fromLTRB(11, 9, 11, 11),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: <Widget>[
+                                                  SizedBox(
+                                                    height: 66,
+                                                    child: Stack(
+                                                      children: <Widget>[
+                                                        Align(
+                                                          alignment: Alignment.center,
+                                                          child: Image.asset(
+                                                            tariffAsset(key),
+                                                            height: 58,
+                                                            fit: BoxFit.contain,
+                                                            filterQuality: FilterQuality.high,
+                                                            errorBuilder: (_, __, ___) => Icon(
+                                                              tariffIcon(key),
+                                                              size: 46,
+                                                              color: scheme.onSurfaceVariant,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        Positioned(
+                                                          top: 0,
+                                                          right: 0,
+                                                          child: Container(
+                                                            width: 24,
+                                                            height: 24,
+                                                            decoration: BoxDecoration(
+                                                              color: isSelected
+                                                                  ? yangiLime
+                                                                  : Colors.transparent,
+                                                              shape: BoxShape.circle,
+                                                              border: Border.all(
+                                                                color: isSelected
+                                                                    ? yangiLime
+                                                                    : scheme.outline,
+                                                                width: 1.5,
+                                                              ),
+                                                            ),
+                                                            child: isSelected
+                                                                ? const Icon(
+                                                                    Icons.check_rounded,
+                                                                    size: 16,
+                                                                    color: yangiGraphite,
+                                                                  )
+                                                                : null,
+                                                          ),
+                                                        ),
+                                                        if (saving != null && saving > 0)
+                                                          Positioned(
+                                                            left: 0,
+                                                            top: 0,
+                                                            child: Container(
+                                                              padding: const EdgeInsets.symmetric(
+                                                                horizontal: 6,
+                                                                vertical: 3,
+                                                              ),
+                                                              decoration: BoxDecoration(
+                                                                color: yangiLime,
+                                                                borderRadius: BorderRadius.circular(8),
+                                                              ),
+                                                              child: Text(
+                                                                '−' + saving.round().toString() + '%',
+                                                                style: const TextStyle(
+                                                                  color: yangiGraphite,
+                                                                  fontSize: 10,
+                                                                  fontWeight: FontWeight.w900,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    title,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontSize: 15,
+                                                      fontWeight: FontWeight.w900,
+                                                      letterSpacing: -0.2,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    children: <Widget>[
+                                                      Icon(
+                                                        Icons.person_rounded,
+                                                        size: 14,
+                                                        color: scheme.onSurfaceVariant,
+                                                      ),
+                                                      const SizedBox(width: 2),
+                                                      Text(
+                                                        tariffPassengers(key).toString(),
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: scheme.onSurfaceVariant,
+                                                          fontWeight: FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 9),
+                                                      Icon(
+                                                        key == 'delivery' || key == 'cargo'
+                                                            ? Icons.inventory_2_outlined
+                                                            : Icons.luggage_rounded,
+                                                        size: 13,
+                                                        color: scheme.onSurfaceVariant,
+                                                      ),
+                                                      const SizedBox(width: 2),
+                                                      Text(
+                                                        tariffBaggage(key).toString(),
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: scheme.onSurfaceVariant,
+                                                          fontWeight: FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 5),
+                                                  Text(
+                                                    tariffDescription(key),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      height: 1.15,
+                                                      fontSize: 10.5,
+                                                      color: scheme.onSurfaceVariant,
+                                                    ),
+                                                  ),
+                                                  const Spacer(),
+                                                  Text(
+                                                    !available
+                                                        ? (widget.lang == 'uz'
+                                                            ? 'Mavjud emas'
+                                                            : 'Недоступен')
+                                                        : price != null
+                                                            ? moneyLabel(price)
+                                                            : (widget.lang == 'uz'
+                                                                ? 'Yo‘nalishdan keyin'
+                                                                : 'После маршрута'),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.w900,
+                                                      color: available
+                                                          ? scheme.onSurface
+                                                          : scheme.onSurfaceVariant,
+                                                    ),
+                                                  ),
+                                                  if (destinationReady && routeMinutes != null)
+                                                    Text(
+                                                      '~ ' + routeMinutes!.toString() + ' мин',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: scheme.onSurfaceVariant,
+                                                        fontWeight: FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+
+                          const SizedBox(height: 10),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  widget.lang == 'uz' ? 'To‘lov usuli' : 'Способ оплаты',
+                                  style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => _showPaymentSheet(canUseCard),
+                                child: Text(
+                                  widget.lang == 'uz' ? 'O‘zgartirish' : 'Изменить',
+                                  style: const TextStyle(color: yangiGreen, fontWeight: FontWeight.w900),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Material(
+                            color: scheme.surfaceContainerLow,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide(
+                                color: scheme.outlineVariant.withValues(alpha: 0.65),
+                              ),
+                            ),
+                            child: InkWell(
+                              onTap: () => _showPaymentSheet(canUseCard),
+                              borderRadius: BorderRadius.circular(20),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                                child: Row(
+                                  children: <Widget>[
+                                    Container(
+                                      width: 44,
+                                      height: 34,
+                                      decoration: BoxDecoration(
+                                        gradient: paymentMethod == 'card'
+                                            ? const LinearGradient(
+                                                colors: <Color>[Color(0xFF07110A), Color(0xFF13A83E)],
+                                              )
+                                            : null,
+                                        color: paymentMethod == 'cash' ? const Color(0xFF65C83C) : null,
+                                        borderRadius: BorderRadius.circular(9),
+                                      ),
+                                      child: Icon(
+                                        paymentMethod == 'card' ? Icons.credit_card_rounded : Icons.payments_rounded,
+                                        color: Colors.white,
+                                        size: 22,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Text(
+                                            paymentMethod == 'card'
+                                                ? maskedCardLabel(selectedCard?['maskedPan'])
+                                                : (widget.lang == 'uz' ? 'Naqd' : 'Наличные'),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                          Text(
+                                            paymentMethod == 'card'
+                                                ? (widget.lang == 'uz'
+                                                    ? 'ATMOS orqali xavfsiz to‘lov'
+                                                    : 'Безопасная оплата через ATMOS')
+                                                : (widget.lang == 'uz'
+                                                    ? 'Haydovchiga safardan keyin'
+                                                    : 'Оплата водителю после поездки'),
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              color: scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      if (error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            error!,
-                            style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                          const SizedBox(height: 9),
+                          Material(
+                            color: scheme.surfaceContainerLow,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide(
+                                color: scheme.outlineVariant.withValues(alpha: 0.65),
+                              ),
+                            ),
+                            child: InkWell(
+                              onTap: _showRideOptionsSheet,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                child: Row(
+                                  children: <Widget>[
+                                    const Icon(Icons.chat_bubble_outline_rounded, size: 23),
+                                    const SizedBox(width: 11),
+                                    Expanded(
+                                      child: Text(
+                                        widget.lang == 'uz'
+                                            ? 'Haydovchiga izoh (ixtiyoriy)'
+                                            : 'Комментарий для водителя (необязательно)',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                    const Icon(Icons.add_rounded, size: 28),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          if (error != null) ...<Widget>[
+                            const SizedBox(height: 8),
+                            Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                          ],
+                        ],
+                      ),
+                    ),
 
-                      const SizedBox(height: 11),
-                      SizedBox(
-                        height: 54,
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        12,
+                        6,
+                        12,
+                        math.max(10, MediaQuery.of(context).padding.bottom),
+                      ),
+                      child: SizedBox(
+                        height: 62,
                         child: FilledButton(
-                          onPressed: busy || estimating || from == null || to == null
+                          onPressed: busy ||
+                                  estimating ||
+                                  !routeReadyForOrder ||
+                                  !activeTariffAvailable
                               ? null
-                              : (cost == null
-                                  ? () {
-                                      scheduleEstimate(delay: Duration.zero);
-                                    }
-                                  : createOrder),
+                              : (destinationOptional && !destinationReady
+                                  ? createOrder
+                                  : (cost == null
+                                      ? () => scheduleEstimate(delay: Duration.zero)
+                                      : createOrder)),
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF111827),
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor: const Color(0xFFE5E7EB),
-                            disabledForegroundColor: const Color(0xFF9CA3AF),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+                            backgroundColor: yangiLime,
+                            foregroundColor: yangiGraphite,
+                            disabledBackgroundColor: Color.alphaBlend(
+                              Theme.of(context).colorScheme.onSurface.withValues(
+                                    alpha: Theme.of(context).brightness == Brightness.dark ? 0.10 : 0.06,
+                                  ),
+                              Theme.of(context).colorScheme.surfaceContainerHigh,
+                            ),
+                            disabledForegroundColor: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant
+                                .withValues(alpha: 0.74),
+                            elevation: 0,
+                            shadowColor: yangiLime.withValues(alpha: 0.22),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                           ),
                           child: busy
                               ? const SizedBox.square(
                                   dimension: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(strokeWidth: 2.2),
                                 )
-                              : Text(
-                                  estimating
-                                      ? (widget.lang == 'uz' ? 'Narx hisoblanmoqda…' : 'Считаем стоимость…')
-                                      : cost == null
-                                          ? (widget.lang == 'uz' ? 'Qayta hisoblash' : 'Повторить расчёт')
-                                          : (widget.lang == 'uz'
-                                              ? 'Buyurtma berish • ' + cost!.toStringAsFixed(0) + ' UZS'
-                                              : 'Заказать • ' + cost!.toStringAsFixed(0) + ' UZS'),
-                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                              : Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      flex: 5,
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          orderButtonLabel(),
+                                          maxLines: 1,
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: -0.25,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    if (selectedPrice != null) ...<Widget>[
+                                      Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: <Widget>[
+                                          Text(
+                                            moneyLabel(selectedPrice),
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${routeMinutes ?? '—'} мин • ${routeDistanceKm?.toStringAsFixed(1) ?? '—'} км',
+                                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Container(width: 1, height: 34, color: const Color(0x55000000)),
+                                      const SizedBox(width: 10),
+                                    ],
+                                    const Icon(Icons.arrow_forward_rounded, size: 28),
+                                  ],
                                 ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _roundMapButton({
+    required IconData icon,
+    required VoidCallback? onTap,
+    required String tooltip,
+    bool large = false,
+  }) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final fill = dark
+        ? const Color(0xE6111314)
+        : Colors.white.withValues(alpha: 0.96);
+    return Material(
+      color: fill,
+      elevation: dark ? 0 : 5,
+      shadowColor: const Color(0x30000000),
+      shape: CircleBorder(
+        side: BorderSide(
+          color: dark ? const Color(0xFF303638) : const Color(0x16000000),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Tooltip(
+          message: tooltip,
+          child: SizedBox(
+            width: large ? 54 : 46,
+            height: large ? 54 : 46,
+            child: Icon(
+              icon,
+              size: large ? 26 : 22,
+              color: dark ? Colors.white : yangiGraphite,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _addressLine({
+    required bool pickup,
+    required String title,
+    required String value,
+    required VoidCallback onTap,
+    required VoidCallback onMapTap,
+    VoidCallback? onClear,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 66,
+      child: Row(
+        children: <Widget>[
+          const SizedBox(width: 14),
+          Container(
+            width: 17,
+            height: 17,
+            decoration: BoxDecoration(
+              color: pickup ? scheme.surface : yangiGraphite,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: pickup ? yangiGreen : scheme.onSurface,
+                width: 3.5,
+              ),
+              boxShadow: pickup
+                  ? <BoxShadow>[
+                      BoxShadow(
+                        color: yangiLime.withValues(alpha: 0.28),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.15,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
+          if (onClear != null)
+            IconButton(
+              onPressed: onClear,
+              tooltip: widget.lang == 'uz' ? 'Tozalash' : 'Очистить',
+              icon: Icon(Icons.close_rounded, size: 20, color: scheme.onSurfaceVariant),
+            )
+          else
+            IconButton(
+              onPressed: onTap,
+              tooltip: widget.lang == 'uz' ? 'Tahrirlash' : 'Изменить',
+              icon: Icon(Icons.edit_rounded, size: 18, color: scheme.onSurfaceVariant),
+            ),
+          IconButton(
+            onPressed: onMapTap,
+            tooltip: widget.lang == 'uz' ? 'Xaritada tanlash' : 'Выбрать на карте',
+            icon: Icon(Icons.map_outlined, size: 20, color: scheme.onSurface),
+          ),
+          const SizedBox(width: 4),
         ],
+      ),
+    );
+  }
+
+  Widget _serviceModeChip({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: selected ? const Color(0xFF17191C) : Theme.of(context).colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            child: Row(
+              children: <Widget>[
+                Icon(
+                  icon,
+                  size: 17,
+                  color: selected ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: selected ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _actionRow({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 19),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                    Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF777B82))),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showTariffComparisonSheet() async {
+    final items = visibleTariffs;
+    if (items.isEmpty) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      builder: (sheetContext) {
+        final scheme = Theme.of(sheetContext).colorScheme;
+        return FractionallySizedBox(
+          heightFactor: 0.82,
+          child: Column(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 2, 18, 12),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        widget.lang == 'uz' ? 'Tariflarni solishtirish' : 'Сравнение тарифов',
+                        style: const TextStyle(
+                          fontSize: 23,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.45,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 9),
+                  itemBuilder: (context, index) {
+                    final option = items[index];
+                    final key = (option['key'] ?? '').toString();
+                    final available = option['available'] == true;
+                    final selected = available && key == selectedTariffKey;
+                    final price = (option['cost'] as num?)?.toDouble();
+                    final title = widget.lang == 'uz'
+                        ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
+                        : (option['nameRu'] ?? key).toString();
+
+                    return Opacity(
+                      opacity: available ? 1 : 0.55,
+                      child: Material(
+                        color: selected
+                            ? Color.alphaBlend(
+                                yangiLime.withValues(alpha: 0.10),
+                                scheme.surfaceContainerHigh,
+                              )
+                            : scheme.surfaceContainerLow,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          side: BorderSide(
+                            color: selected ? yangiLime : scheme.outlineVariant,
+                            width: selected ? 2 : 1,
+                          ),
+                        ),
+                        child: InkWell(
+                          onTap: available
+                              ? () {
+                                  selectTariff(key);
+                                  Navigator.pop(sheetContext);
+                                }
+                              : null,
+                          borderRadius: BorderRadius.circular(22),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                            child: Row(
+                              children: <Widget>[
+                                SizedBox(
+                                  width: 100,
+                                  height: 68,
+                                  child: _TariffVehicleArt(
+                                    kind: key,
+                                    selected: selected,
+                                    available: available,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Row(
+                                        children: <Widget>[
+                                          Expanded(
+                                            child: Text(
+                                              title,
+                                              style: const TextStyle(
+                                                fontSize: 17,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                          if (selected)
+                                            const Icon(
+                                              Icons.check_circle_rounded,
+                                              color: yangiLime,
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        tariffDescription(key),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                          fontSize: 11.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: <Widget>[
+                                          Icon(
+                                            Icons.person_rounded,
+                                            size: 15,
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            tariffPassengers(key).toString(),
+                                            style: TextStyle(
+                                              color: scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Icon(
+                                            Icons.luggage_rounded,
+                                            size: 15,
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            tariffBaggage(key).toString(),
+                                            style: TextStyle(
+                                              color: scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          Text(
+                                            !available
+                                                ? (widget.lang == 'uz' ? 'Mavjud emas' : 'Недоступен')
+                                                : price == null
+                                                    ? (widget.lang == 'uz' ? 'Hisoblanadi' : 'Рассчитаем')
+                                                    : moneyLabel(price),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showPaymentSheet(bool canUseCard) async {
+    await loadCards();
+    if (!mounted) return;
+
+    String draftMethod = paymentMethod;
+    int draftCardId = selectedCardId;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) {
+        final sheetTheme = Theme.of(sheetContext);
+        final scheme = sheetTheme.colorScheme;
+        final selectedFill = Color.alphaBlend(
+          yangiLime.withValues(alpha: sheetTheme.brightness == Brightness.dark ? 0.18 : 0.12),
+          scheme.surfaceContainerHigh,
+        );
+
+        Widget selectIcon(bool selected) => AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: selected ? yangiLime : Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected ? yangiLime : scheme.outlineVariant,
+                  width: 2,
+                ),
+              ),
+              child: selected
+                  ? const Icon(Icons.check_rounded, size: 20, color: yangiGraphite)
+                  : null,
+            );
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) => SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              14,
+              0,
+              14,
+              math.max(18, MediaQuery.paddingOf(context).bottom + 10),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Center(
+                  child: Text(
+                    widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Container(
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.65)),
+                  ),
+                  child: Column(
+                    children: <Widget>[
+                      ...cards.asMap().entries.map((entry) {
+                        final card = entry.value;
+                        final id = (card['cardId'] as num?)?.toInt() ?? 0;
+                        final selected = draftMethod == 'card' && draftCardId == id;
+                        return Column(
+                          children: <Widget>[
+                            Material(
+                              color: selected ? selectedFill : Colors.transparent,
+                              borderRadius: BorderRadius.circular(18),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                leading: Container(
+                                  width: 46,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: <Color>[Color(0xFF07110A), Color(0xFF19A94B)],
+                                    ),
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                  child: const Icon(Icons.credit_card_rounded, color: Colors.white, size: 23),
+                                ),
+                                title: Text(
+                                  maskedCardLabel(card['maskedPan']),
+                                  style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                                ),
+                                subtitle: Text(
+                                  widget.lang == 'uz' ? 'ATMOS karta' : 'Карта ATMOS',
+                                  style: TextStyle(color: scheme.onSurfaceVariant),
+                                ),
+                                trailing: selectIcon(selected),
+                                onTap: () {
+                                  setSheetState(() {
+                                    draftCardId = id;
+                                    draftMethod = 'card';
+                                  });
+                                },
+                              ),
+                            ),
+                            if (entry.key != cards.length - 1)
+                              Divider(height: 1, indent: 14, endIndent: 14, color: scheme.outlineVariant),
+                          ],
+                        );
+                      }),
+                      if (cards.isNotEmpty)
+                        Divider(height: 1, indent: 14, endIndent: 14, color: scheme.outlineVariant),
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        leading: Container(
+                          width: 46,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            border: Border.all(color: scheme.outline),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Icon(Icons.add_rounded, color: scheme.onSurface),
+                        ),
+                        title: Text(
+                          widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
+                          style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                        ),
+                        trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                        onTap: !canUseCard
+                            ? null
+                            : () async {
+                                Navigator.pop(sheetContext);
+                                await openCardsManager();
+                              },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  widget.lang == 'uz' ? 'Boshqa to‘lov usullari' : 'Другие способы оплаты',
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Material(
+                  color: draftMethod == 'cash' ? selectedFill : scheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(22),
+                  child: InkWell(
+                    onTap: () => setSheetState(() => draftMethod = 'cash'),
+                    borderRadius: BorderRadius.circular(22),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 46,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF5DD63F),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.payments_rounded, color: Colors.white, size: 25),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              widget.lang == 'uz' ? 'Naqd' : 'Наличные',
+                              style: TextStyle(color: scheme.onSurface, fontSize: 17, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                          selectIcon(draftMethod == 'cash'),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 56,
+                  child: FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        paymentMethod = draftMethod;
+                        if (draftMethod == 'card') selectedCardId = draftCardId;
+                      });
+                      Navigator.pop(sheetContext);
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: yangiLime,
+                      foregroundColor: yangiGraphite,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    ),
+                    child: Text(
+                      widget.lang == 'uz' ? 'Tayyor' : 'Готово',
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showRideOptionsSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                widget.lang == 'uz' ? 'Safar sozlamalari' : 'Пожелания к поездке',
+                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 10),
+              ListTile(
+                leading: const Icon(Icons.chat_bubble_outline_rounded),
+                title: Text(widget.lang == 'uz' ? 'Haydovchiga izoh' : 'Комментарий водителю'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_add_alt_1_rounded),
+                title: Text(widget.lang == 'uz' ? 'Boshqa odam uchun' : 'Заказ другому человеку'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.pets_rounded),
+                title: Text(widget.lang == 'uz' ? 'Uy hayvoni bilan' : 'С питомцем'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.child_care_rounded),
+                title: Text(widget.lang == 'uz' ? 'Bolalar o‘rindig‘i' : 'Детское кресло'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2497,6 +5559,7 @@ class _AddressSheetState extends State<AddressSheet> {
   }
 
   void change(String value) {
+    if (mounted) setState(() {});
     timer?.cancel();
     timer = Timer(const Duration(milliseconds: 280), () => search(value));
   }
@@ -2613,61 +5676,227 @@ class _AddressSheetState extends State<AddressSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: MediaQuery.viewInsetsOf(context).bottom + 16),
-          child: SizedBox(
-            height: MediaQuery.sizeOf(context).height * .72,
-            child: Column(
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(child: Text(widget.title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700))),
-                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
-                  ],
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 14,
+          right: 14,
+          top: 8,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 14,
+        ),
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * .78,
+          child: Column(
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 5,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: scheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                TextField(
-                  controller: c,
-                  autofocus: true,
-                  onChanged: change,
-                  decoration: InputDecoration(
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.search),
-                    labelText: tx(widget.lang, 'address'),
-                    helperText: yandexMapKitApiKey.isNotEmpty ? 'Поиск Яндекс' : 'Поиск TaxiMaster',
+              ),
+              Row(
+                children: <Widget>[
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: yangiLime,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.search_rounded, color: yangiGraphite),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.45,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 13),
+              TextField(
+                controller: c,
+                autofocus: true,
+                onChanged: change,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  hintText: widget.lang == 'uz'
+                      ? 'Ko‘cha, uy yoki joy nomi'
+                      : 'Улица, дом или название места',
+                  labelText: tx(widget.lang, 'address'),
+                  suffixIcon: c.text.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            c.clear();
+                            change('');
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 9),
+              Material(
+                color: scheme.surfaceContainerLow,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: BorderSide(
+                    color: scheme.outlineVariant.withValues(alpha: 0.65),
                   ),
                 ),
+                child: InkWell(
+                  onTap: pickOnMap,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+                    child: Row(
+                      children: <Widget>[
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: yangiLime.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.map_rounded, color: yangiGreen),
+                        ),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                widget.lang == 'uz' ? 'Xaritada tanlash' : 'Выбрать на карте',
+                                style: const TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                              Text(
+                                widget.lang == 'uz'
+                                    ? 'Nuqtani aniq belgilang'
+                                    : 'Укажите точную точку подачи или назначения',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right_rounded),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (busy) ...<Widget>[
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: pickOnMap,
-                    icon: const Icon(Icons.my_location),
-                    label: Text(widget.lang == 'uz' ? 'Xaritada ko‘rsatish' : 'Указать на карте'),
-                  ),
-                ),
-                if (busy) const LinearProgressIndicator(),
-                if (error != null) Padding(padding: const EdgeInsets.all(8), child: Text(error!)),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: results.length,
-                    itemBuilder: (_, i) {
-                      final item = results[i];
-                      return ListTile(
-                        leading: const Icon(Icons.location_on_outlined),
-                        title: Text(item.address),
-                        subtitle: const Text('TaxiMaster / Яндекс'),
-                        onTap: () => Navigator.pop(context, item),
-                      );
-                    },
-                  ),
-                ),
+                const LinearProgressIndicator(minHeight: 2),
               ],
-            ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 10, 8, 2),
+                  child: Text(
+                    error!,
+                    style: TextStyle(color: scheme.error, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              const SizedBox(height: 9),
+              Expanded(
+                child: results.isEmpty && !busy && error == null
+                    ? Center(
+                        child: Text(
+                          widget.lang == 'uz'
+                              ? 'Manzilni yozishni boshlang'
+                              : 'Начните вводить адрес',
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: results.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 6),
+                        itemBuilder: (_, i) {
+                          final item = results[i];
+                          return Material(
+                            color: scheme.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(17),
+                            child: InkWell(
+                              onTap: () => Navigator.pop(context, item),
+                              borderRadius: BorderRadius.circular(17),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                child: Row(
+                                  children: <Widget>[
+                                    Container(
+                                      width: 38,
+                                      height: 38,
+                                      decoration: BoxDecoration(
+                                        color: scheme.surfaceContainerHigh,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.location_on_outlined, size: 20),
+                                    ),
+                                    const SizedBox(width: 11),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Text(
+                                            item.address,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'TaxiMaster / Яндекс',
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              color: scheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.north_west_rounded,
+                                      size: 18,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
+  }
+
 }
 
 class MapPointPickerScreen extends StatefulWidget {
@@ -2806,6 +6035,10 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
             ym_widget.YandexMap(
               onMapCreated: (window) {
                 mapWindow = window;
+                _applyYangiMapAppearance(
+                  window.map,
+                  Theme.of(context).brightness == Brightness.dark,
+                );
                 window.map.move(
                   ym.CameraPosition(initial, zoom: 16, azimuth: 0, tilt: 0),
                 );
@@ -2815,12 +6048,7 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
             child: Center(
               child: Transform.translate(
                 offset: const Offset(0, -34),
-                child: Image.asset(
-                  'assets/pin.png',
-                  width: 68,
-                  height: 68,
-                  filterQuality: FilterQuality.high,
-                ),
+                child: const _MapPinMarker(pickup: false),
               ),
             ),
           ),
@@ -2899,10 +6127,22 @@ class _RideScreenState extends State<RideScreen> {
   ym.Point? driver;
   bool loading = true;
   String? error;
+  int? feedbackPromptedOrderId;
+  List<ym.Point> roadRoute = <ym.Point>[];
+  yd.DrivingRouter? drivingRouter;
+  yd.DrivingSession? drivingSession;
+  bool routeRequestInFlight = false;
+  ym.Point? lastRouteStart;
+  ym.Point? lastRouteEnd;
 
   @override
   void initState() {
     super.initState();
+    if (yandexMapKitApiKey.isNotEmpty) {
+      drivingRouter = yd.DirectionsFactory.instance.createDrivingRouter(
+        yd.DrivingRouterType.Combined,
+      );
+    }
     refresh();
     timer = Timer.periodic(const Duration(seconds: 4), (_) => refresh());
   }
@@ -2916,7 +6156,124 @@ class _RideScreenState extends State<RideScreen> {
   @override
   void dispose() {
     timer?.cancel();
+    drivingSession?.cancel();
     super.dispose();
+  }
+
+  double _routeDistanceKm(ym.Point a, ym.Point b) {
+    const earthKm = 6371.0;
+    final lat1 = a.latitude * math.pi / 180;
+    final lat2 = b.latitude * math.pi / 180;
+    final dLat = (b.latitude - a.latitude) * math.pi / 180;
+    final dLon = (b.longitude - a.longitude) * math.pi / 180;
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1) * math.cos(lat2) *
+            math.sin(dLon / 2) * math.sin(dLon / 2);
+    return 2 * earthKm * math.asin(math.sqrt(h.clamp(0.0, 1.0)));
+  }
+
+  bool _sameRoadEndpoints(ym.Point start, ym.Point end) {
+    final lastStart = lastRouteStart;
+    final lastEnd = lastRouteEnd;
+    if (lastStart == null || lastEnd == null) return false;
+    return _routeDistanceKm(lastStart, start) < 0.08 &&
+        _routeDistanceKm(lastEnd, end) < 0.03;
+  }
+
+  Future<List<ym.Point>> _requestRoadRoute(
+    ym.Point start,
+    ym.Point end,
+  ) async {
+    final router = drivingRouter;
+    if (router == null) return <ym.Point>[];
+    final completer = Completer<List<ym.Point>>();
+    drivingSession?.cancel();
+    final listener = yd.DrivingSessionRouteListener(
+      onDrivingRoutes: (routes) {
+        if (completer.isCompleted) return;
+        completer.complete(
+          routes.isEmpty ? <ym.Point>[] : routes.first.geometry.points,
+        );
+      },
+      onDrivingRoutesError: (_) {
+        if (!completer.isCompleted) completer.complete(<ym.Point>[]);
+      },
+    );
+    drivingSession = router.requestRoutes(
+      const yd.DrivingOptions(routesCount: 1),
+      const yd.DrivingVehicleOptions(),
+      listener,
+      points: <ym.RequestPoint>[
+        ym.RequestPoint(
+          start,
+          ym.RequestPointType.Waypoint,
+          null,
+          null,
+          null,
+        ),
+        ym.RequestPoint(
+          end,
+          ym.RequestPointType.Waypoint,
+          null,
+          null,
+          null,
+        ),
+      ],
+    );
+    return completer.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        drivingSession?.cancel();
+        return <ym.Point>[];
+      },
+    );
+  }
+
+  Future<void> _refreshRoadRoute(
+    Map<String, dynamic> state,
+    ym.Point? driverPoint,
+  ) async {
+    if (routeRequestInFlight || !mounted) return;
+    final stateKind = (state['state_kind'] ?? '').toString();
+    final pickup = point(state['source_lat'], state['source_lon']);
+    final destination = point(
+      state['destination_lat'],
+      state['destination_lon'],
+    );
+
+    ym.Point? start;
+    ym.Point? end;
+    if (stateKind == 'driver_assigned' || stateKind == 'car_at_place') {
+      start = driverPoint;
+      end = pickup;
+    } else if (stateKind == 'client_inside') {
+      start = driverPoint ?? pickup;
+      end = destination;
+    } else if (stateKind == 'new_order') {
+      start = pickup;
+      end = destination;
+    }
+
+    if (start == null || end == null) {
+      if (roadRoute.isNotEmpty && mounted) {
+        setState(() => roadRoute = <ym.Point>[]);
+      }
+      return;
+    }
+    if (roadRoute.length > 1 && _sameRoadEndpoints(start, end)) return;
+
+    routeRequestInFlight = true;
+    try {
+      final points = await _requestRoadRoute(start, end);
+      if (!mounted) return;
+      setState(() {
+        roadRoute = points.length > 1 ? points : <ym.Point>[];
+        lastRouteStart = start;
+        lastRouteEnd = end;
+      });
+    } finally {
+      routeRequestInFlight = false;
+    }
   }
 
   Future<void> refresh() async {
@@ -2941,12 +6298,33 @@ class _RideScreenState extends State<RideScreen> {
       if (loc is Map && loc['lat'] != null && loc['lon'] != null) {
         d = ym.Point(latitude: (loc['lat'] as num).toDouble(), longitude: (loc['lon'] as num).toDouble());
       }
-      if (mounted) setState(() {
-        order = state;
-        driver = d;
-        loading = false;
-        error = null;
-      });
+      final stateKind = (state['state_kind'] ?? '').toString();
+      final resolvedOrderId = (state['order_id'] as num?)?.toInt() ?? id;
+      final shouldAskRating =
+          stateKind == 'finished' && feedbackPromptedOrderId != resolvedOrderId;
+      if (shouldAskRating) feedbackPromptedOrderId = resolvedOrderId;
+      if (mounted) {
+        setState(() {
+          order = state;
+          driver = d;
+          loading = false;
+          error = null;
+        });
+        unawaited(_refreshRoadRoute(state, d));
+        if (shouldAskRating) {
+          final driverName = (state['driver_name'] ?? '').toString();
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) return;
+            await showDriverRatingDialog(
+              context,
+              widget.api,
+              widget.lang,
+              resolvedOrderId,
+              driverName: driverName,
+            );
+          });
+        }
+      }
     } catch (e) {
       if (mounted) setState(() {
         loading = false;
@@ -3078,81 +6456,1139 @@ class _RideScreenState extends State<RideScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+
+    if (loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     if (order == null) {
       return Scaffold(
-        appBar: AppBar(
-          leading: IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
-          title: Text(tx(widget.lang, 'ride')),
+        body: SafeArea(
+          child: Column(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Row(
+                  children: <Widget>[
+                    IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
+                    const Spacer(),
+                    const YangiWordmark(compact: true),
+                    const Spacer(),
+                    const SizedBox(width: 48),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Icon(Icons.local_taxi_outlined, size: 64, color: Theme.of(context).colorScheme.outline),
+              const SizedBox(height: 14),
+              Text(
+                widget.lang == 'uz' ? 'Faol safar yo‘q' : 'Нет активной поездки',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                widget.lang == 'uz' ? 'Yangi buyurtma bering' : 'Создайте новый заказ на главном экране',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+              const Spacer(),
+            ],
+          ),
         ),
-        body: Center(child: Text(tx(widget.lang, 'empty'))),
       );
     }
+
     final o = order!;
     final state = (o['state_kind'] ?? '').toString();
     final from = point(o['source_lat'], o['source_lon']);
     final to = point(o['destination_lat'], o['destination_lon']);
     final center = driver ?? from ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
-    final car = <String>[o['car_mark']?.toString() ?? '', o['car_model']?.toString() ?? ''].where((x) => x.isNotEmpty).join(' ');
+    final car = <String>[
+      o['car_mark']?.toString() ?? '',
+      o['car_model']?.toString() ?? '',
+    ].where((x) => x.isNotEmpty).join(' ');
     final number = (o['car_number'] ?? '').toString();
+    final driverName = (o['driver_name'] ?? '').toString().trim();
+    final driverPhone = (o['driver_phone'] ?? o['phone'] ?? '').toString().trim();
+    final rating = (o['driver_rating'] ?? o['rating'] ?? '').toString();
+    final tariffKey = (o['tariff_key'] ?? 'start').toString();
+    final cost = o['total_cost'];
+    final source = (o['source'] ?? '').toString();
+    final destination = (o['destination'] ?? '').toString();
+
+    final searching = state == 'new_order';
+    final driverAssigned = state == 'driver_assigned';
+    final atPlace = state == 'car_at_place';
+    final activeRide = state == 'client_inside';
+    final finished = state == 'finished';
+    final aborted = state == 'aborted';
+
+    String tariffTitle(String key) {
+      if (widget.lang == 'uz') {
+        return switch (key) {
+          'together' => 'Birga',
+          'comfort' => 'Komfort',
+          'business' => 'Biznes',
+          'delivery' => 'Yetkazib berish',
+          'cargo' => 'Yuk tashish',
+          _ => 'Start',
+        };
+      }
+      return switch (key) {
+        'together' => 'Вместе',
+        'comfort' => 'Комфорт',
+        'business' => 'Бизнес',
+        'delivery' => 'Доставка',
+        'cargo' => 'Грузовой',
+        _ => 'Старт',
+      };
+    }
+
+    String mainTitle() {
+      if (searching) return widget.lang == 'uz' ? 'Eng yaqin haydovchini qidiryapmiz' : 'Ищем ближайшего водителя';
+      if (driverAssigned) return widget.lang == 'uz' ? 'Haydovchi siz tomon yo‘lda' : 'Водитель уже в пути';
+      if (atPlace) return widget.lang == 'uz' ? 'Mashina yetib keldi' : 'Машина уже на месте';
+      if (activeRide) return widget.lang == 'uz' ? 'Yo‘lda' : 'В пути';
+      if (finished) return widget.lang == 'uz' ? 'Safar tugadi' : 'Поездка завершена';
+      if (aborted) return widget.lang == 'uz' ? 'Buyurtma bekor qilindi' : 'Заказ отменён';
+      return stateLabel(state);
+    }
+
+    final etaRaw = o['eta_minutes'] ?? o['driver_eta_min'] ?? o['arrival_minutes'];
+    final eta = etaRaw == null ? '' : etaRaw.toString();
+    final distanceRaw = o['distance_km'] ?? o['driver_distance_km'] ?? o['remaining_distance_km'];
+    final distance = distanceRaw == null ? '' : distanceRaw.toString();
+
+    Future<void> callDriver() async {
+      if (driverPhone.isEmpty) return;
+      await launchUrl(Uri(scheme: 'tel', path: driverPhone));
+    }
+
+    Future<void> messageDriver() async {
+      if (driverPhone.isEmpty) return;
+      await launchUrl(Uri(scheme: 'sms', path: driverPhone));
+    }
+
+    Future<void> shareTrip() async {
+      final text = <String>[
+        'Yangi Taxi',
+        if (driverName.isNotEmpty) (widget.lang == 'uz' ? 'Haydovchi: ' : 'Водитель: ') + driverName,
+        if (car.isNotEmpty) car + (number.isEmpty ? '' : ' • ' + number),
+        if (destination.isNotEmpty) (widget.lang == 'uz' ? 'Manzil: ' : 'Куда: ') + destination,
+      ].join('\n');
+      await Clipboard.setData(ClipboardData(text: text));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.lang == 'uz'
+                ? 'Safar ma’lumotlari nusxalandi'
+                : 'Данные поездки скопированы — можно отправить близким',
+          ),
+        ),
+      );
+    }
+
+    Future<void> showSafety() async {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  widget.lang == 'uz' ? 'Safar xavfsizligi' : 'Безопасность поездки',
+                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  leading: const Icon(Icons.share_rounded),
+                  title: Text(widget.lang == 'uz' ? 'Safarni ulashish' : 'Поделиться поездкой'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    shareTrip();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.emergency_rounded),
+                  title: Text(widget.lang == 'uz' ? '112 ga qo‘ng‘iroq qilish' : 'Позвонить 112'),
+                  subtitle: Text(
+                    widget.lang == 'uz'
+                        ? 'Favqulodda vaziyatlar uchun'
+                        : 'Только для экстренных ситуаций',
+                  ),
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    await launchUrl(Uri(scheme: 'tel', path: '112'));
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Future<void> showHelp() async {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  widget.lang == 'uz' ? 'Safar bo‘yicha yordam' : 'Помощь по поездке',
+                  style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  leading: const Icon(Icons.refresh_rounded),
+                  title: Text(widget.lang == 'uz' ? 'Safarni yangilash' : 'Обновить поездку'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    refresh();
+                  },
+                ),
+                if (driverPhone.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(Icons.call_rounded),
+                    title: Text(widget.lang == 'uz' ? 'Haydovchiga qo‘ng‘iroq' : 'Позвонить водителю'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      callDriver();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget metric(IconData icon, String value, String label) {
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.6),
+            ),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(icon, size: 21, color: scheme.onSurface),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      value.isEmpty ? '—' : value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget roundAction(
+      IconData icon,
+      String tooltip,
+      VoidCallback? onTap,
+    ) {
+      return Tooltip(
+        message: tooltip,
+        child: Material(
+          color: scheme.surfaceContainerHigh,
+          shape: CircleBorder(
+            side: BorderSide(
+              color: scheme.outlineVariant.withValues(alpha: 0.75),
+            ),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const CircleBorder(),
+            child: SizedBox(
+              width: 52,
+              height: 52,
+              child: Icon(icon, size: 23),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget tripAction(
+      IconData icon,
+      String label, {
+      VoidCallback? onTap,
+    }) {
+      return Expanded(
+        child: Material(
+          color: scheme.surfaceContainerLow,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(
+              color: scheme.outlineVariant.withValues(alpha: 0.65),
+            ),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(icon, size: 24),
+                  const SizedBox(height: 6),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
-        title: Text(stateLabel(state), style: const TextStyle(fontWeight: FontWeight.w800)),
-      ),
-      body: Column(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      body: Stack(
         children: <Widget>[
-          Expanded(
-            flex: 3,
+          Positioned.fill(
             child: TaxiYandexMap(
               center: center,
               from: from,
               to: to,
               driver: driver,
-              zoom: 14,
+              route: roadRoute,
+              vehicleKind: tariffKey,
+              zoom: activeRide ? 13 : 14,
             ),
           ),
-          Expanded(
-            flex: 2,
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: <Widget>[
-                Text(stateLabel(state), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-                if (car.isNotEmpty || number.isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 8),
-                  Text((car + ' • ' + number).trim(), style: Theme.of(context).textTheme.titleMedium),
-                ],
-                const SizedBox(height: 14),
-                Text('● ' + (o['source'] ?? '').toString()),
-                const SizedBox(height: 7),
-                Text('● ' + (o['destination'] ?? '').toString()),
-                if (o['total_cost'] != null) ...<Widget>[
-                  const Divider(height: 24),
-                  Text(tx(widget.lang, 'price') + ': ' + o['total_cost'].toString() + ' UZS'),
-                ],
-                if (error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!)),
-                const SizedBox(height: 12),
-                if (state != 'finished' && state != 'aborted' && state != 'client_inside')
-                  OutlinedButton.icon(onPressed: cancel, icon: const Icon(Icons.close), label: Text(tx(widget.lang, 'cancel'))),
-                if (state == 'finished')
-                  FilledButton.icon(
-                    onPressed: () => showDriverRatingDialog(
-                      context,
-                      widget.api,
-                      widget.lang,
-                      (o['order_id'] as num).toInt(),
-                      driverName: (o['driver_name'] ?? '').toString(),
+          Positioned(
+            top: 10,
+            left: 12,
+            right: 12,
+            child: SafeArea(
+              bottom: false,
+              child: Row(
+                children: <Widget>[
+                  Material(
+                    color: dark
+                        ? const Color(0xE6111314)
+                        : Colors.white.withValues(alpha: 0.96),
+                    elevation: dark ? 0 : 5,
+                    shape: CircleBorder(
+                      side: BorderSide(
+                        color: dark ? const Color(0xFF303638) : const Color(0x16000000),
+                      ),
                     ),
-                    icon: const Icon(Icons.star_outline),
-                    label: Text(widget.lang == 'uz' ? 'Haydovchini baholash' : 'Оценить водителя'),
+                    child: IconButton(
+                      onPressed: widget.onMenu,
+                      tooltip: widget.lang == 'uz' ? 'Menyu' : 'Меню',
+                      icon: const Icon(Icons.menu_rounded),
+                    ),
                   ),
-              ],
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xF20A0C0D),
+                      borderRadius: BorderRadius.circular(21),
+                      border: Border.all(color: const Color(0xFF2A2F30)),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(
+                          color: Color(0x42000000),
+                          blurRadius: 20,
+                          offset: Offset(0, 7),
+                        ),
+                      ],
+                    ),
+                    child: const YangiWordmark(
+                      compact: true,
+                      onDarkSurface: true,
+                    ),
+                  ),
+                  const Spacer(),
+                  Material(
+                    color: dark
+                        ? const Color(0xE6111314)
+                        : Colors.white.withValues(alpha: 0.96),
+                    elevation: dark ? 0 : 5,
+                    shape: CircleBorder(
+                      side: BorderSide(
+                        color: dark ? const Color(0xFF303638) : const Color(0x16000000),
+                      ),
+                    ),
+                    child: IconButton(
+                      onPressed: refresh,
+                      icon: const Icon(Icons.my_location_rounded),
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ),
+          if (searching)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    width: 190,
+                    height: 190,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: <Color>[
+                          yangiLime.withValues(alpha: 0.32),
+                          yangiLime.withValues(alpha: 0.11),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          DraggableScrollableSheet(
+            initialChildSize: searching ? 0.40 : activeRide ? 0.56 : 0.52,
+            minChildSize: 0.34,
+            maxChildSize: 0.82,
+            snap: true,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: dark ? const Color(0xFF0C0E0F) : const Color(0xFFF9FAFA),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                  border: Border(
+                    top: BorderSide(
+                      color: dark ? const Color(0xFF292E30) : const Color(0x14000000),
+                    ),
+                  ),
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(color: Color(0x48000000), blurRadius: 32, offset: Offset(0, -10)),
+                  ],
+                ),
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(16, 9, 16, 24),
+                  children: <Widget>[
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: <Widget>[
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: searching ? yangiLime.withValues(alpha: 0.22) : yangiLime,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            searching
+                                ? Icons.radar_rounded
+                                : activeRide
+                                    ? Icons.navigation_rounded
+                                    : finished
+                                        ? Icons.check_rounded
+                                        : aborted
+                                            ? Icons.close_rounded
+                                            : Icons.local_taxi_rounded,
+                            color: yangiGraphite,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                mainTitle(),
+                                style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                searching
+                                    ? (widget.lang == 'uz' ? 'Odatda bu 1–3 daqiqa davom etadi' : 'Обычно это занимает 1–3 минуты')
+                                    : atPlace
+                                        ? (widget.lang == 'uz' ? 'Haydovchi sizni kutmoqda' : 'Водитель ожидает вас')
+                                        : activeRide
+                                            ? (widget.lang == 'uz' ? 'Manzilga qarab harakatlanmoqdamiz' : 'Движемся к месту назначения')
+                                            : driverAssigned
+                                                ? (widget.lang == 'uz' ? 'Mashina siz tomon harakatlanmoqda' : 'Машина направляется к вам')
+                                                : '',
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    if ((driverAssigned || atPlace || activeRide) && !finished) ...<Widget>[
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: scheme.outlineVariant.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        child: Column(
+                          children: <Widget>[
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final progress = activeRide
+                                    ? 0.78
+                                    : atPlace
+                                        ? 0.62
+                                        : 0.38;
+                                final usable = math.max(0.0, constraints.maxWidth - 42);
+                                return SizedBox(
+                                  height: 32,
+                                  child: Stack(
+                                    alignment: Alignment.centerLeft,
+                                    children: <Widget>[
+                                      Positioned(
+                                        left: 14,
+                                        right: 14,
+                                        child: Container(
+                                          height: 5,
+                                          decoration: BoxDecoration(
+                                            color: scheme.outlineVariant,
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        left: 14,
+                                        width: usable * progress,
+                                        child: Container(
+                                          height: 5,
+                                          decoration: BoxDecoration(
+                                            color: yangiLime,
+                                            borderRadius: BorderRadius.circular(20),
+                                            boxShadow: <BoxShadow>[
+                                              BoxShadow(
+                                                color: yangiLime.withValues(alpha: 0.35),
+                                                blurRadius: 10,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        left: 0,
+                                        child: Container(
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            color: yangiLime,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: yangiGraphite,
+                                              width: 5,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        left: 14 + math.max(0.0, usable * progress - 15),
+                                        child: Container(
+                                          width: 34,
+                                          height: 24,
+                                          decoration: BoxDecoration(
+                                            color: dark
+                                                ? const Color(0xFF202425)
+                                                : Colors.white,
+                                            borderRadius: BorderRadius.circular(8),
+                                            boxShadow: const <BoxShadow>[
+                                              BoxShadow(
+                                                color: Color(0x33000000),
+                                                blurRadius: 8,
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Icon(
+                                            Icons.local_taxi_rounded,
+                                            size: 18,
+                                            color: yangiGreen,
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        right: 0,
+                                        child: Container(
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            color: scheme.surface,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: scheme.outline,
+                                              width: 4,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.stop_rounded,
+                                            size: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: <Widget>[
+                                Text(
+                                  driverAssigned
+                                      ? (widget.lang == 'uz' ? 'Haydovchi yo‘lda' : 'Водитель едет к вам')
+                                      : atPlace
+                                          ? (widget.lang == 'uz' ? 'Mashina keldi' : 'Машина подана')
+                                          : (widget.lang == 'uz' ? 'Safar davom etmoqda' : 'Вы в пути'),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                Text(
+                                  eta.isEmpty ? '' : eta + ' мин',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
+                    if (searching) ...<Widget>[
+                      Container(
+                        padding: const EdgeInsets.all(13),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            SizedBox(
+                              width: 92,
+                              height: 56,
+                              child: _TariffVehicleArt(kind: tariffKey, selected: true, available: true),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(tariffTitle(tariffKey), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                                  Text(
+                                    source,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (cost != null)
+                              Text(
+                                cost.toString() + (widget.lang == 'uz' ? ' so‘m' : ' сум'),
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    if (!searching && !aborted) ...<Widget>[
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: scheme.outlineVariant.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        child: Column(
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                Stack(
+                                  clipBehavior: Clip.none,
+                                  children: <Widget>[
+                                    CircleAvatar(
+                                      radius: 31,
+                                      backgroundColor: yangiLime.withValues(alpha: 0.20),
+                                      child: Text(
+                                        driverName.isEmpty
+                                            ? 'Y'
+                                            : driverName.substring(0, 1).toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 23,
+                                          fontWeight: FontWeight.w900,
+                                          color: dark ? Colors.white : yangiGraphite,
+                                        ),
+                                      ),
+                                    ),
+                                    if (rating.isNotEmpty)
+                                      Positioned(
+                                        left: 1,
+                                        bottom: -8,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 7,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF111415),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: const Color(0xFF353A3C),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: <Widget>[
+                                              const Icon(
+                                                Icons.star_rounded,
+                                                size: 14,
+                                                color: yangiLime,
+                                              ),
+                                              const SizedBox(width: 3),
+                                              Text(
+                                                rating,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(width: 13),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        driverName.isEmpty
+                                            ? (widget.lang == 'uz' ? 'Haydovchi' : 'Водитель')
+                                            : driverName,
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: -0.35,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        atPlace
+                                            ? (widget.lang == 'uz'
+                                                ? 'Sizni kutmoqda'
+                                                : 'Ожидает вас')
+                                            : activeRide
+                                                ? (widget.lang == 'uz'
+                                                    ? 'Safar davom etmoqda'
+                                                    : 'Поездка продолжается')
+                                                : (widget.lang == 'uz'
+                                                    ? 'Aloqada, tez orada yetib keladi'
+                                                    : 'На связи, скоро будет'),
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                roundAction(
+                                  Icons.chat_bubble_rounded,
+                                  widget.lang == 'uz' ? 'Yozish' : 'Написать',
+                                  driverPhone.isEmpty ? null : messageDriver,
+                                ),
+                                const SizedBox(width: 7),
+                                roundAction(
+                                  Icons.call_rounded,
+                                  widget.lang == 'uz' ? 'Qo‘ng‘iroq' : 'Позвонить',
+                                  driverPhone.isEmpty ? null : callDriver,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: <Widget>[
+                                Expanded(
+                                  flex: 6,
+                                  child: SizedBox(
+                                    height: 82,
+                                    child: _TariffVehicleArt(
+                                      kind: tariffKey,
+                                      selected: true,
+                                      available: true,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  flex: 5,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: <Widget>[
+                                      Text(
+                                        car.isEmpty
+                                            ? tariffTitle(tariffKey)
+                                            : car,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      if (number.isNotEmpty) ...<Widget>[
+                                        const SizedBox(height: 7),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: dark ? Colors.white : yangiGraphite,
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            number,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: dark ? yangiGraphite : Colors.white,
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: 0.8,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: <Widget>[
+                          metric(
+                            Icons.schedule_rounded,
+                            eta.isEmpty
+                                ? (atPlace ? (widget.lang == 'uz' ? '0 daq' : '0 мин') : '')
+                                : eta + (widget.lang == 'uz' ? ' daq' : ' мин'),
+                            widget.lang == 'uz' ? 'Yetib kelish' : 'До прибытия',
+                          ),
+                          const SizedBox(width: 7),
+                          metric(
+                            Icons.location_on_outlined,
+                            distance.isEmpty ? '' : distance + (widget.lang == 'uz' ? ' km' : ' км'),
+                            widget.lang == 'uz' ? 'Qoldi' : 'Осталось',
+                          ),
+                          const SizedBox(width: 7),
+                          metric(
+                            Icons.payments_outlined,
+                            cost == null ? '' : cost.toString() + (widget.lang == 'uz' ? ' so‘m' : ' сум'),
+                            widget.lang == 'uz' ? 'Narx' : 'Стоимость',
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: scheme.outlineVariant.withValues(alpha: 0.65),
+                        ),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: yangiLime.withValues(alpha: dark ? 0.14 : 0.18),
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            child: Icon(
+                              activeRide
+                                  ? Icons.flag_rounded
+                                  : Icons.location_on_rounded,
+                              color: dark ? yangiLime : yangiGreen,
+                              size: 21,
+                            ),
+                          ),
+                          const SizedBox(width: 11),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  activeRide
+                                      ? (widget.lang == 'uz' ? 'Yakuniy manzil' : 'Конечная точка')
+                                      : (widget.lang == 'uz' ? 'Olib ketish joyi' : 'Точка подачи'),
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  activeRide && destination.isNotEmpty
+                                      ? destination
+                                      : source,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                        ],
+                      ),
+                    ),
+
+                    if ((driverAssigned || atPlace || activeRide) && !finished) ...<Widget>[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: <Widget>[
+                          tripAction(
+                            Icons.share_rounded,
+                            widget.lang == 'uz' ? 'Safarni ulashish' : 'Поделиться\nпоездкой',
+                            onTap: shareTrip,
+                          ),
+                          const SizedBox(width: 8),
+                          tripAction(
+                            Icons.shield_outlined,
+                            widget.lang == 'uz' ? 'Xavfsizlik' : 'Безопасность',
+                            onTap: showSafety,
+                          ),
+                          const SizedBox(width: 8),
+                          tripAction(
+                            Icons.more_horiz_rounded,
+                            widget.lang == 'uz' ? 'Yordam' : 'Помощь',
+                            onTap: showHelp,
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    if (error != null) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    ],
+
+                    if (!finished && !aborted && !activeRide) ...<Widget>[
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: cancel,
+                        icon: const Icon(Icons.close_rounded),
+                        label: Text(widget.lang == 'uz' ? 'Buyurtmani bekor qilish' : 'Отменить поездку'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                          minimumSize: const Size.fromHeight(50),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+                        ),
+                      ),
+                    ],
+
+                    if (finished) ...<Widget>[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(
+                          color: yangiLime.withValues(alpha: dark ? 0.10 : 0.16),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: yangiLime.withValues(alpha: dark ? 0.24 : 0.36),
+                          ),
+                        ),
+                        child: Column(
+                          children: <Widget>[
+                            Row(
+                              children: <Widget>[
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    color: yangiLime.withValues(alpha: dark ? 0.18 : 0.32),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.check_rounded,
+                                    color: dark ? yangiLime : yangiGreen,
+                                  ),
+                                ),
+                                const SizedBox(width: 11),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        widget.lang == 'uz'
+                                            ? 'Safar muvaffaqiyatli yakunlandi'
+                                            : 'Поездка успешно завершена',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        widget.lang == 'uz'
+                                            ? 'Yangi Taxi bilan safar qilganingiz uchun rahmat'
+                                            : 'Спасибо, что выбрали Yangi Taxi',
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (cost != null) ...<Widget>[
+                              const SizedBox(height: 13),
+                              Divider(
+                                height: 1,
+                                color: scheme.outlineVariant.withValues(alpha: 0.60),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: <Widget>[
+                                  Text(
+                                    widget.lang == 'uz' ? 'Jami' : 'Итого',
+                                    style: const TextStyle(fontWeight: FontWeight.w800),
+                                  ),
+                                  Text(
+                                    cost.toString() + ' so‘m',
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        onPressed: () => showDriverRatingDialog(
+                          context,
+                          widget.api,
+                          widget.lang,
+                          (o['order_id'] as num).toInt(),
+                          driverName: driverName,
+                        ),
+                        icon: const Icon(Icons.star_rounded),
+                        label: Text(
+                          widget.lang == 'uz'
+                              ? 'Haydovchini baholash'
+                              : 'Оценить водителя',
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: yangiLime,
+                          foregroundColor: yangiGraphite,
+                          minimumSize: const Size.fromHeight(54),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
     );
   }
+
 }
 
 Future<void> showDriverRatingDialog(
@@ -3163,71 +7599,237 @@ Future<void> showDriverRatingDialog(
   String driverName = '',
 }) async {
   int rating = 5;
+  final selectedTags = <String>{};
   final comment = TextEditingController();
-  final submit = await showDialog<bool>(
+
+  String ratingText(int value) {
+    if (lang == 'uz') {
+      return switch (value) {
+        1 => 'Yaxshi emas',
+        2 => 'Qoniqarsiz',
+        3 => 'Yaxshi',
+        4 => 'Juda yaxshi',
+        _ => 'A’lo',
+      };
+    }
+    return switch (value) {
+      1 => 'Не понравилось',
+      2 => 'Можно лучше',
+      3 => 'Хорошо',
+      4 => 'Очень хорошо',
+      _ => 'Отлично',
+    };
+  }
+
+  final tags = <MapEntry<String, String>>[
+    MapEntry<String, String>('clean', lang == 'uz' ? 'Toza' : 'Чисто'),
+    MapEntry<String, String>('polite', lang == 'uz' ? 'Xushmuomala' : 'Вежливо'),
+    MapEntry<String, String>('safe', lang == 'uz' ? 'Xavfsiz' : 'Безопасно'),
+    MapEntry<String, String>('comfortable', lang == 'uz' ? 'Qulay' : 'Комфортно'),
+  ];
+
+  final submit = await showModalBottomSheet<bool>(
     context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        title: Text(lang == 'uz' ? 'Safarni baholang' : 'Оцените поездку'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (driverName.trim().isNotEmpty) ...<Widget>[
-              Text(driverName, style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
-            ],
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List<Widget>.generate(
-                5,
-                (i) => IconButton(
-                  onPressed: () => setDialogState(() => rating = i + 1),
-                  iconSize: 36,
-                  icon: Icon(i < rating ? Icons.star : Icons.star_border),
-                  color: const Color(0xFFFFB300),
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) => StatefulBuilder(
+      builder: (context, setSheetState) {
+        final theme = Theme.of(context);
+        final scheme = theme.colorScheme;
+        final dark = theme.brightness == Brightness.dark;
+
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: dark ? const Color(0xFF0C0E0F) : const Color(0xFFF9FAFA),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+              border: Border(
+                top: BorderSide(
+                  color: dark ? const Color(0xFF292E30) : const Color(0x14000000),
                 ),
               ),
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: comment,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: lang == 'uz' ? 'Izoh' : 'Комментарий',
-                hintText: lang == 'uz'
-                    ? 'Haydovchi va safar haqida fikringiz'
-                    : 'Что понравилось или можно улучшить',
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 9, 16, 22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: scheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: yangiLime.withValues(alpha: dark ? 0.16 : 0.24),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.check_rounded,
+                      size: 33,
+                      color: dark ? yangiLime : yangiGreen,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    lang == 'uz' ? 'Safarni baholang' : 'Оцените поездку',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    driverName.trim().isEmpty
+                        ? (lang == 'uz'
+                            ? 'Fikringiz Yangi Taxi xizmatini yaxshilaydi'
+                            : 'Ваш отзыв помогает улучшать Yangi Taxi')
+                        : (lang == 'uz'
+                            ? driverName.trim() + ' bilan safar'
+                            : 'Поездка с ' + driverName.trim()),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List<Widget>.generate(
+                      5,
+                      (i) => IconButton(
+                        onPressed: () => setSheetState(() => rating = i + 1),
+                        iconSize: 39,
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                        constraints: const BoxConstraints(minWidth: 46, minHeight: 46),
+                        icon: Icon(
+                          i < rating ? Icons.star_rounded : Icons.star_outline_rounded,
+                        ),
+                        color: i < rating ? const Color(0xFFFFB300) : scheme.outline,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    ratingText(rating),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      lang == 'uz' ? 'Nima yoqdi?' : 'Что понравилось?',
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: tags.map((tag) {
+                        final selected = selectedTags.contains(tag.key);
+                        return ChoiceChip(
+                          selected: selected,
+                          showCheckmark: false,
+                          label: Text(
+                            tag.value,
+                            style: TextStyle(
+                              color: selected ? yangiGraphite : scheme.onSurface,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          selectedColor: yangiLime,
+                          backgroundColor: scheme.surfaceContainerHigh,
+                          side: BorderSide(
+                            color: selected
+                                ? yangiLime
+                                : scheme.outlineVariant.withValues(alpha: 0.8),
+                          ),
+                          onSelected: (_) => setSheetState(() {
+                            if (selected) {
+                              selectedTags.remove(tag.key);
+                            } else {
+                              selectedTags.add(tag.key);
+                            }
+                          }),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: comment,
+                    maxLines: 3,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: InputDecoration(
+                      labelText: lang == 'uz' ? 'Izoh' : 'Комментарий',
+                      hintText: lang == 'uz'
+                          ? 'Haydovchi va safar haqida fikringiz'
+                          : 'Что понравилось или можно улучшить',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.pop(sheetContext, true),
+                    icon: const Icon(Icons.star_rounded),
+                    label: Text(lang == 'uz' ? 'Bahoni yuborish' : 'Отправить оценку'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: yangiLime,
+                      foregroundColor: yangiGraphite,
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  TextButton(
+                    onPressed: () => Navigator.pop(sheetContext, false),
+                    child: Text(lang == 'uz' ? 'Keyinroq' : 'Позже'),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(lang == 'uz' ? 'Keyinroq' : 'Позже'),
           ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            icon: const Icon(Icons.send),
-            label: Text(lang == 'uz' ? 'Yuborish' : 'Отправить'),
-          ),
-        ],
-      ),
+        );
+      },
     ),
   );
+
   if (submit != true) {
     comment.dispose();
     return;
   }
 
   try {
-    await api.post('/api/orders/' + orderId.toString() + '/feedback', <String, dynamic>{
+    await api.post('/api/orders/' + orderId.toString() + '/rating', <String, dynamic>{
       'rating': rating,
-      'text': comment.text.trim(),
+      'tags': selectedTags.toList(),
+      'comment': comment.text.trim(),
     });
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(lang == 'uz' ? 'Bahoyingiz yuborildi' : 'Спасибо! Оценка отправлена')),
+        SnackBar(
+          content: Text(
+            lang == 'uz' ? 'Bahoyingiz yuborildi' : 'Спасибо! Оценка отправлена',
+          ),
+        ),
       );
     }
   } catch (e) {
@@ -3262,85 +7864,381 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> load() async {
     try {
       final data = await widget.api.get('/api/orders/history');
-      if (mounted) setState(() {
-        orders = data as List;
-        loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          orders = data as List;
+          loading = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => loading = false);
     }
   }
 
+  String stateTitle(String state) {
+    if (state == 'finished') return widget.lang == 'uz' ? 'Tugallangan' : 'Завершена';
+    if (state == 'aborted') return widget.lang == 'uz' ? 'Bekor qilingan' : 'Отменена';
+    if (state == 'client_inside') return widget.lang == 'uz' ? 'Yo‘lda' : 'В пути';
+    if (state == 'car_at_place') return widget.lang == 'uz' ? 'Mashina keldi' : 'Машина приехала';
+    if (state == 'driver_assigned') return widget.lang == 'uz' ? 'Haydovchi tayinlandi' : 'Водитель назначен';
+    return widget.lang == 'uz' ? 'Buyurtma' : 'Заказ';
+  }
+
+  IconData stateIcon(String state) {
+    if (state == 'finished') return Icons.check_rounded;
+    if (state == 'aborted') return Icons.close_rounded;
+    if (state == 'client_inside') return Icons.navigation_rounded;
+    if (state == 'car_at_place') return Icons.location_on_rounded;
+    return Icons.local_taxi_rounded;
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          leading: IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
-          title: Text(tx(widget.lang, 'history'), style: const TextStyle(fontWeight: FontWeight.w800)),
-          actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh))],
-        ),
-        body: loading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: load,
-                child: orders.isEmpty
-                    ? ListView(children: <Widget>[const SizedBox(height: 180), Center(child: Text(tx(widget.lang, 'history')))])
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: orders.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (_, i) {
-                          final o = Map<String, dynamic>.from(orders[i] as Map);
-                          final state = (o['state_kind'] ?? '').toString();
-                          final orderId = (o['order_id'] as num?)?.toInt() ?? 0;
-                          return Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(6),
-                              child: Column(
-                                children: <Widget>[
-                                  ListTile(
-                                    leading: CircleAvatar(
-                                      child: Icon(state == 'finished' ? Icons.check : state == 'aborted' ? Icons.close : Icons.local_taxi),
-                                    ),
-                                    title: Text(
-                                      (o['source'] ?? '').toString() + ' → ' + (o['destination'] ?? '').toString(),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    subtitle: Text('#' + orderId.toString() + ' • ' + state),
-                                    trailing: o['total_cost'] == null
-                                        ? null
-                                        : Text(o['total_cost'].toString() + ' UZS', style: const TextStyle(fontWeight: FontWeight.w700)),
-                                  ),
-                                  if (state == 'finished' && orderId > 0)
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton.icon(
-                                        onPressed: () => showDriverRatingDialog(
-                                          context,
-                                          widget.api,
-                                          widget.lang,
-                                          orderId,
-                                          driverName: (o['driver_name'] ?? '').toString(),
-                                        ),
-                                        icon: const Icon(Icons.star_outline),
-                                        label: Text(widget.lang == 'uz' ? 'Baholash' : 'Оценить'),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      appBar: AppBar(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
+        centerTitle: true,
+        title: const YangiWordmark(compact: true),
+        actions: <Widget>[
+          IconButton(
+            onPressed: load,
+            tooltip: widget.lang == 'uz' ? 'Yangilash' : 'Обновить',
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final horizontal = constraints.maxWidth >= 720 ? 24.0 : 14.0;
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 820),
+                    child: RefreshIndicator(
+                      onRefresh: load,
+                      child: ListView(
+                        padding: EdgeInsets.fromLTRB(horizontal, 12, horizontal, 30),
+                        children: <Widget>[
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: <Widget>[
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      widget.lang == 'uz' ? 'Safarlar tarixi' : 'История поездок',
+                                      style: const TextStyle(
+                                        fontSize: 28,
+                                        height: 1.0,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -0.8,
                                       ),
                                     ),
+                                    const SizedBox(height: 7),
+                                    Text(
+                                      widget.lang == 'uz'
+                                          ? 'Yakunlangan va bekor qilingan safarlar'
+                                          : 'Все завершённые и отменённые поездки',
+                                      style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: yangiLime.withValues(alpha: dark ? 0.16 : 0.22),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: yangiLime.withValues(alpha: dark ? 0.30 : 0.42),
+                                  ),
+                                ),
+                                child: Text(
+                                  orders.length.toString(),
+                                  style: TextStyle(
+                                    color: dark ? yangiLime : yangiGraphite,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          if (orders.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.fromLTRB(24, 30, 24, 32),
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(28),
+                                border: Border.all(
+                                  color: scheme.outlineVariant.withValues(alpha: 0.65),
+                                ),
+                              ),
+                              child: Column(
+                                children: <Widget>[
+                                  Container(
+                                    width: 70,
+                                    height: 70,
+                                    decoration: BoxDecoration(
+                                      color: yangiLime.withValues(alpha: dark ? 0.14 : 0.22),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.route_rounded,
+                                      size: 34,
+                                      color: dark ? yangiLime : yangiGreen,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    widget.lang == 'uz' ? 'Hali safarlar yo‘q' : 'Поездок пока нет',
+                                    style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    widget.lang == 'uz'
+                                        ? 'Birinchi safaringiz shu yerda paydo bo‘ladi'
+                                        : 'Первая поездка появится здесь после завершения',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: scheme.onSurfaceVariant),
+                                  ),
                                 ],
                               ),
-                            ),
-                          );
-                        },
+                            )
+                          else
+                            ...orders.map((raw) {
+                              final o = Map<String, dynamic>.from(raw as Map);
+                              final state = (o['state_kind'] ?? '').toString();
+                              final orderId = (o['order_id'] as num?)?.toInt() ?? 0;
+                              final tariffKey = (o['tariff_key'] ?? 'start').toString();
+                              final source = (o['source'] ?? '').toString();
+                              final destination = (o['destination'] ?? '').toString();
+                              final total = o['total_cost'];
+                              final isFinished = state == 'finished';
+                              final statusColor = isFinished
+                                  ? (dark ? yangiLime : yangiGreen)
+                                  : state == 'aborted'
+                                      ? scheme.error
+                                      : scheme.onSurfaceVariant;
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: scheme.surfaceContainerLow,
+                                  borderRadius: BorderRadius.circular(26),
+                                  border: Border.all(
+                                    color: scheme.outlineVariant.withValues(alpha: 0.62),
+                                  ),
+                                  boxShadow: dark
+                                      ? const <BoxShadow>[]
+                                      : const <BoxShadow>[
+                                          BoxShadow(
+                                            color: Color(0x10000000),
+                                            blurRadius: 18,
+                                            offset: Offset(0, 7),
+                                          ),
+                                        ],
+                                ),
+                                child: Column(
+                                  children: <Widget>[
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        Container(
+                                          width: 108,
+                                          height: 70,
+                                          padding: const EdgeInsets.all(5),
+                                          decoration: BoxDecoration(
+                                            color: scheme.surfaceContainerHigh,
+                                            borderRadius: BorderRadius.circular(19),
+                                          ),
+                                          child: _TariffVehicleArt(
+                                            kind: tariffKey,
+                                            selected: false,
+                                            available: true,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: <Widget>[
+                                              Row(
+                                                children: <Widget>[
+                                                  Expanded(
+                                                    child: Text(
+                                                      '#$orderId',
+                                                      style: const TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight: FontWeight.w900,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (total != null)
+                                                    Text(
+                                                      '$total ${widget.lang == 'uz' ? 'so‘m' : 'сум'}',
+                                                      style: const TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight: FontWeight.w900,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Row(
+                                                children: <Widget>[
+                                                  Container(
+                                                    width: 9,
+                                                    height: 9,
+                                                    decoration: const BoxDecoration(
+                                                      color: yangiGreen,
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 7),
+                                                  Expanded(
+                                                    child: Text(
+                                                      source.isEmpty ? '—' : source,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        fontSize: 12.5,
+                                                        fontWeight: FontWeight.w800,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 7),
+                                              Row(
+                                                children: <Widget>[
+                                                  Container(
+                                                    width: 9,
+                                                    height: 9,
+                                                    decoration: BoxDecoration(
+                                                      color: destination.isEmpty
+                                                          ? scheme.outline
+                                                          : const Color(0xFFFF4B36),
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 7),
+                                                  Expanded(
+                                                    child: Text(
+                                                      destination.isEmpty
+                                                          ? (widget.lang == 'uz'
+                                                              ? 'Manzil ko‘rsatilmagan'
+                                                              : 'Без конечного адреса')
+                                                          : destination,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: 12.5,
+                                                        color: scheme.onSurfaceVariant,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.60)),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: <Widget>[
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: statusColor.withValues(alpha: dark ? 0.13 : 0.12),
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(
+                                              color: statusColor.withValues(alpha: 0.26),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: <Widget>[
+                                              Icon(stateIcon(state), size: 15, color: statusColor),
+                                              const SizedBox(width: 5),
+                                              Text(
+                                                stateTitle(state),
+                                                style: TextStyle(
+                                                  color: statusColor,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        if (isFinished && orderId > 0)
+                                          TextButton.icon(
+                                            onPressed: () => showDriverRatingDialog(
+                                              context,
+                                              widget.api,
+                                              widget.lang,
+                                              orderId,
+                                              driverName: (o['driver_name'] ?? '').toString(),
+                                            ),
+                                            icon: const Icon(Icons.star_rounded, size: 18),
+                                            label: Text(widget.lang == 'uz' ? 'Baholash' : 'Оценить'),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                        ],
                       ),
-              ),
-      );
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
 }
 
 class CardsScreen extends StatefulWidget {
-  const CardsScreen({super.key, required this.api, required this.lang, this.onMenu});
+  const CardsScreen({
+    super.key,
+    required this.api,
+    required this.lang,
+    this.onMenu,
+    this.onDone,
+    this.initialPaymentMethod,
+    this.initialCardId,
+    this.onPaymentChanged,
+  });
   final ApiClient api;
   final String lang;
   final VoidCallback? onMenu;
+  final VoidCallback? onDone;
+  final String? initialPaymentMethod;
+  final int? initialCardId;
+  final void Function(String method, int cardId)? onPaymentChanged;
 
   @override
   State<CardsScreen> createState() => _CardsScreenState();
@@ -3351,6 +8249,9 @@ class _CardsScreenState extends State<CardsScreen> {
   bool cardBindingAvailable = false;
   List<Map<String, dynamic>> cards = <Map<String, dynamic>>[];
   int defaultCardId = 0;
+  String selectedMethod = 'cash';
+  int selectedPaymentCardId = 0;
+  bool selectionInitialized = false;
   String? error;
 
   @override
@@ -3373,6 +8274,21 @@ class _CardsScreenState extends State<CardsScreen> {
           cards = list;
           defaultCardId = (map['defaultCardId'] as num?)?.toInt() ?? 0;
           cardBindingAvailable = map['cardBindingAvailable'] == true;
+          if (!selectionInitialized) {
+            final initialId = widget.initialCardId ?? 0;
+            selectedPaymentCardId = list.any((card) => (card['cardId'] as num?)?.toInt() == initialId)
+                ? initialId
+                : defaultCardId;
+            selectedMethod = widget.initialPaymentMethod == 'card' && selectedPaymentCardId > 0
+                ? 'card'
+                : (widget.initialPaymentMethod == 'cash'
+                    ? 'cash'
+                    : (selectedPaymentCardId > 0 ? 'card' : 'cash'));
+            selectionInitialized = true;
+          } else if (!list.any((card) => (card['cardId'] as num?)?.toInt() == selectedPaymentCardId)) {
+            selectedPaymentCardId = defaultCardId;
+            if (selectedPaymentCardId <= 0) selectedMethod = 'cash';
+          }
           loading = false;
         });
       }
@@ -3543,6 +8459,12 @@ class _CardsScreenState extends State<CardsScreen> {
   }
 
   Future<void> makeDefault(int id) async {
+    if (mounted) {
+      setState(() {
+        selectedMethod = 'card';
+        selectedPaymentCardId = id;
+      });
+    }
     try {
       await widget.api.post('/api/cards/' + id.toString() + '/default', const <String, dynamic>{});
       await load();
@@ -3576,148 +8498,218 @@ class _CardsScreenState extends State<CardsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          leading: widget.onMenu == null
-              ? null
-              : IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
-          title: Text(widget.lang == 'uz' ? 'Kartalar' : 'Карты', style: const TextStyle(fontWeight: FontWeight.w900)),
-          actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded))],
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final selectedFill = Color.alphaBlend(
+      yangiLime.withValues(alpha: theme.brightness == Brightness.dark ? 0.18 : 0.12),
+      scheme.surfaceContainerHigh,
+    );
+
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      appBar: AppBar(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        leading: widget.onMenu == null
+            ? null
+            : IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
+        centerTitle: true,
+        title: Text(
+          widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+          style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
         ),
-        body: loading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-                children: <Widget>[
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3F4F6),
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: Row(
-                      children: <Widget>[
-                        const CircleAvatar(
-                          backgroundColor: Color(0xFFE4F3E9),
-                          child: Icon(Icons.shield_outlined, color: Color(0xFF1F8A4C)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            widget.lang == 'uz'
-                                ? 'Kartalar ATMOS orqali bog‘lanadi. Yangi Taxi PAN va CVVni saqlamaydi.'
-                                : 'Карты привязываются через ATMOS. Yangi Taxi не хранит PAN и CVV.',
-                          ),
-                        ),
-                      ],
-                    ),
+        actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded))],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 820),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 30),
+              children: <Widget>[
+                Text(
+                  widget.lang == 'uz' ? 'Kartalar va hisoblar' : 'Карты и счета',
+                  style: TextStyle(color: scheme.onSurface, fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.65)),
                   ),
-                  if (error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                    ),
-                  const SizedBox(height: 14),
-                  if (cards.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: const Color(0xFFE5E7EB)),
-                      ),
-                      child: Column(
-                        children: <Widget>[
-                          const Icon(Icons.credit_card_off_outlined, size: 46, color: Color(0xFF9CA3AF)),
-                          const SizedBox(height: 10),
-                          Text(
-                            widget.lang == 'uz' ? 'Hali karta qo‘shilmagan' : 'Пока нет сохранённых карт',
-                            style: const TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ...cards.map((card) {
-                      final id = (card['cardId'] as num?)?.toInt() ?? 0;
-                      final isDefault = id == defaultCardId || card['isDefault'] == true;
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        elevation: 0,
-                        color: const Color(0xFF111827),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Row(
-                                children: <Widget>[
-                                  const Icon(Icons.credit_card_rounded, color: Colors.white),
-                                  const Spacer(),
-                                  if (isDefault)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF1F8A4C),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        widget.lang == 'uz' ? 'Asosiy' : 'Основная',
-                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11),
-                                      ),
+                  child: Column(
+                    children: <Widget>[
+                      ...cards.asMap().entries.map((entry) {
+                        final card = entry.value;
+                        final id = (card['cardId'] as num?)?.toInt() ?? 0;
+                        final isSelected = selectedMethod == 'card' && id == selectedPaymentCardId;
+                        final isDefault = id == defaultCardId || card['isDefault'] == true;
+                        final masked = maskedCardLabel(card['maskedPan']);
+                        return Column(
+                          children: <Widget>[
+                            Material(
+                              color: isSelected ? selectedFill : Colors.transparent,
+                              borderRadius: BorderRadius.circular(18),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                                leading: Container(
+                                  width: 46,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: <Color>[Color(0xFF07110A), Color(0xFF19A94B)],
                                     ),
-                                ],
-                              ),
-                              const SizedBox(height: 24),
-                              Text(
-                                (card['maskedPan'] ?? '•••• •••• •••• ••••').toString(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 20,
-                                  letterSpacing: 1.2,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(formatExpiry((card['expiry'] ?? '').toString()), style: const TextStyle(color: Color(0xFFD1D5DB))),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: <Widget>[
-                                  if (!isDefault)
-                                    TextButton(
-                                      onPressed: () => makeDefault(id),
-                                      child: Text(widget.lang == 'uz' ? 'Asosiy qilish' : 'Сделать основной'),
-                                    ),
-                                  const Spacer(),
-                                  IconButton(
-                                    onPressed: () => removeCard(id),
-                                    icon: const Icon(Icons.delete_outline_rounded),
-                                    color: Colors.white70,
+                                    borderRadius: BorderRadius.circular(9),
                                   ),
-                                ],
+                                  child: const Icon(Icons.credit_card_rounded, color: Colors.white, size: 23),
+                                ),
+                                title: Text(
+                                  masked,
+                                  style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                                ),
+                                subtitle: Text(
+                                  isDefault
+                                      ? (widget.lang == 'uz' ? 'Asosiy karta' : 'Основная карта')
+                                      : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта'),
+                                  style: TextStyle(color: scheme.onSurfaceVariant),
+                                ),
+                                trailing: Icon(
+                                  isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                  color: isSelected ? yangiLime : scheme.outline,
+                                  size: 30,
+                                ),
+                                onTap: () => makeDefault(id),
+                                onLongPress: () => removeCard(id),
                               ),
-                            ],
+                            ),
+                            if (entry.key != cards.length - 1)
+                              Divider(height: 1, indent: 16, endIndent: 16, color: scheme.outlineVariant),
+                          ],
+                        );
+                      }),
+                      if (cards.isNotEmpty)
+                        Divider(height: 1, indent: 16, endIndent: 16, color: scheme.outlineVariant),
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                        leading: Container(
+                          width: 46,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            border: Border.all(color: scheme.outline),
+                            borderRadius: BorderRadius.circular(9),
                           ),
+                          child: Icon(Icons.add_rounded, color: scheme.onSurface),
                         ),
-                      );
-                    }),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 54,
-                    child: FilledButton.icon(
-                      onPressed: cardBindingAvailable ? addCard : null,
-                      icon: const Icon(Icons.add_card_rounded),
-                      label: Text(
-                        cardBindingAvailable
-                            ? (widget.lang == 'uz' ? 'Karta qo‘shish' : 'Добавить карту')
-                            : (widget.lang == 'uz' ? 'ATMOS sozlanmagan' : 'ATMOS не настроен'),
+                        title: Text(
+                          widget.lang == 'uz' ? 'Kartani bog‘lash' : 'Привязать карту',
+                          style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                        ),
+                        subtitle: Text(
+                          cardBindingAvailable
+                              ? (widget.lang == 'uz'
+                                  ? 'ATMOS orqali xavfsiz tokenlash'
+                                  : 'Безопасная токенизация через ATMOS')
+                              : (widget.lang == 'uz'
+                                  ? 'ATMOS karta bog‘lash hozir mavjud emas'
+                                  : 'Привязка карты ATMOS сейчас недоступна'),
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        trailing: Icon(
+                          cardBindingAvailable ? Icons.chevron_right_rounded : Icons.lock_outline_rounded,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        onTap: cardBindingAvailable ? addCard : null,
                       ),
+                    ],
+                  ),
+                ),
+                if (error != null) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text(error!, style: TextStyle(color: scheme.error)),
+                ],
+                const SizedBox(height: 16),
+                Text(
+                  widget.lang == 'uz' ? 'Boshqa to‘lov usullari' : 'Другие способы оплаты',
+                  style: TextStyle(color: scheme.onSurface, fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: selectedMethod == 'cash' ? selectedFill : scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.65)),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                    leading: Container(
+                      width: 46,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF5DD63F),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.payments_rounded, color: Colors.white, size: 25),
+                    ),
+                    title: Text(
+                      widget.lang == 'uz' ? 'Naqd' : 'Наличные',
+                      style: TextStyle(color: scheme.onSurface, fontSize: 17, fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      widget.lang == 'uz' ? 'Barcha safarlarda mavjud' : 'Доступно для всех поездок',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                    trailing: Icon(
+                      selectedMethod == 'cash'
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      color: selectedMethod == 'cash' ? yangiLime : scheme.outline,
+                      size: 30,
+                    ),
+                    onTap: () => setState(() => selectedMethod = 'cash'),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  height: 56,
+                  child: FilledButton(
+                    onPressed: () {
+                      widget.onPaymentChanged?.call(selectedMethod, selectedPaymentCardId);
+                      if (widget.onDone != null) {
+                        widget.onDone!();
+                      } else {
+                        Navigator.maybePop(context);
+                      }
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: yangiLime,
+                      foregroundColor: yangiGraphite,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    ),
+                    child: Text(
+                      widget.lang == 'uz' ? 'Tayyor' : 'Готово',
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                     ),
                   ),
-                ],
-              ),
-      );
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  widget.lang == 'uz'
+                      ? 'Kartalar ATMOS orqali tokenlashtiriladi. Yangi Taxi PAN va CVV ni saqlamaydi.'
+                      : 'Карты токенизируются через ATMOS. Yangi Taxi не хранит PAN и CVV.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ),
+    );
+  }
 }
 
 class SettingsScreen extends StatelessWidget {
@@ -3725,14 +8717,18 @@ class SettingsScreen extends StatelessWidget {
     super.key,
     required this.api,
     required this.lang,
+    required this.themeSetting,
     required this.onLang,
+    required this.onTheme,
     required this.onBackend,
     required this.onMenu,
   });
 
   final ApiClient api;
   final String lang;
+  final String themeSetting;
   final ValueChanged<String> onLang;
+  final Future<void> Function(String) onTheme;
   final Future<void> Function(String) onBackend;
   final VoidCallback onMenu;
 
@@ -3746,80 +8742,338 @@ class SettingsScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          leading: IconButton(onPressed: onMenu, icon: const Icon(Icons.menu_rounded)),
-          title: Text(lang == 'uz' ? 'Sozlamalar' : 'Настройки', style: const TextStyle(fontWeight: FontWeight.w900)),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-          children: <Widget>[
-            Text(lang == 'uz' ? 'ILOVA' : 'ПРИЛОЖЕНИЕ', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF8B8F97))),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 0,
-              child: Column(
-                children: <Widget>[
-                  ListTile(
-                    leading: const Icon(Icons.language_rounded),
-                    title: const Text('Язык / Til'),
-                    trailing: SegmentedButton<String>(
-                      segments: const <ButtonSegment<String>>[
-                        ButtonSegment<String>(value: 'ru', label: Text('RU')),
-                        ButtonSegment<String>(value: 'uz', label: Text('UZ')),
-                      ],
-                      selected: <String>{lang},
-                      onSelectionChanged: (x) => onLang(x.first),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.my_location_rounded),
-                    title: Text(lang == 'uz' ? 'Geolokatsiya' : 'Геолокация'),
-                    subtitle: Text(lang == 'uz' ? 'Ruxsat va GPS sozlamalari' : 'Разрешения и настройки GPS'),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: locationSettings,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(lang == 'uz' ? 'XIZMAT' : 'СЕРВИС', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF8B8F97))),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 0,
-              child: Column(
-                children: <Widget>[
-                  ListTile(
-                    leading: const Icon(Icons.support_agent_rounded),
-                    title: Text(lang == 'uz' ? 'Yordam' : 'Поддержка'),
-                    subtitle: Text(lang == 'uz' ? 'Yangi Taxi yordam markazi' : 'Центр поддержки Yangi Taxi'),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.info_outline_rounded),
-                    title: Text(lang == 'uz' ? 'Ilova haqida' : 'О приложении'),
-                    subtitle: const Text('Yangi Taxi 1.4.0'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(lang == 'uz' ? 'DIAGNOSTIKA' : 'ДИАГНОСТИКА', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF8B8F97))),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 0,
-              child: ListTile(
-                leading: Icon(api.isDemo ? Icons.science_outlined : Icons.dns_outlined),
-                title: const Text('Backend'),
-                subtitle: Text(api.baseUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => backendDialog(context, api, onBackend),
-              ),
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+
+    Widget sectionTitle(String text) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 2, bottom: 8),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.8,
+            color: scheme.onSurfaceVariant,
+          ),
         ),
       );
+    }
+
+    Widget leadingIcon(IconData icon) {
+      return Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: yangiLime.withValues(alpha: dark ? 0.14 : 0.22),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(
+          icon,
+          size: 21,
+          color: dark ? yangiLime : yangiGraphite,
+        ),
+      );
+    }
+
+    Widget premiumCard(Widget child) {
+      return Container(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.65),
+          ),
+        ),
+        child: child,
+      );
+    }
+
+    Widget themeChip(String value, IconData icon, String label) {
+      final selected = themeSetting == value;
+      return ChoiceChip(
+        selected: selected,
+        showCheckmark: false,
+        avatar: Icon(
+          icon,
+          size: 17,
+          color: selected
+              ? yangiGraphite
+              : scheme.onSurfaceVariant,
+        ),
+        label: Text(
+          label,
+          style: TextStyle(
+            color: selected ? yangiGraphite : scheme.onSurface,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        selectedColor: yangiLime,
+        backgroundColor: scheme.surfaceContainerHigh,
+        side: BorderSide(
+          color: selected
+              ? yangiLime
+              : scheme.outlineVariant.withValues(alpha: 0.8),
+        ),
+        onSelected: (_) => onTheme(value),
+      );
+    }
+
+    Widget languageChip(String value, String label) {
+      final selected = lang == value;
+      return ChoiceChip(
+        selected: selected,
+        showCheckmark: false,
+        label: Text(
+          label,
+          style: TextStyle(
+            color: selected ? yangiGraphite : scheme.onSurface,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        selectedColor: yangiLime,
+        backgroundColor: scheme.surfaceContainerHigh,
+        side: BorderSide(
+          color: selected
+              ? yangiLime
+              : scheme.outlineVariant.withValues(alpha: 0.8),
+        ),
+        onSelected: (_) => onLang(value),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      appBar: AppBar(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(onPressed: onMenu, icon: const Icon(Icons.menu_rounded)),
+        centerTitle: true,
+        title: const YangiWordmark(compact: true),
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final horizontal = constraints.maxWidth >= 720 ? 24.0 : 14.0;
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 820),
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(horizontal, 12, horizontal, 30),
+                children: <Widget>[
+                  Text(
+                    lang == 'uz' ? 'Sozlamalar' : 'Настройки',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      height: 1.0,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    lang == 'uz'
+                        ? 'Ilovani o‘zingizga moslang'
+                        : 'Настройте приложение под себя',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  sectionTitle(lang == 'uz' ? 'ILOVA' : 'ПРИЛОЖЕНИЕ'),
+                  premiumCard(
+                    Column(
+                      children: <Widget>[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              leadingIcon(Icons.language_rounded),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      lang == 'uz' ? 'Ilova tili' : 'Язык приложения',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      lang == 'uz'
+                                          ? 'Ruscha yoki o‘zbekcha interfeys'
+                                          : 'Русский или узбекский интерфейс',
+                                      style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: <Widget>[
+                                        languageChip('ru', 'RU'),
+                                        languageChip('uz', 'UZ'),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Divider(height: 1, indent: 14, endIndent: 14, color: scheme.outlineVariant),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              leadingIcon(Icons.brightness_6_rounded),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      lang == 'uz' ? 'Mavzu' : 'Тема',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      lang == 'uz'
+                                          ? 'Tizim, yorug‘ yoki qorong‘i'
+                                          : 'Системная, светлая или тёмная',
+                                      style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: <Widget>[
+                                        themeChip(
+                                          'system',
+                                          Icons.phone_android_rounded,
+                                          lang == 'uz' ? 'Tizim' : 'Система',
+                                        ),
+                                        themeChip(
+                                          'light',
+                                          Icons.light_mode_rounded,
+                                          lang == 'uz' ? 'Yorug‘' : 'Светлая',
+                                        ),
+                                        themeChip(
+                                          'dark',
+                                          Icons.dark_mode_rounded,
+                                          lang == 'uz' ? 'Qorong‘i' : 'Тёмная',
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Divider(height: 1, indent: 14, endIndent: 14, color: scheme.outlineVariant),
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          leading: leadingIcon(Icons.my_location_rounded),
+                          title: Text(
+                            lang == 'uz' ? 'Geolokatsiya' : 'Геолокация',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: Text(
+                            lang == 'uz'
+                                ? 'Ruxsat va GPS sozlamalari'
+                                : 'Разрешения и настройки GPS',
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: locationSettings,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+                  sectionTitle(lang == 'uz' ? 'XIZMAT' : 'СЕРВИС'),
+                  premiumCard(
+                    Column(
+                      children: <Widget>[
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          leading: leadingIcon(Icons.support_agent_rounded),
+                          title: Text(
+                            lang == 'uz' ? 'Yordam' : 'Поддержка',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: Text(
+                            lang == 'uz'
+                                ? 'Yangi Taxi yordam markazi'
+                                : 'Центр поддержки Yangi Taxi',
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                        ),
+                        Divider(height: 1, indent: 14, endIndent: 14, color: scheme.outlineVariant),
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          leading: leadingIcon(Icons.info_outline_rounded),
+                          title: Text(
+                            lang == 'uz' ? 'Ilova haqida' : 'О приложении',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: const Text('Yangi Taxi 1.9.0'),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: yangiLime.withValues(alpha: dark ? 0.14 : 0.20),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              'v1.9.0',
+                              style: TextStyle(
+                                color: dark ? yangiLime : yangiGraphite,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+                  sectionTitle(lang == 'uz' ? 'DIAGNOSTIKA' : 'ДИАГНОСТИКА'),
+                  premiumCard(
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                      leading: leadingIcon(api.isDemo ? Icons.science_outlined : Icons.dns_outlined),
+                      title: const Text('Backend', style: TextStyle(fontWeight: FontWeight.w900)),
+                      subtitle: Text(
+                        api.baseUrl,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => backendDialog(context, api, onBackend),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
 class ProfileScreen extends StatefulWidget {
@@ -3882,6 +9136,100 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '';
   }
 
+  double? get clientRating {
+    final raw = me?['client_rating'] ??
+        me?['clientRating'] ??
+        me?['rating_value'] ??
+        me?['rating'];
+    final value = raw == null ? null : double.tryParse(raw.toString());
+    return value != null && value > 0 && value <= 5 ? value : null;
+  }
+
+  int? get clientRatingCount {
+    final raw = me?['client_rating_count'] ??
+        me?['clientRatingCount'] ??
+        me?['rating_count'] ??
+        me?['ratings_count'];
+    return raw == null ? null : int.tryParse(raw.toString());
+  }
+
+  Uint8List? get clientPhotoBytes {
+    var raw = (me?['client_photo'] ?? '').toString().trim();
+    if (raw.isEmpty) return null;
+    raw = raw.replaceFirst(RegExp(r'^data:image/[^;]+;base64,'), '');
+    try {
+      return base64Decode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> chooseProfilePhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: Text(widget.lang == 'uz' ? 'Galereyadan tanlash' : 'Выбрать из галереи'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: Text(widget.lang == 'uz' ? 'Kamera bilan olish' : 'Сделать фото'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1000,
+        maxHeight: 1000,
+        imageQuality: 82,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (bytes.length > 3 * 1024 * 1024) {
+        throw ApiException(
+          widget.lang == 'uz'
+              ? 'Rasm hajmi 3 MB dan kichik bo‘lishi kerak'
+              : 'Фото должно быть меньше 3 МБ',
+        );
+      }
+      final encoded = base64Encode(bytes);
+      await widget.api.post('/api/profile/photo', <String, dynamic>{
+        'photoBase64': encoded,
+      });
+      if (!mounted) return;
+      setState(() {
+        me = <String, dynamic>{...?me, 'client_photo': encoded};
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.lang == 'uz'
+                ? 'Profil rasmi saqlandi'
+                : 'Фото профиля сохранено',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    }
+  }
+
   int get completed => orders.where((x) => x is Map && x['state_kind'] == 'finished').length;
   int get cancelled => orders.where((x) => x is Map && x['state_kind'] == 'aborted').length;
 
@@ -3922,164 +9270,393 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final rating = me?['rating']?.toString() ?? '—';
-    final email = (me?['email'] ?? '').toString();
-    final birthday = (me?['birthday'] ?? '').toString();
-    final address = (me?['address'] ?? '').toString();
-    final contract = (me?['number'] ?? '').toString();
-    final balance = (me?['balance'] ?? 0).toString();
-    final bonus = (me?['bonus_balance'] ?? 0).toString();
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final name = (me?['name'] ?? 'Yangi Taxi').toString().trim();
+    final address = (me?['address'] ?? '').toString().trim();
+    final recent = orders.take(3).toList();
+
+    Widget menuRow({
+      required IconData icon,
+      required String title,
+      String? subtitle,
+      VoidCallback? onTap,
+      Widget? trailing,
+    }) {
+      return ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: yangiLime.withValues(alpha: dark ? 0.14 : 0.18),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(icon, color: dark ? yangiLime : yangiGraphite, size: 21),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        subtitle: subtitle == null ? null : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+        trailing: trailing ?? const Icon(Icons.chevron_right_rounded),
+        onTap: onTap,
+      );
+    }
+
+    void notReady(String title) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.lang == 'uz'
+                ? title + ' keyingi bosqichda ulanadi'
+                : title + ' будет подключено на следующем этапе',
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
         leading: widget.onMenu == null
             ? null
             : IconButton(onPressed: widget.onMenu, icon: const Icon(Icons.menu_rounded)),
-        title: Text(tx(widget.lang, 'profile'), style: const TextStyle(fontWeight: FontWeight.w800)),
-        actions: <Widget>[IconButton(onPressed: load, icon: const Icon(Icons.refresh))],
+        centerTitle: true,
+        title: const YangiWordmark(compact: true),
+        actions: <Widget>[
+          IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
+        ],
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-              children: <Widget>[
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: <Color>[
-                        Theme.of(context).colorScheme.primaryContainer,
-                        Theme.of(context).colorScheme.secondaryContainer,
+          : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 820),
+                child: RefreshIndicator(
+                  onRefresh: load,
+                  child: ListView(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
+                children: <Widget>[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(color: Color(0x11000000), blurRadius: 18, offset: Offset(0, 6)),
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      CircleAvatar(
-                        radius: 34,
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        child: Text(
-                          ((me?['name'] ?? 'Y').toString().trim().isEmpty ? 'Y' : (me?['name'] ?? 'Y').toString().trim()[0]).toUpperCase(),
-                          style: const TextStyle(fontSize: 26, color: Colors.white, fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              (me?['name'] ?? 'Yangi Taxi').toString(),
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(phone),
-                            if (contract.isNotEmpty) Text('№ ' + contract, style: Theme.of(context).textTheme.bodySmall),
-                          ],
-                        ),
-                      ),
-                      Column(
-                        children: <Widget>[
-                          const Icon(Icons.star, color: Color(0xFFFFB300)),
-                          Text(rating, style: const TextStyle(fontWeight: FontWeight.w800)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: <Widget>[
-                    metric(context, Icons.check_circle_outline, completed.toString(), widget.lang == 'uz' ? 'Safarlar' : 'Поездки'),
-                    const SizedBox(width: 8),
-                    metric(context, Icons.close, cancelled.toString(), widget.lang == 'uz' ? 'Bekor' : 'Отмены'),
-                    const SizedBox(width: 8),
-                    metric(context, Icons.payments_outlined, totalSpend.toStringAsFixed(0), 'UZS'),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  child: Column(
-                    children: <Widget>[
-                      infoRow(Icons.phone_outlined, widget.lang == 'uz' ? 'Telefon' : 'Телефон', phone),
-                      infoRow(Icons.email_outlined, 'E-mail', email),
-                      infoRow(Icons.cake_outlined, widget.lang == 'uz' ? 'Tug‘ilgan sana' : 'Дата рождения', birthday),
-                      infoRow(Icons.home_outlined, widget.lang == 'uz' ? 'Manzil' : 'Домашний адрес', address),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Card(
-                  child: Column(
-                    children: <Widget>[
-                      ListTile(
-                        leading: const Icon(Icons.account_balance_wallet_outlined),
-                        title: Text(widget.lang == 'uz' ? 'Asosiy balans' : 'Основной баланс'),
-                        trailing: Text(balance + ' UZS', style: const TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.savings_outlined),
-                        title: const Text('Бонусы / Bonuslar'),
-                        trailing: Text(bonus, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.credit_card),
-                        title: Text(widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты'),
-                        subtitle: Text(widget.lang == 'uz'
-                            ? 'Naqd pul • ATMOS orqali xavfsiz karta to‘lovi'
-                            : 'Наличные • безопасная оплата картой через ATMOS'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => showDialog<void>(
-                          context: context,
-                          builder: (c) => AlertDialog(
-                            title: Text(widget.lang == 'uz' ? 'ATMOS to‘lovi' : 'Оплата ATMOS'),
-                            content: Text(widget.lang == 'uz'
-                                ? 'Karta orqali to‘lov ATMOSning himoyalangan sahifasida amalga oshiriladi. Yangi Taxi karta raqami va CVVni saqlamaydi. Safar tugagach to‘langan summa haydovchining TaxiMaster/TMDriver asosiy balansiga avtomatik tushadi; komissiya va pul yechish TaxiMaster qoidalarida qoladi.'
-                                : 'Оплата картой выполняется на защищённой странице ATMOS. Yangi Taxi не хранит номер карты и CVV. После завершения оплаченной поездки сумма автоматически зачисляется на основной баланс водителя в TaxiMaster/TMDriver; комиссия и вывод средств остаются по вашим правилам TaxiMaster.'),
-                            actions: <Widget>[
-                              FilledButton(onPressed: () => Navigator.pop(c), child: const Text('OK')),
+                    child: Row(
+                      children: <Widget>[
+                        GestureDetector(
+                          onTap: chooseProfilePhoto,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: <Widget>[
+                              CircleAvatar(
+                                radius: 36,
+                                backgroundColor: yangiLime,
+                                child: clientPhotoBytes == null
+                                    ? Text(
+                                        name.isEmpty ? 'Y' : name.substring(0, 1).toUpperCase(),
+                                        style: const TextStyle(
+                                          fontSize: 26,
+                                          fontWeight: FontWeight.w900,
+                                          color: yangiGraphite,
+                                        ),
+                                      )
+                                    : ClipOval(
+                                        child: Image.memory(
+                                          clientPhotoBytes!,
+                                          width: 72,
+                                          height: 72,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                              ),
+                              Positioned(
+                                right: -2,
+                                bottom: -2,
+                                child: Container(
+                                  width: 25,
+                                  height: 25,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: yangiLime, width: 2),
+                                  ),
+                                  child: const Icon(Icons.camera_alt_rounded, size: 14),
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Card(
-                  child: Column(
-                    children: <Widget>[
-                      ListTile(
-                        leading: const Icon(Icons.language),
-                        title: const Text('Язык / Til'),
-                        trailing: SegmentedButton<String>(
-                          segments: const <ButtonSegment<String>>[
-                            ButtonSegment<String>(value: 'ru', label: Text('RU')),
-                            ButtonSegment<String>(value: 'uz', label: Text('UZ')),
-                          ],
-                          selected: <String>{widget.lang},
-                          onSelectionChanged: (x) => widget.onLang(x.first),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                name.isEmpty ? 'Yangi Taxi' : name,
+                                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                phone.isEmpty ? '—' : phone,
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 7,
+                                runSpacing: 6,
+                                children: <Widget>[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: yangiLime.withValues(alpha: 0.18),
+                                      borderRadius: BorderRadius.circular(11),
+                                    ),
+                                    child: Text(
+                                      widget.lang == 'uz' ? 'Yangi Taxi mijoz' : 'Клиент Yangi Taxi',
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                                      borderRadius: BorderRadius.circular(11),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        const Icon(
+                                          Icons.star_rounded,
+                                          size: 14,
+                                          color: Color(0xFFFFB300),
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          clientRating == null ? '—' : clientRating!.toStringAsFixed(2),
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                                        ),
+                                        if (clientRatingCount != null && clientRatingCount! > 0)
+                                          Text(
+                                            ' (' + clientRatingCount!.toString() + ')',
+                                            style: const TextStyle(fontSize: 10),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      ListTile(
-                        leading: Icon(widget.api.isDemo ? Icons.science_outlined : Icons.dns_outlined),
-                        title: Text(tx(widget.lang, 'backend')),
-                        subtitle: Text(widget.api.baseUrl),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => backendDialog(context, widget.api, widget.onBackend),
-                      ),
-                    ],
+                        const Icon(Icons.chevron_right_rounded),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                OutlinedButton.icon(
-                  onPressed: widget.onLogout,
-                  icon: const Icon(Icons.logout),
-                  label: Text(tx(widget.lang, 'logout')),
-                ),
-              ],
+
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.lang == 'uz' ? 'So‘nggi safarlar' : 'Последние поездки',
+                    style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 9),
+
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: recent.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Text(widget.lang == 'uz' ? 'Safarlar yo‘q' : 'Поездок пока нет'),
+                          )
+                        : Column(
+                            children: <Widget>[
+                              ...recent.asMap().entries.map((entry) {
+                                final raw = entry.value;
+                                final o = Map<String, dynamic>.from(raw as Map);
+                                final source = (o['source'] ?? '').toString();
+                                final destination = (o['destination'] ?? '').toString();
+                                final total = o['total_cost'];
+                                final tariffKey = (o['tariff_key'] ?? 'start').toString();
+                                return Column(
+                                  children: <Widget>[
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                      child: Row(
+                                        children: <Widget>[
+                                          SizedBox(
+                                            width: 82,
+                                            height: 46,
+                                            child: _TariffVehicleArt(
+                                              kind: tariffKey,
+                                              selected: false,
+                                              available: true,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: <Widget>[
+                                                Text(
+                                                  source,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  destination.isEmpty
+                                                      ? (widget.lang == 'uz' ? 'Manzil ko‘rsatilmagan' : 'Без конечного адреса')
+                                                      : destination,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          if (total != null)
+                                            Text(
+                                              total.toString() + (widget.lang == 'uz' ? ' so‘m' : ' сум'),
+                                              style: const TextStyle(fontWeight: FontWeight.w900),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (entry.key != recent.length - 1)
+                                      const Divider(height: 1, indent: 14, endIndent: 14),
+                                  ],
+                                );
+                              }),
+                            ],
+                          ),
+                  ),
+
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.lang == 'uz' ? 'Manzillar' : 'Сохранённые адреса',
+                    style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 9),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Column(
+                      children: <Widget>[
+                        menuRow(
+                          icon: Icons.home_rounded,
+                          title: widget.lang == 'uz' ? 'Uy' : 'Дом',
+                          subtitle: address.isEmpty
+                              ? (widget.lang == 'uz' ? 'Manzil qo‘shish' : 'Добавить адрес')
+                              : address,
+                          onTap: () => notReady(widget.lang == 'uz' ? 'Uy manzili' : 'Домашний адрес'),
+                        ),
+                        const Divider(height: 1, indent: 14, endIndent: 14),
+                        menuRow(
+                          icon: Icons.work_rounded,
+                          title: widget.lang == 'uz' ? 'Ish' : 'Работа',
+                          subtitle: widget.lang == 'uz' ? 'Manzil qo‘shish' : 'Добавить адрес',
+                          onTap: () => notReady(widget.lang == 'uz' ? 'Ish manzili' : 'Рабочий адрес'),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.lang == 'uz' ? 'Akkaunt' : 'Аккаунт',
+                    style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 9),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Column(
+                      children: <Widget>[
+                        menuRow(
+                          icon: Icons.account_balance_wallet_rounded,
+                          title: widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+                          subtitle: widget.lang == 'uz' ? 'Kartalar va naqd pul' : 'Карты и наличные',
+                          onTap: () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) => CardsScreen(api: widget.api, lang: widget.lang),
+                            ),
+                          ),
+                        ),
+                        const Divider(height: 1, indent: 14, endIndent: 14),
+                        menuRow(
+                          icon: Icons.card_giftcard_rounded,
+                          title: widget.lang == 'uz' ? 'Promokodlar' : 'Промокоды',
+                          subtitle: widget.lang == 'uz' ? 'Chegirmalar va bonuslar' : 'Скидки и бонусы',
+                          onTap: () => notReady(widget.lang == 'uz' ? 'Promokodlar' : 'Промокоды'),
+                        ),
+                        const Divider(height: 1, indent: 14, endIndent: 14),
+                        menuRow(
+                          icon: Icons.support_agent_rounded,
+                          title: widget.lang == 'uz' ? 'Yordam' : 'Поддержка',
+                          subtitle: widget.lang == 'uz' ? 'Yordam va savollar' : 'Помощь и вопросы',
+                          onTap: () => showDialog<void>(
+                            context: context,
+                            builder: (c) => AlertDialog(
+                              title: const YangiWordmark(compact: true),
+                              content: Text(
+                                widget.lang == 'uz'
+                                    ? 'Yordam markazi keyingi bosqichda ulanadi.'
+                                    : 'Центр поддержки будет подключён на следующем этапе.',
+                              ),
+                              actions: <Widget>[
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(c),
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Divider(height: 1, indent: 14, endIndent: 14),
+                        menuRow(
+                          icon: Icons.language_rounded,
+                          title: widget.lang == 'uz' ? 'Ilova tili' : 'Язык приложения',
+                          subtitle: widget.lang == 'uz' ? 'O‘zbekcha' : 'Русский',
+                          trailing: SegmentedButton<String>(
+                            segments: const <ButtonSegment<String>>[
+                              ButtonSegment<String>(value: 'ru', label: Text('RU')),
+                              ButtonSegment<String>(value: 'uz', label: Text('UZ')),
+                            ],
+                            selected: <String>{widget.lang},
+                            onSelectionChanged: (x) => widget.onLang(x.first),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: widget.onLogout,
+                    icon: const Icon(Icons.logout_rounded),
+                    label: Text(widget.lang == 'uz' ? 'Chiqish' : 'Выйти'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(50),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ),
+        ),
     );
-  }
-}
+  }}
