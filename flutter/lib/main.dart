@@ -4109,7 +4109,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                 ),
                               ),
                               TextButton.icon(
-                                onPressed: () {},
+                                onPressed: _showTariffComparisonSheet,
                                 icon: const Icon(Icons.tune_rounded, size: 18),
                                 label: Text(widget.lang == 'uz' ? 'Taqqoslash' : 'Сравнить'),
                                 style: TextButton.styleFrom(
@@ -4820,6 +4820,193 @@ class _OrderScreenState extends State<OrderScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _showTariffComparisonSheet() async {
+    final items = visibleTariffs;
+    if (items.isEmpty) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      builder: (sheetContext) {
+        final scheme = Theme.of(sheetContext).colorScheme;
+        return FractionallySizedBox(
+          heightFactor: 0.82,
+          child: Column(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 2, 18, 12),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        widget.lang == 'uz' ? 'Tariflarni solishtirish' : 'Сравнение тарифов',
+                        style: const TextStyle(
+                          fontSize: 23,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.45,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 9),
+                  itemBuilder: (context, index) {
+                    final option = items[index];
+                    final key = (option['key'] ?? '').toString();
+                    final available = option['available'] == true;
+                    final selected = available && key == selectedTariffKey;
+                    final price = (option['cost'] as num?)?.toDouble();
+                    final title = widget.lang == 'uz'
+                        ? (option['nameUz'] ?? option['nameRu'] ?? key).toString()
+                        : (option['nameRu'] ?? key).toString();
+
+                    return Opacity(
+                      opacity: available ? 1 : 0.55,
+                      child: Material(
+                        color: selected
+                            ? Color.alphaBlend(
+                                yangiLime.withValues(alpha: 0.10),
+                                scheme.surfaceContainerHigh,
+                              )
+                            : scheme.surfaceContainerLow,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          side: BorderSide(
+                            color: selected ? yangiLime : scheme.outlineVariant,
+                            width: selected ? 2 : 1,
+                          ),
+                        ),
+                        child: InkWell(
+                          onTap: available
+                              ? () {
+                                  selectTariff(key);
+                                  Navigator.pop(sheetContext);
+                                }
+                              : null,
+                          borderRadius: BorderRadius.circular(22),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                            child: Row(
+                              children: <Widget>[
+                                SizedBox(
+                                  width: 100,
+                                  height: 68,
+                                  child: _TariffVehicleArt(
+                                    kind: key,
+                                    selected: selected,
+                                    available: available,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Row(
+                                        children: <Widget>[
+                                          Expanded(
+                                            child: Text(
+                                              title,
+                                              style: const TextStyle(
+                                                fontSize: 17,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                          if (selected)
+                                            const Icon(
+                                              Icons.check_circle_rounded,
+                                              color: yangiLime,
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        tariffDescription(key),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                          fontSize: 11.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: <Widget>[
+                                          Icon(
+                                            Icons.person_rounded,
+                                            size: 15,
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            tariffPassengers(key).toString(),
+                                            style: TextStyle(
+                                              color: scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Icon(
+                                            Icons.luggage_rounded,
+                                            size: 15,
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            tariffBaggage(key).toString(),
+                                            style: TextStyle(
+                                              color: scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          Text(
+                                            !available
+                                                ? (widget.lang == 'uz' ? 'Mavjud emas' : 'Недоступен')
+                                                : price == null
+                                                    ? (widget.lang == 'uz' ? 'Hisoblanadi' : 'Рассчитаем')
+                                                    : moneyLabel(price),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
