@@ -6412,6 +6412,153 @@ class _RideScreenState extends State<RideScreen> {
                     ),
                     const SizedBox(height: 14),
 
+                    if ((driverAssigned || atPlace || activeRide) && !finished) ...<Widget>[
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: scheme.outlineVariant.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        child: Column(
+                          children: <Widget>[
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final progress = activeRide
+                                    ? 0.78
+                                    : atPlace
+                                        ? 0.62
+                                        : 0.38;
+                                final usable = math.max(0.0, constraints.maxWidth - 42);
+                                return SizedBox(
+                                  height: 32,
+                                  child: Stack(
+                                    alignment: Alignment.centerLeft,
+                                    children: <Widget>[
+                                      Positioned(
+                                        left: 14,
+                                        right: 14,
+                                        child: Container(
+                                          height: 5,
+                                          decoration: BoxDecoration(
+                                            color: scheme.outlineVariant,
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        left: 14,
+                                        width: usable * progress,
+                                        child: Container(
+                                          height: 5,
+                                          decoration: BoxDecoration(
+                                            color: yangiLime,
+                                            borderRadius: BorderRadius.circular(20),
+                                            boxShadow: <BoxShadow>[
+                                              BoxShadow(
+                                                color: yangiLime.withValues(alpha: 0.35),
+                                                blurRadius: 10,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        left: 0,
+                                        child: Container(
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            color: yangiLime,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: yangiGraphite,
+                                              width: 5,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        left: 14 + math.max(0.0, usable * progress - 15),
+                                        child: Container(
+                                          width: 34,
+                                          height: 24,
+                                          decoration: BoxDecoration(
+                                            color: dark
+                                                ? const Color(0xFF202425)
+                                                : Colors.white,
+                                            borderRadius: BorderRadius.circular(8),
+                                            boxShadow: const <BoxShadow>[
+                                              BoxShadow(
+                                                color: Color(0x33000000),
+                                                blurRadius: 8,
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Icon(
+                                            Icons.local_taxi_rounded,
+                                            size: 18,
+                                            color: yangiGreen,
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        right: 0,
+                                        child: Container(
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            color: scheme.surface,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: scheme.outline,
+                                              width: 4,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.stop_rounded,
+                                            size: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: <Widget>[
+                                Text(
+                                  driverAssigned
+                                      ? (widget.lang == 'uz' ? 'Haydovchi yo‘lda' : 'Водитель едет к вам')
+                                      : atPlace
+                                          ? (widget.lang == 'uz' ? 'Mashina keldi' : 'Машина подана')
+                                          : (widget.lang == 'uz' ? 'Safar davom etmoqda' : 'Вы в пути'),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                Text(
+                                  eta.isEmpty ? '' : eta + ' мин',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
                     if (searching) ...<Widget>[
                       Container(
                         padding: const EdgeInsets.all(13),
