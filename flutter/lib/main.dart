@@ -2205,6 +2205,63 @@ class _MapPinMarker extends StatelessWidget {
   }
 }
 
+class _VehicleSprite extends StatelessWidget {
+  const _VehicleSprite({
+    required this.kind,
+    this.fit = BoxFit.contain,
+  });
+
+  final String kind;
+  final BoxFit fit;
+
+  int get _index => switch (kind.toLowerCase()) {
+        'comfort' => 1,
+        'business' => 2,
+        'xl' || 'minivan' || 'miniven' => 3,
+        'electro' || 'electric' || 'ev' => 4,
+        'delivery' => 5,
+        'cargo' => 6,
+        'map' || 'map_marker' || 'marker' => 7,
+        // Together deliberately uses Start/Economy, per the design pack mapping.
+        _ => 0,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite ? constraints.maxWidth : 160.0;
+        final height = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : width / 1.6;
+        final spriteWidth = width * 8;
+        final alignmentX = -1.0 + (2.0 * _index / 7.0);
+
+        return ClipRect(
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: OverflowBox(
+              alignment: Alignment(alignmentX, 0),
+              minWidth: spriteWidth,
+              maxWidth: spriteWidth,
+              minHeight: height,
+              maxHeight: height,
+              child: Image.asset(
+                'assets/yangi_vehicle_sprite.webp',
+                width: spriteWidth,
+                height: height,
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _MapCarMarker extends StatelessWidget {
   const _MapCarMarker({required this.kind, this.driver = false});
   final String kind;
@@ -2213,29 +2270,28 @@ class _MapCarMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: driver ? 50 : 42,
-      height: driver ? 58 : 48,
+      width: driver ? 48 : 40,
+      height: driver ? 48 : 40,
       child: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: <Widget>[
-          CustomPaint(
-            painter: _PremiumTopCarPainter(kind: kind, selected: driver),
-            size: Size(driver ? 44 : 36, driver ? 54 : 44),
+          const Positioned.fill(
+            child: _VehicleSprite(kind: 'map_marker'),
           ),
           if (driver)
             Positioned(
-              right: 0,
-              top: 0,
+              right: -1,
+              top: -1,
               child: Container(
-                width: 13,
-                height: 13,
+                width: 12,
+                height: 12,
                 decoration: BoxDecoration(
                   color: yangiLime,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                   boxShadow: const <BoxShadow>[
-                    BoxShadow(color: Color(0x44000000), blurRadius: 5),
+                    BoxShadow(color: Color(0x33000000), blurRadius: 4),
                   ],
                 ),
               ),
@@ -2261,396 +2317,39 @@ class _TariffVehicleArt extends StatelessWidget {
   Widget build(BuildContext context) {
     return Opacity(
       opacity: available ? 1 : 0.42,
-      child: Center(
-        child: SizedBox(
-          width: kind == 'cargo' ? 88 : 72,
-          height: 72,
-          child: CustomPaint(
-            painter: _PremiumTopCarPainter(
-              kind: kind,
-              selected: selected,
+      child: Stack(
+        alignment: Alignment.center,
+        children: <Widget>[
+          if (selected)
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 5,
+              child: Container(
+                height: 24,
+                decoration: BoxDecoration(
+                  color: yangiLime.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
             ),
+          Positioned.fill(
+            child: _VehicleSprite(kind: kind),
           ),
-        ),
+        ],
       ),
     );
   }
-}
-
-class _PremiumTopCarPainter extends CustomPainter {
-  const _PremiumTopCarPainter({required this.kind, required this.selected});
-
-  final String kind;
-  final bool selected;
-
-  Color get _bodyColor => switch (kind) {
-        'business' => const Color(0xFF20252A),
-        'comfort' => const Color(0xFFE4E8EA),
-        'delivery' => const Color(0xFFF4F5F5),
-        'cargo' => const Color(0xFFF2F3F3),
-        _ => const Color(0xFFF8F9F9),
-      };
-
-  Color get _bodyHighlight => switch (kind) {
-        'business' => const Color(0xFF454C53),
-        'comfort' => Colors.white,
-        _ => Colors.white,
-      };
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final sx = size.width / 72;
-    final sy = size.height / 72;
-    canvas.save();
-    canvas.scale(sx, sy);
-
-    if (selected) {
-      canvas.drawOval(
-        const Rect.fromLTWH(12, 3, 48, 66),
-        Paint()
-          ..color = yangiLime.withValues(alpha: 0.15)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
-      );
-    }
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTWH(18, 5, 36, 62),
-        const Radius.circular(15),
-      ),
-      Paint()
-        ..color = const Color(0x4A000000)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
-    );
-
-    if (kind == 'cargo') {
-      _paintCargo(canvas);
-      canvas.restore();
-      return;
-    }
-
-    if (kind == 'delivery') {
-      _paintVan(canvas);
-      canvas.restore();
-      return;
-    }
-
-    final bodyRect = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(20, 2, 32, 66),
-      const Radius.circular(14),
-    );
-    final bodyPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: <Color>[_bodyHighlight, _bodyColor],
-      ).createShader(const Rect.fromLTWH(20, 2, 32, 66));
-    canvas.drawRRect(bodyRect, bodyPaint);
-
-    final bodyEdge = Paint()
-      ..color = kind == 'business'
-          ? const Color(0xFF111416)
-          : const Color(0xFFB7BEC2)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.15;
-    canvas.drawRRect(bodyRect, bodyEdge);
-
-    // Wheels tucked tightly under the body for a realistic top view.
-    final tyre = Paint()..color = const Color(0xFF101214);
-    for (final rect in const <Rect>[
-      Rect.fromLTWH(15.5, 15, 6, 14),
-      Rect.fromLTWH(50.5, 15, 6, 14),
-      Rect.fromLTWH(15.5, 43, 6, 14),
-      Rect.fromLTWH(50.5, 43, 6, 14),
-    ]) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(2.5)),
-        tyre,
-      );
-    }
-
-    // Mirrors.
-    final mirror = Paint()..color = kind == 'business' ? const Color(0xFF30363B) : const Color(0xFFD5DADC);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(16.5, 27, 5, 7), const Radius.circular(2)),
-      mirror,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(50.5, 27, 5, 7), const Radius.circular(2)),
-      mirror,
-    );
-
-    // Panoramic glass.
-    final glassRect = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(24, 13, 24, 38),
-      const Radius.circular(9),
-    );
-    canvas.drawRRect(
-      glassRect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: <Color>[Color(0xFF5F6B73), Color(0xFF252C31)],
-        ).createShader(const Rect.fromLTWH(24, 13, 24, 38)),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(26, 18, 20, 13), const Radius.circular(6)),
-      Paint()..color = const Color(0xFF11171B),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(26, 34, 20, 12), const Radius.circular(5)),
-      Paint()..color = const Color(0xFF1A2024),
-    );
-
-    // Roof highlight adds depth in small tariff cards.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(31, 17, 2.3, 29), const Radius.circular(2)),
-      Paint()..color = Colors.white.withValues(alpha: kind == 'business' ? 0.10 : 0.32),
-    );
-
-    // Head/tail lamps.
-    final head = Paint()..color = const Color(0xFFF6F3D5);
-    final tail = Paint()..color = const Color(0xFFFF4451);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(23, 4.5, 8, 3), const Radius.circular(1.5)),
-      head,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(41, 4.5, 8, 3), const Radius.circular(1.5)),
-      head,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(23, 62, 8, 3), const Radius.circular(1.5)),
-      tail,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(41, 62, 8, 3), const Radius.circular(1.5)),
-      tail,
-    );
-
-    // Tariff identity stays subtle and premium.
-    if (kind == 'together') {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(const Rect.fromLTWH(20.5, 31, 31, 5), const Radius.circular(2.5)),
-        Paint()..color = yangiLime,
-      );
-      canvas.drawCircle(const Offset(31, 28), 2.2, Paint()..color = yangiLime);
-      canvas.drawCircle(const Offset(41, 28), 2.2, Paint()..color = yangiLime);
-    } else if (kind == 'business') {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(const Rect.fromLTWH(21.5, 31.5, 29, 2), const Radius.circular(1)),
-        Paint()..color = yangiLime.withValues(alpha: 0.80),
-      );
-    } else if (kind == 'comfort') {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(const Rect.fromLTWH(22, 55, 28, 2), const Radius.circular(1)),
-        Paint()..color = const Color(0xFFB7C1C7),
-      );
-    }
-
-    canvas.restore();
-  }
-
-  void _paintVan(Canvas canvas) {
-    final body = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(19, 5, 34, 62),
-      const Radius.circular(10),
-    );
-    canvas.drawRRect(body, Paint()..color = const Color(0xFFF4F5F5));
-    canvas.drawRRect(
-      body,
-      Paint()
-        ..color = const Color(0xFFB6BEC2)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(23, 12, 26, 15), const Radius.circular(6)),
-      Paint()..color = const Color(0xFF293138),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(23, 31, 26, 22), const Radius.circular(6)),
-      Paint()..color = yangiLime,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(27, 35, 18, 14), const Radius.circular(3)),
-      Paint()..color = Colors.white,
-    );
-    canvas.drawLine(const Offset(36, 35), const Offset(36, 49), Paint()..color = const Color(0xFFB6BEC2));
-    canvas.drawLine(const Offset(27, 42), const Offset(45, 42), Paint()..color = const Color(0xFFB6BEC2));
-    _paintSimpleWheels(canvas);
-  }
-
-  void _paintCargo(Canvas canvas) {
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(15, 20, 42, 43), const Radius.circular(6)),
-      Paint()..color = const Color(0xFFF1F3F3),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(20, 5, 32, 23), const Radius.circular(9)),
-      Paint()..color = const Color(0xFF30373C),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(24, 10, 24, 10), const Radius.circular(4)),
-      Paint()..color = const Color(0xFF11171B),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(19, 31, 34, 5), const Radius.circular(2.5)),
-      Paint()..color = yangiLime,
-    );
-    _paintSimpleWheels(canvas);
-  }
-
-  void _paintSimpleWheels(Canvas canvas) {
-    final tyre = Paint()..color = const Color(0xFF101214);
-    for (final rect in const <Rect>[
-      Rect.fromLTWH(14.5, 16, 6, 14),
-      Rect.fromLTWH(51.5, 16, 6, 14),
-      Rect.fromLTWH(14.5, 46, 6, 14),
-      Rect.fromLTWH(51.5, 46, 6, 14),
-    ]) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(2.5)),
-        tyre,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _PremiumTopCarPainter oldDelegate) =>
-      oldDelegate.kind != kind || oldDelegate.selected != selected;
 }
 
 class _DriverAssignedVehicleArt extends StatelessWidget {
   const _DriverAssignedVehicleArt({required this.kind});
-
   final String kind;
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _DriverAssignedVehiclePainter(kind: kind),
-      size: const Size(120, 66),
-    );
+    return _VehicleSprite(kind: kind);
   }
-}
-
-class _DriverAssignedVehiclePainter extends CustomPainter {
-  const _DriverAssignedVehiclePainter({required this.kind});
-  final String kind;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final sx = size.width / 120;
-    final sy = size.height / 66;
-    canvas.save();
-    canvas.scale(sx, sy);
-
-    canvas.drawOval(
-      const Rect.fromLTWH(12, 49, 96, 11),
-      Paint()
-        ..color = const Color(0x55000000)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-
-    final bodyDark = kind == 'business';
-    final body = bodyDark ? const Color(0xFF23292E) : const Color(0xFFF4F6F6);
-    final highlight = bodyDark ? const Color(0xFF505860) : Colors.white;
-
-    final silhouette = Path()
-      ..moveTo(8, 45)
-      ..quadraticBezierTo(10, 36, 20, 33)
-      ..lineTo(35, 20)
-      ..quadraticBezierTo(40, 15, 49, 15)
-      ..lineTo(77, 15)
-      ..quadraticBezierTo(84, 16, 90, 23)
-      ..lineTo(99, 33)
-      ..quadraticBezierTo(109, 36, 112, 45)
-      ..lineTo(109, 50)
-      ..lineTo(11, 50)
-      ..close();
-
-    canvas.drawPath(
-      silhouette,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[highlight, body],
-        ).createShader(const Rect.fromLTWH(8, 15, 104, 36)),
-    );
-    canvas.drawPath(
-      silhouette,
-      Paint()
-        ..color = bodyDark ? const Color(0xFF0D1012) : const Color(0xFFB5BDC1)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
-    );
-
-    // Glass and pillars.
-    final glass = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: <Color>[Color(0xFF5D6870), Color(0xFF151B1F)],
-      ).createShader(const Rect.fromLTWH(34, 19, 57, 17));
-    final frontWindow = Path()
-      ..moveTo(40, 20)
-      ..lineTo(59, 20)
-      ..lineTo(59, 33)
-      ..lineTo(30, 33)
-      ..close();
-    final rearWindow = Path()
-      ..moveTo(63, 20)
-      ..lineTo(77, 20)
-      ..lineTo(89, 33)
-      ..lineTo(63, 33)
-      ..close();
-    canvas.drawPath(frontWindow, glass);
-    canvas.drawPath(rearWindow, glass);
-
-    // Wheels with metallic rims.
-    for (final x in <double>[31, 88]) {
-      canvas.drawCircle(Offset(x, 49), 9, Paint()..color = const Color(0xFF111315));
-      canvas.drawCircle(Offset(x, 49), 5.3, Paint()..color = const Color(0xFFB9C0C4));
-      canvas.drawCircle(Offset(x, 49), 2.4, Paint()..color = const Color(0xFF4B5257));
-    }
-
-    // Yangi lime identity line.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(39, 42, 42, 3), const Radius.circular(1.5)),
-      Paint()..color = yangiLime,
-    );
-
-    // Lamps and small trim details.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(99, 38, 9, 3), const Radius.circular(1.5)),
-      Paint()..color = const Color(0xFFFFF1B5),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(11, 39, 7, 3), const Radius.circular(1.5)),
-      Paint()..color = const Color(0xFFFF4A55),
-    );
-    canvas.drawLine(
-      const Offset(62, 19),
-      const Offset(62, 42),
-      Paint()
-        ..color = Colors.white.withValues(alpha: bodyDark ? 0.10 : 0.40)
-        ..strokeWidth = 1,
-    );
-
-    if (kind == 'together') {
-      canvas.drawCircle(const Offset(70, 39), 2.5, Paint()..color = yangiLime);
-      canvas.drawCircle(const Offset(77, 39), 2.5, Paint()..color = yangiLime);
-    }
-
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _DriverAssignedVehiclePainter oldDelegate) =>
-      oldDelegate.kind != kind;
 }
 
 class _TariffGlyph extends StatelessWidget {
@@ -3354,9 +3053,12 @@ class _OrderScreenState extends State<OrderScreen> {
   int tariffPassengers(String key) {
     switch (key) {
       case 'cargo':
-        return 2;
       case 'delivery':
-        return 1;
+        return 2;
+      case 'xl':
+      case 'minivan':
+      case 'miniven':
+        return 6;
       default:
         return 4;
     }
@@ -3371,6 +3073,10 @@ class _OrderScreenState extends State<OrderScreen> {
         return 6;
       case 'delivery':
         return 1;
+      case 'xl':
+      case 'minivan':
+      case 'miniven':
+        return 4;
       default:
         return 2;
     }
@@ -3382,6 +3088,8 @@ class _OrderScreenState extends State<OrderScreen> {
         'together' => 'Birga borish — yanada tejamkor',
         'comfort' => 'Ko‘proq joy va qulaylik',
         'business' => 'Premium xizmat va avtomobil',
+        'xl' || 'minivan' || 'miniven' => '6 yo‘lovchigacha keng miniven',
+        'electro' || 'electric' || 'ev' => 'Sokin va zamonaviy elektromobil',
         'delivery' => 'Posilka va kichik yuklar uchun',
         'cargo' => 'Katta yuklarni tashish uchun',
         _ => 'Har kun uchun tez va qulay',
@@ -3391,6 +3099,8 @@ class _OrderScreenState extends State<OrderScreen> {
       'together' => 'Выгоднее для совместной поездки',
       'comfort' => 'Больше пространства и комфорта',
       'business' => 'Премиальный сервис и автомобиль',
+      'xl' || 'minivan' || 'miniven' => 'Просторный минивэн до 6 пассажиров',
+      'electro' || 'electric' || 'ev' => 'Тихий современный электромобиль',
       'delivery' => 'Для посылок и небольших грузов',
       'cargo' => 'Для перевозки крупных грузов',
       _ => 'Быстро и выгодно на каждый день',
@@ -3405,7 +3115,7 @@ class _OrderScreenState extends State<OrderScreen> {
       if (i > 0 && (digits.length - i) % 3 == 0) out.write(' ');
       out.write(digits[i]);
     }
-    return out.toString() + ' so‘m';
+    return out.toString() + (widget.lang == 'uz' ? ' so‘m' : ' сум');
   }
 
   void swapRoutePoints() {
@@ -4873,8 +4583,8 @@ class _OrderScreenState extends State<OrderScreen> {
                           const SizedBox(height: 4),
 
                           if (estimating && destinationReady)
-                            SizedBox(
-                              height: 258,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 26),
                               child: Center(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
@@ -4895,372 +4605,311 @@ class _OrderScreenState extends State<OrderScreen> {
                               ),
                             )
                           else
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                final cardWidth = math.min(
-                                  218.0,
-                                  math.max(172.0, (constraints.maxWidth - 12) / 2),
-                                );
-                                return SizedBox(
-                                  height: 258,
-                                  child: ListView.separated(
-                                    padding: const EdgeInsets.fromLTRB(2, 2, 14, 8),
-                                    clipBehavior: Clip.none,
-                                    physics: const BouncingScrollPhysics(),
-                                    scrollDirection: Axis.horizontal,
-                                    itemCount: tariffs.length,
-                                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                                    itemBuilder: (context, index) {
-                                      final option = tariffs[index];
-                                      final key = (option['key'] ?? '').toString();
-                                      final available = option['available'] == true;
-                                      final isSelected =
-                                          available && key == selectedTariffKey;
-                                      final price =
-                                          (option['cost'] as num?)?.toDouble();
-                                      final title = widget.lang == 'uz'
-                                          ? (option['nameUz'] ??
-                                                  option['nameRu'] ??
-                                                  key)
-                                              .toString()
-                                          : (option['nameRu'] ?? key).toString();
-                                      final saving =
-                                          (option['effectiveSavingPercentVsStart']
-                                                  as num?)
-                                              ?.toDouble();
+                            ...tariffs.map((option) {
+                              final key = (option['key'] ?? '').toString();
+                              final available = option['available'] == true;
+                              final isSelected =
+                                  available && key == selectedTariffKey;
+                              final price = (option['cost'] as num?)?.toDouble();
+                              final title = widget.lang == 'uz'
+                                  ? (option['nameUz'] ??
+                                          option['nameRu'] ??
+                                          key)
+                                      .toString()
+                                  : (option['nameRu'] ?? key).toString();
+                              final saving =
+                                  (option['effectiveSavingPercentVsStart']
+                                          as num?)
+                                      ?.toDouble();
 
-                                      final cardBackground = isSelected
-                                          ? const Color(0xFF101719)
-                                          : (dark
-                                              ? const Color(0xFF171B1C)
-                                              : Colors.white);
-                                      final primaryText = isSelected
-                                          ? Colors.white
-                                          : scheme.onSurface;
-                                      final secondaryText = isSelected
-                                          ? const Color(0xFFC4C9CA)
-                                          : scheme.onSurfaceVariant;
+                              final selectedBg = dark
+                                  ? yangiLime.withValues(alpha: 0.10)
+                                  : const Color(0xFFF2FFE8);
+                              final idleBg = dark
+                                  ? const Color(0xFF171B1C)
+                                  : Colors.white;
 
-                                      return SizedBox(
-                                        width: cardWidth,
-                                        child: Opacity(
-                                          opacity: available ? 1 : 0.48,
-                                          child: AnimatedContainer(
-                                            duration:
-                                                const Duration(milliseconds: 220),
-                                            curve: Curves.easeOutCubic,
-                                            decoration: BoxDecoration(
-                                              color: cardBackground,
-                                              borderRadius:
-                                                  BorderRadius.circular(26),
-                                              border: Border.all(
-                                                color: isSelected
-                                                    ? yangiLime
-                                                    : (dark
-                                                        ? const Color(0xFF343A3C)
-                                                        : const Color(0xFFE3E6E6)),
-                                                width: isSelected ? 2.6 : 1.2,
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 9),
+                                child: Opacity(
+                                  opacity: available ? 1 : 0.48,
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    curve: Curves.easeOutCubic,
+                                    decoration: BoxDecoration(
+                                      color: isSelected ? selectedBg : idleBg,
+                                      borderRadius: BorderRadius.circular(22),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? yangiLime
+                                            : (dark
+                                                ? const Color(0xFF303638)
+                                                : const Color(0xFFE6E9E9)),
+                                        width: isSelected ? 2.1 : 1,
+                                      ),
+                                      boxShadow: dark
+                                          ? const <BoxShadow>[]
+                                          : const <BoxShadow>[
+                                              BoxShadow(
+                                                color: Color(0x0C000000),
+                                                blurRadius: 14,
+                                                offset: Offset(0, 5),
                                               ),
-                                              boxShadow: isSelected
-                                                  ? <BoxShadow>[
-                                                      BoxShadow(
-                                                        color: yangiLime
-                                                            .withValues(alpha: 0.14),
-                                                        blurRadius: 24,
-                                                        spreadRadius: 1,
-                                                        offset:
-                                                            const Offset(0, 9),
-                                                      ),
-                                                    ]
-                                                  : (dark
-                                                      ? const <BoxShadow>[]
-                                                      : const <BoxShadow>[
-                                                          BoxShadow(
-                                                            color:
-                                                                Color(0x10000000),
-                                                            blurRadius: 18,
-                                                            offset:
-                                                                Offset(0, 7),
-                                                          ),
-                                                        ]),
-                                            ),
-                                            child: Material(
-                                              color: Colors.transparent,
-                                              borderRadius:
-                                                  BorderRadius.circular(25),
-                                              clipBehavior: Clip.antiAlias,
-                                              child: InkWell(
-                                                onTap: available
-                                                    ? () => selectTariff(key)
-                                                    : null,
-                                                child: Padding(
-                                                  padding:
-                                                      const EdgeInsets.fromLTRB(
-                                                    14,
-                                                    12,
-                                                    14,
-                                                    13,
-                                                  ),
-                                                  child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment.start,
-                                                    children: <Widget>[
-                                                      SizedBox(
-                                                        height: 88,
-                                                        child: Stack(
-                                                          clipBehavior: Clip.none,
-                                                          children: <Widget>[
-                                                            Center(
-                                                              child: SizedBox(
-                                                                width: 92,
-                                                                height: 86,
-                                                                child:
-                                                                    _TariffVehicleArt(
-                                                                  kind: key,
-                                                                  selected:
-                                                                      isSelected,
-                                                                  available:
-                                                                      available,
-                                                                ),
-                                                              ),
+                                            ],
+                                    ),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      borderRadius: BorderRadius.circular(21),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: InkWell(
+                                        onTap: available
+                                            ? () => selectTariff(key)
+                                            : null,
+                                        child: Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            11,
+                                            10,
+                                            12,
+                                            10,
+                                          ),
+                                          child: Row(
+                                            children: <Widget>[
+                                              SizedBox(
+                                                width: 104,
+                                                height: 68,
+                                                child: _TariffVehicleArt(
+                                                  kind: key,
+                                                  selected: isSelected,
+                                                  available: available,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: <Widget>[
+                                                    Row(
+                                                      children: <Widget>[
+                                                        Flexible(
+                                                          child: Text(
+                                                            title,
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                            style:
+                                                                const TextStyle(
+                                                              fontSize: 17,
+                                                              height: 1,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w900,
+                                                              letterSpacing:
+                                                                  -0.35,
                                                             ),
-                                                            Positioned(
-                                                              right: 0,
-                                                              top: 0,
-                                                              child:
-                                                                  AnimatedContainer(
-                                                                duration:
-                                                                    const Duration(
-                                                                        milliseconds:
-                                                                            180),
-                                                                width: 31,
-                                                                height: 31,
-                                                                decoration:
-                                                                    BoxDecoration(
-                                                                  color: isSelected
-                                                                      ? yangiLime
-                                                                      : Colors
-                                                                          .transparent,
-                                                                  shape: BoxShape
-                                                                      .circle,
-                                                                  border:
-                                                                      Border.all(
-                                                                    color: isSelected
-                                                                        ? yangiLime
-                                                                        : secondaryText
-                                                                            .withValues(
-                                                                                alpha:
-                                                                                    0.65),
-                                                                    width: 2,
-                                                                  ),
-                                                                ),
-                                                                child: isSelected
-                                                                    ? const Icon(
-                                                                        Icons
-                                                                            .check_rounded,
-                                                                        size:
-                                                                            20,
-                                                                        color:
-                                                                            yangiGraphite,
-                                                                      )
-                                                                    : null,
-                                                              ),
-                                                            ),
-                                                            if (saving != null &&
-                                                                saving > 0)
-                                                              Positioned(
-                                                                left: 0,
-                                                                top: 0,
-                                                                child:
-                                                                    Container(
-                                                                  padding:
-                                                                      const EdgeInsets
-                                                                          .symmetric(
-                                                                    horizontal:
-                                                                        8,
-                                                                    vertical: 5,
-                                                                  ),
-                                                                  decoration:
-                                                                      BoxDecoration(
-                                                                    color:
-                                                                        yangiLime,
-                                                                    borderRadius:
-                                                                        BorderRadius
-                                                                            .circular(
-                                                                                10),
-                                                                  ),
-                                                                  child: Text(
-                                                                    '−' +
-                                                                        saving
-                                                                            .round()
-                                                                            .toString() +
-                                                                        '%',
-                                                                    style:
-                                                                        const TextStyle(
-                                                                      color:
-                                                                          yangiGraphite,
-                                                                      fontSize:
-                                                                          11,
-                                                                      fontWeight:
-                                                                          FontWeight
-                                                                              .w900,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 3),
-                                                      Text(
-                                                        title,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: TextStyle(
-                                                          color: primaryText,
-                                                          fontSize: 20,
-                                                          height: 1,
-                                                          fontWeight:
-                                                              FontWeight.w900,
-                                                          letterSpacing: -0.55,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 9),
-                                                      Row(
-                                                        children: <Widget>[
-                                                          _TariffSpecPill(
-                                                            icon: Icons
-                                                                .person_rounded,
-                                                            value:
-                                                                tariffPassengers(
-                                                                        key)
-                                                                    .toString(),
-                                                            selected:
-                                                                isSelected,
                                                           ),
+                                                        ),
+                                                        if (saving != null &&
+                                                            saving > 0) ...<
+                                                            Widget>[
                                                           const SizedBox(
-                                                              width: 7),
-                                                          _TariffSpecPill(
-                                                            icon: key ==
-                                                                        'delivery' ||
-                                                                    key ==
-                                                                        'cargo'
-                                                                ? Icons
-                                                                    .inventory_2_outlined
-                                                                : Icons
-                                                                    .luggage_rounded,
-                                                            value:
-                                                                tariffBaggage(
-                                                                        key)
-                                                                    .toString(),
-                                                            selected:
-                                                                isSelected,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                      const SizedBox(height: 9),
-                                                      Text(
-                                                        tariffDescription(key),
-                                                        maxLines: 2,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: TextStyle(
-                                                          height: 1.18,
-                                                          fontSize: 11.5,
-                                                          color:
-                                                              secondaryText,
-                                                          fontWeight:
-                                                              FontWeight.w500,
-                                                        ),
-                                                      ),
-                                                      const Spacer(),
-                                                      Row(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .end,
-                                                        children: <Widget>[
-                                                          Expanded(
+                                                              width: 6),
+                                                          Container(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .symmetric(
+                                                              horizontal: 7,
+                                                              vertical: 3,
+                                                            ),
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              color: yangiLime,
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          9),
+                                                            ),
                                                             child: Text(
-                                                              !available
-                                                                  ? (widget.lang ==
-                                                                          'uz'
-                                                                      ? 'Mavjud emas'
-                                                                      : 'Недоступен')
-                                                                  : price !=
-                                                                          null
-                                                                      ? moneyLabel(
-                                                                          price)
-                                                                      : (widget.lang ==
-                                                                              'uz'
-                                                                          ? 'Yo‘nalishdan keyin'
-                                                                          : 'После маршрута'),
-                                                              maxLines: 1,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                              style: TextStyle(
-                                                                fontSize: 17,
-                                                                height: 1,
+                                                              '−' +
+                                                                  saving
+                                                                      .round()
+                                                                      .toString() +
+                                                                  '%',
+                                                              style:
+                                                                  const TextStyle(
+                                                                color:
+                                                                    yangiGraphite,
+                                                                fontSize: 9.5,
                                                                 fontWeight:
                                                                     FontWeight
                                                                         .w900,
-                                                                letterSpacing:
-                                                                    -0.25,
-                                                                color: available
-                                                                    ? (isSelected
-                                                                        ? yangiLime
-                                                                        : primaryText)
-                                                                    : secondaryText,
                                                               ),
                                                             ),
                                                           ),
-                                                          if (isSelected)
-                                                            const Icon(
-                                                              Icons
-                                                                  .arrow_forward_rounded,
-                                                              size: 20,
-                                                              color: yangiLime,
-                                                            ),
                                                         ],
-                                                      ),
-                                                      if (destinationReady &&
-                                                          routeMinutes != null)
-                                                        Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .only(top: 5),
-                                                          child: Text(
-                                                            '~ ' +
-                                                                routeMinutes!
-                                                                    .toString() +
-                                                                (widget.lang ==
-                                                                        'uz'
-                                                                    ? ' daq'
-                                                                    : ' мин'),
-                                                            style: TextStyle(
-                                                              fontSize: 10.5,
-                                                              color:
-                                                                  secondaryText,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700,
-                                                            ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Row(
+                                                      children: <Widget>[
+                                                        Icon(
+                                                          Icons.person_rounded,
+                                                          size: 14,
+                                                          color: scheme
+                                                              .onSurfaceVariant,
+                                                        ),
+                                                        const SizedBox(width: 3),
+                                                        Text(
+                                                          tariffPassengers(key)
+                                                              .toString(),
+                                                          style: TextStyle(
+                                                            color: scheme
+                                                                .onSurfaceVariant,
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
                                                           ),
                                                         ),
-                                                    ],
-                                                  ),
+                                                        const SizedBox(width: 9),
+                                                        Icon(
+                                                          key == 'delivery' ||
+                                                                  key == 'cargo'
+                                                              ? Icons
+                                                                  .inventory_2_outlined
+                                                              : Icons
+                                                                  .luggage_rounded,
+                                                          size: 13,
+                                                          color: scheme
+                                                              .onSurfaceVariant,
+                                                        ),
+                                                        const SizedBox(width: 3),
+                                                        Text(
+                                                          tariffBaggage(key)
+                                                              .toString(),
+                                                          style: TextStyle(
+                                                            color: scheme
+                                                                .onSurfaceVariant,
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 5),
+                                                    Text(
+                                                      tariffDescription(key),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: scheme
+                                                            .onSurfaceVariant,
+                                                        fontSize: 10.5,
+                                                        height: 1.15,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
-                                            ),
+                                              const SizedBox(width: 9),
+                                              ConstrainedBox(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                  minWidth: 74,
+                                                  maxWidth: 92,
+                                                ),
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.end,
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: <Widget>[
+                                                    Text(
+                                                      !available
+                                                          ? (widget.lang == 'uz'
+                                                              ? 'Mavjud emas'
+                                                              : 'Недоступен')
+                                                          : price != null
+                                                              ? moneyLabel(
+                                                                  price)
+                                                              : '—',
+                                                      textAlign:
+                                                          TextAlign.right,
+                                                      maxLines: 2,
+                                                      style: TextStyle(
+                                                        color: available
+                                                            ? scheme.onSurface
+                                                            : scheme
+                                                                .onSurfaceVariant,
+                                                        fontSize: 14.5,
+                                                        height: 1.05,
+                                                        fontWeight:
+                                                            FontWeight.w900,
+                                                      ),
+                                                    ),
+                                                    if (destinationReady &&
+                                                        routeMinutes != null) ...<
+                                                        Widget>[
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        '~ ' +
+                                                            routeMinutes!
+                                                                .toString() +
+                                                            (widget.lang == 'uz'
+                                                                ? ' daq'
+                                                                : ' мин'),
+                                                        style: TextStyle(
+                                                          color: scheme
+                                                              .onSurfaceVariant,
+                                                          fontSize: 9.5,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                    const SizedBox(height: 6),
+                                                    AnimatedContainer(
+                                                      duration: const Duration(
+                                                          milliseconds: 180),
+                                                      width: 27,
+                                                      height: 27,
+                                                      decoration: BoxDecoration(
+                                                        color: isSelected
+                                                            ? yangiLime
+                                                            : Colors
+                                                                .transparent,
+                                                        shape: BoxShape.circle,
+                                                        border: Border.all(
+                                                          color: isSelected
+                                                              ? yangiLime
+                                                              : scheme.outline,
+                                                          width: 1.6,
+                                                        ),
+                                                      ),
+                                                      child: isSelected
+                                                          ? const Icon(
+                                                              Icons
+                                                                  .check_rounded,
+                                                              size: 18,
+                                                              color:
+                                                                  yangiGraphite,
+                                                            )
+                                                          : null,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                      );
-                                    },
+                                      ),
+                                    ),
                                   ),
-                                );
-                              },
-                            ),
+                                ),
+                              );
+                            }),
 
                           const SizedBox(height: 10),
                           Row(
@@ -7872,6 +7521,304 @@ class _RideScreenState extends State<RideScreen> {
         );
       }
 
+      if (driverAssigned || atPlace) {
+        final foundTitle = atPlace
+            ? (widget.lang == 'uz'
+                ? 'Mashina yetib keldi'
+                : 'Машина подъехала')
+            : (widget.lang == 'uz'
+                ? 'Haydovchi topildi'
+                : 'Водитель найден');
+        final foundSubtitle = atPlace
+            ? (widget.lang == 'uz'
+                ? 'Haydovchi sizni kutmoqda'
+                : 'Водитель ожидает вас')
+            : (widget.lang == 'uz'
+                ? 'Haydovchi siz tomon yo‘l olmoqda'
+                : 'Водитель уже едет к вам');
+
+        Widget contactButton(
+          IconData icon,
+          String label,
+          VoidCallback? onTap,
+        ) {
+          return Material(
+            color: dark
+                ? const Color(0xFF1A1E1F)
+                : const Color(0xFFF4F6F6),
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(18),
+              child: SizedBox(
+                width: 70,
+                height: 58,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Icon(icon, size: 20),
+                    const SizedBox(height: 4),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        foundTitle,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          height: 1,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.65,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        foundSubtitle,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (eta.isNotEmpty || distance.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: yangiLime.withValues(alpha: dark ? 0.12 : 0.18),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: <Widget>[
+                        if (eta.isNotEmpty)
+                          Text(
+                            eta +
+                                (widget.lang == 'uz'
+                                    ? ' daqiqa'
+                                    : ' мин'),
+                            style: const TextStyle(
+                              color: yangiGreen,
+                              fontSize: 16,
+                              height: 1,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        if (distance.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 4),
+                          Text(
+                            distance + ' км',
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 17),
+            Row(
+              children: <Widget>[
+                CircleAvatar(
+                  radius: 29,
+                  backgroundColor: yangiLime,
+                  child: Text(
+                    driverName.isEmpty
+                        ? 'Y'
+                        : driverName.characters.first.toUpperCase(),
+                    style: const TextStyle(
+                      color: yangiGraphite,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        driverName.isEmpty
+                            ? (widget.lang == 'uz'
+                                ? 'Yangi Taxi haydovchisi'
+                                : 'Водитель Yangi Taxi')
+                            : driverName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: <Widget>[
+                          if (rating.isNotEmpty) ...<Widget>[
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 16,
+                              color: Color(0xFFFFB300),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              rating,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                          if (car.isNotEmpty) ...<Widget>[
+                            if (rating.isNotEmpty)
+                              Text(
+                                '  •  ',
+                                style: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            Flexible(
+                              child: Text(
+                                car,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                contactButton(
+                  Icons.call_rounded,
+                  widget.lang == 'uz' ? 'Qo‘ng‘iroq' : 'Звонок',
+                  driverPhone.isEmpty ? null : callDriver,
+                ),
+                const SizedBox(width: 7),
+                contactButton(
+                  Icons.chat_bubble_outline_rounded,
+                  widget.lang == 'uz' ? 'Xabar' : 'Чат',
+                  driverPhone.isEmpty ? null : messageDriver,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Divider(height: 1, color: scheme.outlineVariant),
+            const SizedBox(height: 10),
+            Row(
+              children: <Widget>[
+                SizedBox(
+                  width: 146,
+                  height: 88,
+                  child: _DriverAssignedVehicleArt(kind: tariffKey),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        car.isEmpty
+                            ? (widget.lang == 'uz'
+                                ? 'Yangi Taxi avtomobili'
+                                : 'Автомобиль Yangi Taxi')
+                            : car,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      if (number.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 7),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: dark
+                                ? const Color(0xFF222728)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(7),
+                            border: Border.all(
+                              color: scheme.outlineVariant,
+                            ),
+                          ),
+                          child: Text(
+                            number,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: cancel,
+              icon: const Icon(Icons.close_rounded),
+              label: Text(
+                widget.lang == 'uz'
+                    ? 'Buyurtmani bekor qilish'
+                    : 'Отменить заказ',
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: dark
+                    ? const Color(0xFF3A1518)
+                    : const Color(0xFFFFE9EA),
+                foregroundColor: const Color(0xFFD71920),
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(17),
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -9447,7 +9394,7 @@ class SettingsScreen extends StatelessWidget {
                             lang == 'uz' ? 'Ilova haqida' : 'О приложении',
                             style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
-                          subtitle: const Text('Yangi Taxi 1.9.3'),
+                          subtitle: const Text('Yangi Taxi 1.9.4'),
                           trailing: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                             decoration: BoxDecoration(
@@ -9455,7 +9402,7 @@ class SettingsScreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              'v1.9.3',
+                              'v1.9.4',
                               style: TextStyle(
                                 color: dark ? yangiLime : yangiGraphite,
                                 fontSize: 11,
