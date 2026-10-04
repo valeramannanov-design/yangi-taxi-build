@@ -3854,7 +3854,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
           Positioned(
             right: 18,
-            bottom: MediaQuery.of(context).size.height * 0.54,
+            bottom: MediaQuery.of(context).size.height * (destinationReady ? 0.62 : 0.49),
             child: SafeArea(
               child: _roundMapButton(
                 icon: Icons.my_location_rounded,
@@ -3904,103 +3904,201 @@ class _OrderScreenState extends State<OrderScreen> {
                         controller: scrollController,
                         padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
                         children: <Widget>[
+                          Text(
+                            destinationReady
+                                ? (widget.lang == 'uz'
+                                    ? 'Yo‘nalishni tekshiring'
+                                    : 'Проверьте маршрут')
+                                : (widget.lang == 'uz'
+                                    ? 'Qayerga boramiz?'
+                                    : 'Куда поедем?'),
+                            style: const TextStyle(
+                              fontSize: 25,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.7,
+                              height: 1.05,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            widget.lang == 'uz'
+                                ? 'Manzillarni buyurtmagacha istalgan payt o‘zgartirish mumkin'
+                                : 'Адреса можно изменить в любой момент до заказа',
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              Expanded(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: scheme.surfaceContainerHigh,
+                                    borderRadius: BorderRadius.circular(22),
+                                    border: Border.all(
+                                      color: dark
+                                          ? const Color(0xFF303638)
+                                          : scheme.outlineVariant.withValues(alpha: 0.75),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: <Widget>[
+                                      _addressLine(
+                                        pickup: true,
+                                        title: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
+                                        value: from?.address ??
+                                            (locating
+                                                ? (widget.lang == 'uz'
+                                                    ? 'Joylashuv aniqlanmoqda…'
+                                                    : 'Определяем местоположение…')
+                                                : (widget.lang == 'uz'
+                                                    ? 'Joriy joylashuv'
+                                                    : 'Текущее местоположение')),
+                                        onTap: () async {
+                                          final p = await selectAddress(tx(widget.lang, 'from'), from);
+                                          if (p != null && mounted) {
+                                            setState(() {
+                                              from = p;
+                                              pickupPinnedByUser = true;
+                                              cost = null;
+                                              route = <ym.Point>[];
+                                              routeDistanceKm = null;
+                                              routeMinutes = null;
+                                            });
+                                            await loadNearbyCars();
+                                            scheduleEstimate();
+                                          }
+                                        },
+                                        onMapTap: () => pickRoutePointOnMap(pickup: true),
+                                      ),
+                                      Divider(
+                                        height: 1,
+                                        indent: 45,
+                                        endIndent: 12,
+                                        color: scheme.outlineVariant.withValues(alpha: 0.65),
+                                      ),
+                                      _addressLine(
+                                        pickup: false,
+                                        title: selectedTariffKey == 'delivery'
+                                            ? (widget.lang == 'uz'
+                                                ? 'Qayerga — ixtiyoriy'
+                                                : 'Куда — необязательно')
+                                            : (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
+                                        value: to?.address ??
+                                            (selectedTariffKey == 'delivery'
+                                                ? (widget.lang == 'uz'
+                                                    ? 'Keyinroq ko‘rsatish mumkin'
+                                                    : 'Можно указать позже')
+                                                : (widget.lang == 'uz'
+                                                    ? 'Manzilni tanlang'
+                                                    : 'Выберите адрес')),
+                                        onTap: () async {
+                                          final p = await selectAddress(
+                                            tx(widget.lang, 'to'),
+                                            to ?? from,
+                                          );
+                                          if (p != null && mounted) {
+                                            setState(() {
+                                              to = p;
+                                              cost = null;
+                                              route = <ym.Point>[];
+                                              routeDistanceKm = null;
+                                              routeMinutes = null;
+                                            });
+                                            scheduleEstimate();
+                                          }
+                                        },
+                                        onMapTap: () => pickRoutePointOnMap(pickup: false),
+                                        onClear: to == null ? null : clearDestination,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (destinationReady) ...<Widget>[
+                                const SizedBox(width: 9),
+                                Material(
+                                  color: scheme.surfaceContainerHigh,
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: InkWell(
+                                    onTap: swapRoutePoints,
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: SizedBox(
+                                      width: 48,
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: <Widget>[
+                                          Icon(
+                                            Icons.swap_vert_rounded,
+                                            color: scheme.onSurface,
+                                            size: 25,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            widget.lang == 'uz' ? 'Almash' : 'Поменять',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 8.5,
+                                              color: scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                           if (destinationReady) ...<Widget>[
-                            SizedBox(
-                              height: 66,
+                            const SizedBox(height: 10),
+                            Container(
+                              height: 68,
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: scheme.outlineVariant.withValues(alpha: 0.55),
+                                ),
+                              ),
                               child: Row(
                                 children: <Widget>[
                                   metric(
-                                    Icons.directions_car_filled_rounded,
+                                    Icons.route_rounded,
                                     distanceLabel,
                                     widget.lang == 'uz' ? 'Masofa' : 'Расстояние',
                                   ),
-                                  Container(width: 1, height: 42, color: Theme.of(context).dividerColor),
+                                  Container(
+                                    width: 1,
+                                    height: 34,
+                                    color: scheme.outlineVariant.withValues(alpha: 0.7),
+                                  ),
                                   metric(
                                     Icons.schedule_rounded,
                                     minutesLabel,
-                                    widget.lang == 'uz' ? 'Vaqt' : 'Время в пути',
+                                    widget.lang == 'uz' ? 'Vaqt' : 'В пути',
                                   ),
-                                  Container(width: 1, height: 42, color: Theme.of(context).dividerColor),
+                                  Container(
+                                    width: 1,
+                                    height: 34,
+                                    color: scheme.outlineVariant.withValues(alpha: 0.7),
+                                  ),
                                   metric(
-                                    Icons.route_rounded,
+                                    Icons.navigation_rounded,
                                     widget.lang == 'uz' ? 'Eng tez' : 'Быстрый',
                                     widget.lang == 'uz' ? 'Yo‘nalish' : 'Маршрут',
                                   ),
                                 ],
                               ),
                             ),
-                            const Divider(height: 1),
-                            const SizedBox(height: 10),
-                          ] else ...<Widget>[
-                            Text(
-                              widget.lang == 'uz' ? 'Qayerga boramiz?' : 'Куда поедем?',
-                              style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -0.6),
-                            ),
-                            const SizedBox(height: 10),
                           ],
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(19),
-                            ),
-                            child: Column(
-                              children: <Widget>[
-                                _addressLine(
-                                  pickup: true,
-                                  title: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
-                                  value: from?.address ??
-                                      (locating
-                                          ? (widget.lang == 'uz' ? 'Joylashuv aniqlanmoqda…' : 'Определяем местоположение…')
-                                          : (widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение')),
-                                  onTap: () async {
-                                    final p = await selectAddress(tx(widget.lang, 'from'), from);
-                                    if (p != null && mounted) {
-                                      setState(() {
-                                        from = p;
-                                        pickupPinnedByUser = true;
-                                        cost = null;
-                                        route = <ym.Point>[];
-                                        routeDistanceKm = null;
-                                        routeMinutes = null;
-                                      });
-                                      await loadNearbyCars();
-                                      scheduleEstimate();
-                                    }
-                                  },
-                                  onMapTap: () => pickRoutePointOnMap(pickup: true),
-                                ),
-                                const Divider(height: 1, indent: 44, endIndent: 12),
-                                _addressLine(
-                                  pickup: false,
-                                  title: selectedTariffKey == 'delivery'
-                                      ? (widget.lang == 'uz' ? 'Qayerga — ixtiyoriy' : 'Куда — необязательно')
-                                      : (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
-                                  value: to?.address ??
-                                      (selectedTariffKey == 'delivery'
-                                          ? (widget.lang == 'uz' ? 'Keyinroq ko‘rsatish mumkin' : 'Можно указать позже')
-                                          : (widget.lang == 'uz' ? 'Manzilni tanlang' : 'Выберите адрес')),
-                                  onTap: () async {
-                                    final p = await selectAddress(
-                                      tx(widget.lang, 'to'),
-                                      to ?? from,
-                                    );
-                                    if (p != null && mounted) {
-                                      setState(() {
-                                        to = p;
-                                        cost = null;
-                                        route = <ym.Point>[];
-                                        routeDistanceKm = null;
-                                        routeMinutes = null;
-                                      });
-                                      scheduleEstimate();
-                                    }
-                                  },
-                                  onMapTap: () => pickRoutePointOnMap(pickup: false),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 14),
 
                           Row(
                             children: <Widget>[
