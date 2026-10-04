@@ -4344,20 +4344,33 @@ class _OrderScreenState extends State<OrderScreen> {
     required String tooltip,
     bool large = false,
   }) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final fill = dark
+        ? const Color(0xE6111314)
+        : Colors.white.withValues(alpha: 0.96);
     return Material(
-      color: Theme.of(context).colorScheme.surface,
-      elevation: 6,
-      shadowColor: const Color(0x26000000),
-      shape: const CircleBorder(),
+      color: fill,
+      elevation: dark ? 0 : 5,
+      shadowColor: const Color(0x30000000),
+      shape: CircleBorder(
+        side: BorderSide(
+          color: dark ? const Color(0xFF303638) : const Color(0x16000000),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         customBorder: const CircleBorder(),
         child: Tooltip(
           message: tooltip,
           child: SizedBox(
-            width: large ? 52 : 44,
-            height: large ? 52 : 44,
-            child: Icon(icon, size: large ? 25 : 22),
+            width: large ? 54 : 46,
+            height: large ? 54 : 46,
+            child: Icon(
+              icon,
+              size: large ? 26 : 22,
+              color: dark ? Colors.white : yangiGraphite,
+            ),
           ),
         ),
       ),
@@ -4370,70 +4383,86 @@ class _OrderScreenState extends State<OrderScreen> {
     required String value,
     required VoidCallback onTap,
     required VoidCallback onMapTap,
+    VoidCallback? onClear,
   }) {
+    final scheme = Theme.of(context).colorScheme;
     return SizedBox(
-      height: 64,
+      height: 66,
       child: Row(
         children: <Widget>[
-          const SizedBox(width: 13),
+          const SizedBox(width: 14),
           Container(
-            width: 14,
-            height: 14,
+            width: 17,
+            height: 17,
             decoration: BoxDecoration(
-              color: pickup ? Colors.white : const Color(0xFF111111),
+              color: pickup ? scheme.surface : yangiGraphite,
               shape: BoxShape.circle,
               border: Border.all(
-                color: pickup ? const Color(0xFF1F8A4C) : const Color(0xFF111111),
-                width: 3,
+                color: pickup ? yangiGreen : scheme.onSurface,
+                width: 3.5,
               ),
+              boxShadow: pickup
+                  ? <BoxShadow>[
+                      BoxShadow(
+                        color: yangiLime.withValues(alpha: 0.28),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ]
+                  : null,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: InkWell(
               onTap: onTap,
+              borderRadius: BorderRadius.circular(14),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 9),
-                child: Row(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            title,
-                            style: const TextStyle(fontSize: 10, color: Color(0xFF8A8D93), fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            value,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                          ),
-                        ],
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.edit_rounded,
-                      size: 17,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.15,
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
           ),
-          TextButton.icon(
-            onPressed: onMapTap,
-            icon: const Icon(Icons.map_outlined, size: 17),
-            label: Text(widget.lang == 'uz' ? 'Xarita' : 'Карта'),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF111111),
-              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+          if (onClear != null)
+            IconButton(
+              onPressed: onClear,
+              tooltip: widget.lang == 'uz' ? 'Tozalash' : 'Очистить',
+              icon: Icon(Icons.close_rounded, size: 20, color: scheme.onSurfaceVariant),
+            )
+          else
+            IconButton(
+              onPressed: onTap,
+              tooltip: widget.lang == 'uz' ? 'Tahrirlash' : 'Изменить',
+              icon: Icon(Icons.edit_rounded, size: 18, color: scheme.onSurfaceVariant),
             ),
+          IconButton(
+            onPressed: onMapTap,
+            tooltip: widget.lang == 'uz' ? 'Xaritada tanlash' : 'Выбрать на карте',
+            icon: Icon(Icons.map_outlined, size: 20, color: scheme.onSurface),
           ),
           const SizedBox(width: 4),
         ],
