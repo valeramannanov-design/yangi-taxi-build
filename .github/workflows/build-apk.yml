@@ -127,7 +127,7 @@ jobs:
       - name: Validate LIVE build configuration
         env:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-          BACKEND_URL: ${{ secrets.YANGI_BACKEND_URL }}
+          BACKEND_URL: https://filters-military-massage-moss.trycloudflare.com
         run: |
           if [ -z "$MAPKIT_API_KEY" ]; then
             echo "::error::YANDEX_MAPKIT_API_KEY is not configured"
@@ -153,7 +153,7 @@ jobs:
         working-directory: flutter
         env:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-          BACKEND_URL: ${{ secrets.YANGI_BACKEND_URL }}
+          BACKEND_URL: https://filters-military-massage-moss.trycloudflare.com
           ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/flutter/android/app/yangi-taxi-release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
