@@ -7884,9 +7884,9 @@ class _RideScreenState extends State<RideScreen> {
             ),
             const SizedBox(height: 17),
             FilledButton.icon(
-              onPressed: widget.onMenu,
-              icon: const Icon(Icons.add_road_rounded),
-              label: Text(widget.lang == 'uz' ? 'Yangi safar' : 'Новая поездка'),
+              onPressed: widget.onNewTrip,
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: Text(widget.lang == 'uz' ? 'Yangi safarga qaytish' : 'Назад к новой поездке'),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF101719),
                 foregroundColor: Colors.white,
@@ -8282,8 +8282,15 @@ class _RideScreenState extends State<RideScreen> {
     }
 
     final showMap = !finished && !aborted;
-    return Scaffold(
-      backgroundColor: dark ? const Color(0xFF0C0E0F) : Colors.white,
+    return PopScope(
+      canPop: !(finished || aborted),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && (finished || aborted)) {
+          widget.onNewTrip();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: dark ? const Color(0xFF0C0E0F) : Colors.white,
       body: Stack(
         children: <Widget>[
           if (showMap)
@@ -8378,6 +8385,7 @@ class _RideScreenState extends State<RideScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
