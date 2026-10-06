@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
+import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 
 function loadEnv() {
   if (!fs.existsSync('.env')) return;
@@ -34,6 +35,18 @@ const cfg = {
   searchGeo: String(process.env.TM_ADDRESS_SEARCH_TMGEO || 'false').toLowerCase() === 'true',
   search2gis: String(process.env.TM_ADDRESS_SEARCH_2GIS || 'false').toLowerCase() === 'true',
   togetherDiscountPercent: Math.max(0, Math.min(90, Number(process.env.YANGI_TOGETHER_DISCOUNT_PERCENT || 18))),
+  atmosEnabled: String(process.env.ATMOS_ENABLED || 'false').toLowerCase() === 'true',
+  atmosConsumerKey: process.env.ATMOS_CONSUMER_KEY || '',
+  atmosConsumerSecret: process.env.ATMOS_CONSUMER_SECRET || '',
+  atmosStoreId: Number(process.env.ATMOS_STORE_ID || 0),
+  atmosTerminalId: Number(process.env.ATMOS_TERMINAL_ID || 0),
+  paymentDataKey: process.env.PAYMENT_DATA_KEY || '',
+  atmosPostRideChargeDelaySec: Math.max(0, Number(process.env.ATMOS_POST_RIDE_CHARGE_DELAY_SEC || 10)),
+  atmosPostRideRetrySec: Math.max(15, Number(process.env.ATMOS_POST_RIDE_RETRY_SEC || 60)),
+  atmosPostRideMaxRetries: Math.max(1, Number(process.env.ATMOS_POST_RIDE_MAX_RETRIES || 10)),
+  tmDriverCreditDelaySec: Math.max(0, Number(process.env.TM_DRIVER_CREDIT_DELAY_SEC || 20)),
+  tmDriverSettlementIntervalSec: Math.max(5, Number(process.env.TM_DRIVER_SETTLEMENT_INTERVAL_SEC || 15)),
+  paymentSettlementEnabled: String(process.env.YANGI_PAYMENT_SETTLEMENT_ENABLED || 'true').toLowerCase() !== 'false',
   crewGroups: {
     start: Number(process.env.TM_CREW_GROUP_START_ID || 2),
     comfort: Number(process.env.TM_CREW_GROUP_COMFORT_ID || 3),
@@ -85,7 +98,7 @@ function send(res, status, payload) {
     'Content-Length': Buffer.byteLength(body),
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   });
   res.end(body);
 }
@@ -478,6 +491,1028 @@ async function buildLiveEstimateOptions(session, source, destination) {
   return { sourceTime, route, options };
 }
 
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const r = 6371;
+  const toRad = (v) => Number(v) * Math.PI / 180;
+  const dLat = toRad(Number(lat2) - Number(lat1));
+  const dLon = toRad(Number(lon2) - Number(lon1));
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(a));
+}
+
+
+const clientProfilesFile = new URL('./data/client-profiles.json', import.meta.url);
+let clientProfilesLoaded = false;
+let clientProfileStore = new Map();
+let clientProfileWriteChain = Promise.resolve();
+
+function emptyClientProfile() {
+  return {
+    favorites: [],
+    promo: null,
+    settings: {},
+  };
+}
+
+function normalizeClientProfile(value) {
+  const profile = value && typeof value === 'object' ? value : {};
+  return {
+    favorites: Array.isArray(profile.favorites)
+      ? profile.favorites
+          .filter((item) => item && typeof item === 'object')
+          .map((item) => ({
+            id: String(item.id || crypto.randomUUID()),
+            name: String(item.name || '').trim().slice(0, 80),
+            address: String(item.address || '').trim().slice(0, 300),
+            lat: Number(item.lat),
+            lon: Number(item.lon),
+            createdAt: String(item.createdAt || new Date().toISOString()),
+            updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
+          }))
+          .filter((item) =>
+            item.address &&
+            Number.isFinite(item.lat) &&
+            item.lat >= -90 &&
+            item.lat <= 90 &&
+            Number.isFinite(item.lon) &&
+            item.lon >= -180 &&
+            item.lon <= 180
+          )
+          .slice(0, 30)
+      : [],
+    promo: profile.promo && typeof profile.promo === 'object' && String(profile.promo.code || '').trim()
+      ? {
+          code: String(profile.promo.code).trim().slice(0, 64),
+          savedAt: String(profile.promo.savedAt || new Date().toISOString()),
+          updatedAt: String(profile.promo.updatedAt || profile.promo.savedAt || new Date().toISOString()),
+        }
+      : null,
+    settings: profile.settings && typeof profile.settings === 'object'
+      ? {
+          ...(profile.settings.lang === 'ru' || profile.settings.lang === 'uz'
+            ? { lang: profile.settings.lang }
+            : {}),
+          ...(['system', 'light', 'dark'].includes(profile.settings.theme)
+            ? { theme: profile.settings.theme }
+            : {}),
+          ...(profile.settings.updatedAt
+            ? { updatedAt: String(profile.settings.updatedAt) }
+            : {}),
+        }
+      : {},
+  };
+}
+
+async function loadClientProfiles() {
+  if (clientProfilesLoaded) return;
+  clientProfilesLoaded = true;
+  try {
+    const raw = await readFile(clientProfilesFile, 'utf8');
+    const parsed = JSON.parse(raw);
+    const clients = parsed?.clients && typeof parsed.clients === 'object'
+      ? parsed.clients
+      : parsed;
+    clientProfileStore = new Map(
+      Object.entries(clients || {}).map(([clientId, profile]) => [
+        String(Number(clientId)),
+        normalizeClientProfile(profile),
+      ])
+    );
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      console.warn('Could not load client profile store:', error.message);
+    }
+    clientProfileStore = new Map();
+  }
+}
+
+async function saveClientProfiles() {
+  clientProfileWriteChain = clientProfileWriteChain
+    .catch(() => {})
+    .then(async () => {
+      const dir = new URL('./data/', import.meta.url);
+      await mkdir(dir, { recursive: true });
+      const tmp = new URL('./data/client-profiles.tmp.json', import.meta.url);
+      await writeFile(tmp, JSON.stringify({
+        version: 1,
+        clients: Object.fromEntries(clientProfileStore.entries()),
+      }, null, 2), 'utf8');
+      await rename(tmp, clientProfilesFile);
+    });
+  return clientProfileWriteChain;
+}
+
+async function profileForClient(clientId) {
+  await loadClientProfiles();
+  const key = String(Number(clientId));
+  let profile = clientProfileStore.get(key);
+  if (!profile) {
+    profile = emptyClientProfile();
+    clientProfileStore.set(key, profile);
+  }
+  return profile;
+}
+
+async function persistClientProfile(clientId, profile) {
+  await loadClientProfiles();
+  const key = String(Number(clientId));
+  const normalized = normalizeClientProfile(profile);
+  clientProfileStore.set(key, normalized);
+  await saveClientProfiles();
+  return normalized;
+}
+
+function validateFavoritePayload(body, current = null) {
+  const address = String(body?.address ?? current?.address ?? '').trim().slice(0, 300);
+  const name = String(body?.name ?? current?.name ?? '').trim().slice(0, 80);
+  const lat = Number(body?.lat ?? current?.lat);
+  const lon = Number(body?.lon ?? current?.lon);
+  if (!address) {
+    throw Object.assign(new Error('Favorite address is required'), { statusCode: 400 });
+  }
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90 ||
+      !Number.isFinite(lon) || lon < -180 || lon > 180) {
+    throw Object.assign(new Error('Favorite address coordinates are invalid'), { statusCode: 400 });
+  }
+  return { name, address, lat, lon };
+}
+
+function validatePromoCode(value) {
+  const code = String(value || '').trim();
+  if (!code) {
+    throw Object.assign(new Error('Promo code is required'), { statusCode: 400 });
+  }
+  if (code.length > 64) {
+    throw Object.assign(new Error('Promo code is too long'), { statusCode: 400 });
+  }
+  if (/[\u0000-\u001F\u007F]/.test(code)) {
+    throw Object.assign(new Error('Promo code contains invalid characters'), { statusCode: 400 });
+  }
+  return code;
+}
+
+async function handleClientProfileRoute(req, res, path, session) {
+  if (req.method === 'GET' && path === '/api/profile/favorites') {
+    const profile = await profileForClient(session.clientId);
+    return send(res, 200, { ok: true, data: { favorites: profile.favorites } });
+  }
+
+  if (req.method === 'POST' && path === '/api/profile/favorites') {
+    const body = await readJson(req);
+    const value = validateFavoritePayload(body);
+    const profile = await profileForClient(session.clientId);
+    if (profile.favorites.length >= 30) {
+      throw Object.assign(new Error('Favorite address limit reached'), { statusCode: 409 });
+    }
+    const now = new Date().toISOString();
+    const favorite = {
+      id: crypto.randomUUID(),
+      ...value,
+      createdAt: now,
+      updatedAt: now,
+    };
+    profile.favorites.push(favorite);
+    await persistClientProfile(session.clientId, profile);
+    return send(res, 201, { ok: true, data: { favorite } });
+  }
+
+  const favoriteMatch = /^\/api\/profile\/favorites\/([^/]+)$/.exec(path);
+  if (favoriteMatch && (req.method === 'POST' || req.method === 'DELETE')) {
+    const id = decodeURIComponent(favoriteMatch[1]);
+    const profile = await profileForClient(session.clientId);
+    const index = profile.favorites.findIndex((item) => String(item.id) === id);
+    if (index < 0) {
+      throw Object.assign(new Error('Favorite address not found'), { statusCode: 404 });
+    }
+
+    if (req.method === 'DELETE') {
+      profile.favorites.splice(index, 1);
+      await persistClientProfile(session.clientId, profile);
+      return send(res, 200, { ok: true, data: { removed: true, id } });
+    }
+
+    const body = await readJson(req);
+    const value = validateFavoritePayload(body, profile.favorites[index]);
+    profile.favorites[index] = {
+      ...profile.favorites[index],
+      ...value,
+      updatedAt: new Date().toISOString(),
+    };
+    await persistClientProfile(session.clientId, profile);
+    return send(res, 200, { ok: true, data: { favorite: profile.favorites[index] } });
+  }
+
+  const removeFavoriteMatch = /^\/api\/profile\/favorites\/([^/]+)\/remove$/.exec(path);
+  if (req.method === 'POST' && removeFavoriteMatch) {
+    const id = decodeURIComponent(removeFavoriteMatch[1]);
+    const profile = await profileForClient(session.clientId);
+    const index = profile.favorites.findIndex((item) => String(item.id) === id);
+    if (index < 0) {
+      throw Object.assign(new Error('Favorite address not found'), { statusCode: 404 });
+    }
+    profile.favorites.splice(index, 1);
+    await persistClientProfile(session.clientId, profile);
+    return send(res, 200, { ok: true, data: { removed: true, id } });
+  }
+
+  if (req.method === 'GET' && path === '/api/profile/promo') {
+    const profile = await profileForClient(session.clientId);
+    return send(res, 200, {
+      ok: true,
+      data: {
+        promo: profile.promo,
+        appliedToTaxiMaster: false,
+        note: 'Promo code is stored in Yangi Taxi. TaxiMaster discount integration is not configured.',
+      },
+    });
+  }
+
+  if (req.method === 'POST' && path === '/api/profile/promo') {
+    const body = await readJson(req);
+    const code = validatePromoCode(body.code);
+    const profile = await profileForClient(session.clientId);
+    const now = new Date().toISOString();
+    profile.promo = {
+      code,
+      savedAt: profile.promo?.savedAt || now,
+      updatedAt: now,
+    };
+    await persistClientProfile(session.clientId, profile);
+    return send(res, 200, {
+      ok: true,
+      data: {
+        promo: profile.promo,
+        appliedToTaxiMaster: false,
+      },
+    });
+  }
+
+  if ((req.method === 'DELETE' && path === '/api/profile/promo') ||
+      (req.method === 'POST' && path === '/api/profile/promo/remove')) {
+    const profile = await profileForClient(session.clientId);
+    profile.promo = null;
+    await persistClientProfile(session.clientId, profile);
+    return send(res, 200, { ok: true, data: { removed: true } });
+  }
+
+  if (req.method === 'GET' && path === '/api/profile/settings') {
+    const profile = await profileForClient(session.clientId);
+    return send(res, 200, {
+      ok: true,
+      data: {
+        lang: profile.settings.lang || 'ru',
+        theme: profile.settings.theme || 'system',
+      },
+    });
+  }
+
+  if (req.method === 'POST' && path === '/api/profile/settings') {
+    const body = await readJson(req);
+    const profile = await profileForClient(session.clientId);
+    const next = { ...profile.settings };
+
+    if (body.lang != null) {
+      const lang = String(body.lang);
+      if (!['ru', 'uz'].includes(lang)) {
+        throw Object.assign(new Error('lang must be ru or uz'), { statusCode: 400 });
+      }
+      next.lang = lang;
+    }
+
+    if (body.theme != null) {
+      const theme = String(body.theme);
+      if (!['system', 'light', 'dark'].includes(theme)) {
+        throw Object.assign(new Error('theme must be system, light or dark'), { statusCode: 400 });
+      }
+      next.theme = theme;
+    }
+
+    next.updatedAt = new Date().toISOString();
+    profile.settings = next;
+    await persistClientProfile(session.clientId, profile);
+    return send(res, 200, {
+      ok: true,
+      data: {
+        lang: profile.settings.lang || 'ru',
+        theme: profile.settings.theme || 'system',
+      },
+    });
+  }
+
+  return false;
+}
+
+const cardsFile = new URL('./data/cards.json', import.meta.url);
+let cardsLoaded = false;
+let cardStore = new Map();
+let pendingCardBinds = new Map();
+
+function paymentCryptoKey() {
+  const value = String(cfg.paymentDataKey || '').trim();
+  if (!/^[0-9a-fA-F]{64}$/.test(value)) {
+    throw Object.assign(
+      new Error('PAYMENT_DATA_KEY must be a 64-character hex key'),
+      { statusCode: 409 }
+    );
+  }
+  return Buffer.from(value, 'hex');
+}
+
+function cardBindingConfigured() {
+  if (!atmosConfigured()) return false;
+  try {
+    paymentCryptoKey();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function encryptCardToken(token) {
+  const key = paymentCryptoKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(String(token), 'utf8'),
+    cipher.final()
+  ]);
+  const tag = cipher.getAuthTag();
+  return [
+    'v1',
+    iv.toString('base64url'),
+    tag.toString('base64url'),
+    encrypted.toString('base64url')
+  ].join('.');
+}
+
+function decryptCardToken(value) {
+  const parts = String(value || '').split('.');
+  if (parts.length !== 4 || parts[0] !== 'v1') {
+    throw Object.assign(new Error('Invalid encrypted card token'), { statusCode: 500 });
+  }
+  const key = paymentCryptoKey();
+  const iv = Buffer.from(parts[1], 'base64url');
+  const tag = Buffer.from(parts[2], 'base64url');
+  const encrypted = Buffer.from(parts[3], 'base64url');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+}
+
+async function loadCards() {
+  if (cardsLoaded) return;
+  cardsLoaded = true;
+  try {
+    const raw = await readFile(cardsFile, 'utf8');
+    const parsed = JSON.parse(raw);
+    cardStore = new Map(Object.entries(parsed?.clients || {}));
+    pendingCardBinds = new Map(Object.entries(parsed?.pending || {}));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') console.warn('Could not load card store:', error.message);
+    cardStore = new Map();
+    pendingCardBinds = new Map();
+  }
+}
+
+async function saveCards() {
+  const dir = new URL('./data/', import.meta.url);
+  await mkdir(dir, { recursive: true });
+  const tmp = new URL('./data/cards.tmp.json', import.meta.url);
+  await writeFile(tmp, JSON.stringify({
+    clients: Object.fromEntries(cardStore.entries()),
+    pending: Object.fromEntries(pendingCardBinds.entries())
+  }, null, 2), 'utf8');
+  await rename(tmp, cardsFile);
+}
+
+function publicCard(card, defaultCardId = 0) {
+  return {
+    cardId: Number(card.cardId),
+    maskedPan: String(card.maskedPan || ''),
+    expiry: String(card.expiry || ''),
+    holder: String(card.holder || ''),
+    isDefault: Number(card.cardId) === Number(defaultCardId)
+  };
+}
+
+async function cardsForClient(clientId) {
+  await loadCards();
+  const key = String(Number(clientId));
+  const bundle = cardStore.get(key) || { defaultCardId: 0, cards: [] };
+  if (!Array.isArray(bundle.cards)) bundle.cards = [];
+  return bundle;
+}
+
+async function saveClientCards(clientId, bundle) {
+  await loadCards();
+  cardStore.set(String(Number(clientId)), bundle);
+  await saveCards();
+}
+
+function atmosErrorDetails(payload) {
+  const resultCode = payload?.result?.code;
+  const statusCode = payload?.status?.code;
+  const atmosCode = resultCode != null ? String(resultCode) : (statusCode != null ? String(statusCode) : 'UNKNOWN');
+  const description = String(
+    payload?.result?.description ||
+    payload?.status?.message ||
+    payload?.status?.description ||
+    'ATMOS error'
+  );
+  return { atmosCode, description };
+}
+
+function makeAtmosError(payload, label = 'ATMOS', extra = {}) {
+  const { atmosCode, description } = atmosErrorDetails(payload);
+  const error = new Error(`${label}: ${atmosCode} — ${description}`);
+  error.statusCode = 502;
+  error.code = 'ATMOS_API_ERROR';
+  error.atmosCode = atmosCode;
+  error.details = { atmosCode, ...extra };
+  return error;
+}
+
+function assertAtmosResult(payload, label = 'ATMOS') {
+  const code = payload?.result?.code;
+  if (code != null && String(code).toUpperCase() !== 'OK' && String(code) !== '0') {
+    throw makeAtmosError(payload, label);
+  }
+  const statusCode = payload?.status?.code;
+  if (statusCode != null && Number(statusCode) !== 0 && String(statusCode).toUpperCase() !== 'OK') {
+    throw makeAtmosError(payload, label);
+  }
+}
+
+async function beginAtmosCardBind(clientId, cardNumber, expiry) {
+  if (!cardBindingConfigured()) {
+    throw Object.assign(new Error('ATMOS card binding is not configured'), { statusCode: 409 });
+  }
+  const pan = String(cardNumber || '').replace(/\D/g, '');
+  const exp = String(expiry || '').replace(/\D/g, '');
+  if (pan.length !== 16) {
+    throw Object.assign(new Error('ATMOS card number must contain exactly 16 digits'), { statusCode: 400 });
+  }
+  if (!/^\d{4}$/.test(exp)) {
+    throw Object.assign(new Error('Expiry must be in YYMM format'), { statusCode: 400 });
+  }
+  const expiryMonth = Number(exp.slice(2, 4));
+  if (expiryMonth < 1 || expiryMonth > 12) {
+    throw Object.assign(new Error('Expiry month must be between 01 and 12'), { statusCode: 400 });
+  }
+
+  const payload = await atmosJson('/partner/bind-card/init', {
+    card_number: pan,
+    expiry: exp
+  });
+  assertAtmosResult(payload, 'ATMOS card bind');
+  const transactionId = Number(payload.transaction_id || 0);
+  if (!transactionId) {
+    throw Object.assign(new Error('ATMOS did not return transaction_id'), { statusCode: 502 });
+  }
+
+  await loadCards();
+  pendingCardBinds.set(String(transactionId), {
+    clientId: Number(clientId),
+    phone: String(payload.phone || ''),
+    createdAt: new Date().toISOString()
+  });
+  await saveCards();
+
+  return {
+    transactionId,
+    phone: String(payload.phone || ''),
+    expiresIn: 600
+  };
+}
+
+async function confirmAtmosCardBind(clientId, transactionId, otp) {
+  if (!cardBindingConfigured()) {
+    throw Object.assign(new Error('ATMOS card binding is not configured'), { statusCode: 409 });
+  }
+  await loadCards();
+  const pending = pendingCardBinds.get(String(transactionId));
+  if (!pending || Number(pending.clientId) !== Number(clientId)) {
+    throw Object.assign(new Error('Card binding session not found'), { statusCode: 404 });
+  }
+  const age = Date.now() - Date.parse(pending.createdAt || 0);
+  if (!Number.isFinite(age) || age > 10 * 60 * 1000) {
+    pendingCardBinds.delete(String(transactionId));
+    await saveCards();
+    throw Object.assign(new Error('Card binding code expired'), { statusCode: 410 });
+  }
+
+  const payload = await atmosJson('/partner/bind-card/confirm', {
+    transaction_id: Number(transactionId),
+    otp: String(otp || '').trim()
+  });
+  assertAtmosResult(payload, 'ATMOS card bind confirmation');
+  const data = payload.data || {};
+  const cardId = Number(data.card_id || 0);
+  const token = String(data.card_token || '');
+  if (!cardId || !token) {
+    throw Object.assign(new Error('ATMOS did not return card token'), { statusCode: 502 });
+  }
+
+  const bundle = await cardsForClient(clientId);
+  bundle.cards = bundle.cards.filter((c) => Number(c.cardId) !== cardId);
+  const card = {
+    cardId,
+    maskedPan: String(data.pan || ''),
+    expiry: String(data.expiry || ''),
+    holder: String(data.card_holder || ''),
+    phone: String(data.phone || ''),
+    tokenEncrypted: encryptCardToken(token),
+    createdAt: new Date().toISOString()
+  };
+  bundle.cards.push(card);
+  if (!bundle.defaultCardId) bundle.defaultCardId = cardId;
+  await saveClientCards(clientId, bundle);
+
+  pendingCardBinds.delete(String(transactionId));
+  await saveCards();
+  return publicCard(card, bundle.defaultCardId);
+}
+
+async function removeAtmosCard(clientId, cardId) {
+  const bundle = await cardsForClient(clientId);
+  const card = bundle.cards.find((c) => Number(c.cardId) === Number(cardId));
+  if (!card) throw Object.assign(new Error('Card not found'), { statusCode: 404 });
+
+  const token = decryptCardToken(card.tokenEncrypted);
+  const payload = await atmosJson('/partner/remove-card', {
+    id: Number(card.cardId),
+    token
+  });
+  assertAtmosResult(payload, 'ATMOS remove card');
+
+  bundle.cards = bundle.cards.filter((c) => Number(c.cardId) !== Number(cardId));
+  if (Number(bundle.defaultCardId) === Number(cardId)) {
+    bundle.defaultCardId = bundle.cards.length ? Number(bundle.cards[0].cardId) : 0;
+  }
+  await saveClientCards(clientId, bundle);
+  return { removed: true, defaultCardId: Number(bundle.defaultCardId || 0) };
+}
+
+async function getStoredCard(clientId, requestedCardId = 0) {
+  const bundle = await cardsForClient(clientId);
+  const cardId = Number(requestedCardId || bundle.defaultCardId || 0);
+  const card = bundle.cards.find((c) => Number(c.cardId) === cardId);
+  if (!card) {
+    throw Object.assign(new Error('Добавьте банковскую карту в разделе «Карты»'), { statusCode: 409 });
+  }
+  return { bundle, card };
+}
+
+function finalOrderAmount(state) {
+  for (const key of ['total_cost', 'cost', 'sum', 'order_cost']) {
+    const value = Number(state?.[key]);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return 0;
+}
+
+function paymentRetryDelayMs(attempt) {
+  const base = Math.max(15, Number(cfg.atmosPostRideRetrySec || 60)) * 1000;
+  const factor = Math.min(16, 2 ** Math.max(0, Number(attempt || 1) - 1));
+  return base * factor;
+}
+
+function atmosPaymentIsConfirmed(payload) {
+  const tx = payload?.store_transaction || {};
+  return tx.confirmed === true || (
+    Number(tx.success_trans_id || 0) > 0 &&
+    String(tx.status_code ?? '') === '0'
+  );
+}
+
+async function verifyAtmosMerchantPayment(record) {
+  if (!record.atmosTransactionId) return false;
+  const payload = await atmosJson('/merchant/pay/get', {
+    store_id: cfg.atmosStoreId,
+    transaction_id: Number(record.atmosTransactionId)
+  });
+  record.atmosLastVerifiedAt = new Date().toISOString();
+  if (!atmosPaymentIsConfirmed(payload)) return false;
+  const tx = payload.store_transaction || {};
+  record.atmosSuccessTransId = Number(tx.success_trans_id || record.atmosSuccessTransId || record.atmosTransactionId);
+  record.status = 'paid_waiting_driver_credit';
+  record.paidAt = record.paidAt || new Date().toISOString();
+  record.lastPaymentError = null;
+  record.nextPaymentAttemptAt = null;
+  await setPayment(record.checkoutId, record);
+  return true;
+}
+
+async function chargeAtmosStoredCard(record, card, amount) {
+  if (record.paidAt) return record;
+
+  const finalAmount = Number(amount || record.amount || 0);
+  if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
+    throw Object.assign(new Error('TaxiMaster final order cost is not ready'), { statusCode: 409 });
+  }
+
+  record.amount = finalAmount;
+  record.amountTiyin = Math.round(finalAmount * 100);
+  record.paymentKind = 'stored_card';
+  record.cardId = Number(card.cardId);
+  record.maskedPan = String(card.maskedPan || record.maskedPan || '');
+
+  // ATMOS explicitly recommends /merchant/pay/get when apply may have succeeded
+  // but the caller did not receive a reliable result. Reusing the same ATMOS
+  // transaction prevents accidental double charges after network/process failures.
+  if (record.atmosTransactionId && (record.atmosApplyStartedAt || Number(record.paymentAttempts || 0) > 0)) {
+    try {
+      if (await verifyAtmosMerchantPayment(record)) return record;
+    } catch (error) {
+      // If status lookup itself is unavailable, continue with the same transaction.
+      // Never create a second transaction for this ride.
+      record.atmosLastVerifyError = error.message;
+      await setPayment(record.checkoutId, record);
+    }
+  }
+
+  if (!record.atmosTransactionId) {
+    const account = record.atmosAccount || String(BigInt(Date.now()) * 1000n + BigInt(crypto.randomInt(0, 1000)));
+    const createBody = {
+      amount: record.amountTiyin,
+      account,
+      store_id: cfg.atmosStoreId,
+      lang: 'ru'
+    };
+    if (cfg.atmosTerminalId > 0) createBody.terminal_id = cfg.atmosTerminalId;
+
+    record.status = 'payment_creating';
+    record.atmosAccount = account;
+    await setPayment(record.checkoutId, record);
+
+    const created = await atmosJson('/merchant/pay/create', createBody);
+    assertAtmosResult(created, 'ATMOS create payment');
+    const transactionId = Number(created.transaction_id || 0);
+    if (!transactionId) {
+      throw Object.assign(new Error('ATMOS did not return transaction_id'), { statusCode: 502 });
+    }
+    record.atmosTransactionId = transactionId;
+    record.status = 'payment_created';
+    await setPayment(record.checkoutId, record);
+  }
+
+  const cardToken = decryptCardToken(card.tokenEncrypted);
+  if (!record.atmosPreAppliedAt) {
+    const prepared = await atmosJson('/merchant/pay/pre-apply', {
+      card_token: cardToken,
+      store_id: cfg.atmosStoreId,
+      transaction_id: Number(record.atmosTransactionId)
+    });
+    assertAtmosResult(prepared, 'ATMOS pre-apply');
+    record.atmosPreAppliedAt = new Date().toISOString();
+    record.status = 'payment_prepared';
+    await setPayment(record.checkoutId, record);
+  }
+
+  record.atmosApplyStartedAt = record.atmosApplyStartedAt || new Date().toISOString();
+  record.status = 'payment_applying';
+  await setPayment(record.checkoutId, record);
+
+  let applied;
+  try {
+    applied = await atmosJson('/merchant/pay/apply', {
+      transaction_id: Number(record.atmosTransactionId),
+      otp: 111111,
+      store_id: cfg.atmosStoreId
+    });
+    assertAtmosResult(applied, 'ATMOS apply');
+  } catch (error) {
+    // ATMOS documentation says to query /merchant/pay/get when apply result is
+    // uncertain (network interruption/timeout). If ATMOS confirms the same
+    // transaction, treat it as paid instead of retrying a new charge.
+    try {
+      if (await verifyAtmosMerchantPayment(record)) return record;
+    } catch (verifyError) {
+      record.atmosLastVerifyError = verifyError.message;
+      await setPayment(record.checkoutId, record);
+    }
+    throw error;
+  }
+
+  const storeTx = applied.store_transaction || {};
+  record.atmosSuccessTransId = Number(storeTx.success_trans_id || applied.transaction_id || record.atmosTransactionId);
+  record.status = 'paid_waiting_driver_credit';
+  record.paidAt = record.paidAt || new Date().toISOString();
+  record.paymentAttempts = Number(record.paymentAttempts || 0);
+  record.lastPaymentError = null;
+  record.nextPaymentAttemptAt = null;
+  await setPayment(record.checkoutId, record);
+  return record;
+}
+
+
+const paymentFile = new URL('./data/payments.json', import.meta.url);
+let paymentsLoaded = false;
+let paymentStore = new Map();
+let atmosTokenCache = { token: '', expiresAt: 0 };
+
+function atmosConfigured() {
+  return Boolean(
+    cfg.atmosEnabled &&
+    cfg.atmosConsumerKey &&
+    cfg.atmosConsumerSecret &&
+    cfg.atmosStoreId > 0
+  );
+}
+
+async function loadPayments() {
+  if (paymentsLoaded) return;
+  paymentsLoaded = true;
+  try {
+    const raw = await readFile(paymentFile, 'utf8');
+    const parsed = JSON.parse(raw);
+    paymentStore = new Map(Object.entries(parsed || {}));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') console.warn('Could not load payment store:', error.message);
+    paymentStore = new Map();
+  }
+}
+
+async function savePayments() {
+  const dir = new URL('./data/', import.meta.url);
+  await mkdir(dir, { recursive: true });
+  const tmp = new URL('./data/payments.tmp.json', import.meta.url);
+  const obj = Object.fromEntries(paymentStore.entries());
+  await writeFile(tmp, JSON.stringify(obj, null, 2), 'utf8');
+  await rename(tmp, paymentFile);
+}
+
+async function setPayment(id, record) {
+  await loadPayments();
+  paymentStore.set(String(id), record);
+  await savePayments();
+}
+
+async function getPayment(id) {
+  await loadPayments();
+  return paymentStore.get(String(id)) || null;
+}
+
+async function getAtmosAccessToken() {
+  const now = Date.now();
+  if (atmosTokenCache.token && now < atmosTokenCache.expiresAt - 60_000) {
+    return atmosTokenCache.token;
+  }
+  if (!atmosConfigured()) {
+    throw Object.assign(new Error('ATMOS is not configured'), { statusCode: 409 });
+  }
+  const basic = Buffer.from(`${cfg.atmosConsumerKey}:${cfg.atmosConsumerSecret}`, 'utf8').toString('base64');
+  const response = await fetch('https://apigw.atmos.uz/token', {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${basic}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json'
+    },
+    body: 'grant_type=client_credentials'
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) {
+    throw Object.assign(new Error(payload.error_description || payload.error || `ATMOS token HTTP ${response.status}`), { statusCode: 502 });
+  }
+  atmosTokenCache = {
+    token: String(payload.access_token),
+    expiresAt: now + Math.max(60, Number(payload.expires_in || 3600)) * 1000
+  };
+  return atmosTokenCache.token;
+}
+
+async function atmosJson(path, body) {
+  const token = await getAtmosAccessToken();
+  const response = await fetch(`https://apigw.atmos.uz${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = makeAtmosError(payload, `ATMOS ${path}`, { httpStatus: response.status, path });
+    if (error.atmosCode === 'UNKNOWN') error.message = `ATMOS ${path}: HTTP ${response.status}`;
+    throw error;
+  }
+  return payload;
+}
+
+
+const driverCreditLocks = new Map();
+
+function driverCreditMarker(record) {
+  return `YANGI_CARD_ORDER_${Number(record.orderId)}`;
+}
+
+async function findExistingDriverCredit(record, driverId) {
+  const marker = driverCreditMarker(record);
+  try {
+    const data = await tmGet('get_driver_operations', {
+      driver_id: Number(driverId),
+      start_time: tmDaysAgo(90),
+      finish_time: tmTime(),
+      account_kind: 0
+    });
+    return (data.operations || []).find((op) =>
+      String(op.comment || '').includes(marker)
+    ) || null;
+  } catch (error) {
+    // We deliberately fail closed here: if we cannot verify idempotency,
+    // do not risk crediting the driver twice.
+    throw error;
+  }
+}
+
+async function settleFinishedCardPayment(record, { forcePaymentRetry = false } = {}) {
+  if (!record?.orderId || record.paymentMethod !== 'card' || record.refundRequired) return record;
+  if (record.status === 'order_aborted_no_charge' || record.status === 'driver_credited') return record;
+  if (record.status === 'payment_debt' && !forcePaymentRetry) return record;
+
+  const key = String(record.checkoutId);
+  if (driverCreditLocks.has(key)) return driverCreditLocks.get(key);
+
+  const task = (async () => {
+    const state = await tmGet('get_order_state', { order_id: Number(record.orderId) });
+    const stateKind = String(state.state_kind || '');
+
+    if (state.crew_id && Number(state.crew_id) !== Number(record.crewId || 0)) {
+      record.crewId = Number(state.crew_id);
+      await setPayment(record.checkoutId, record);
+    }
+
+    if (stateKind === 'aborted' && !record.paidAt) {
+      record.status = 'order_aborted_no_charge';
+      record.abortedAt = record.abortedAt || new Date().toISOString();
+      await setPayment(record.checkoutId, record);
+      return record;
+    }
+
+    if (stateKind !== 'finished') return record;
+
+    if (!record.finishedSeenAt) {
+      record.finishedSeenAt = new Date().toISOString();
+      record.status = record.paidAt ? 'paid_waiting_driver_credit' : 'finished_waiting_charge';
+      await setPayment(record.checkoutId, record);
+      console.log(new Date().toISOString(), `[CARD] order #${record.orderId} finished; waiting for final TaxiMaster cost`);
+      return record;
+    }
+
+    if (!record.paidAt) {
+      const chargeDelayMs = Math.max(0, Number(cfg.atmosPostRideChargeDelaySec || 0)) * 1000;
+      const finishedSeenAt = Date.parse(record.finishedSeenAt);
+      if (Number.isFinite(finishedSeenAt) && Date.now() - finishedSeenAt < chargeDelayMs) return record;
+
+      const amount = finalOrderAmount(state);
+      if (!amount) {
+        record.status = 'finished_waiting_final_cost';
+        record.lastPaymentError = 'TaxiMaster final total_cost is not ready';
+        await setPayment(record.checkoutId, record);
+        return record;
+      }
+
+      if (!forcePaymentRetry && record.nextPaymentAttemptAt) {
+        const next = Date.parse(record.nextPaymentAttemptAt);
+        if (Number.isFinite(next) && Date.now() < next) return record;
+      }
+
+      const { card } = await getStoredCard(record.clientId, record.cardId);
+      record.finalAmount = amount;
+      record.amount = amount;
+      record.amountTiyin = Math.round(amount * 100);
+      record.status = 'finished_payment_processing';
+      await setPayment(record.checkoutId, record);
+      console.log(new Date().toISOString(), `[CARD] order #${record.orderId} final cost ${amount} UZS; charging ATMOS`);
+
+      try {
+        await chargeAtmosStoredCard(record, card, amount);
+        console.log(new Date().toISOString(), `[CARD] order #${record.orderId} ATMOS paid ${record.amount} UZS; waiting driver credit`);
+      } catch (error) {
+        record.paymentAttempts = Number(record.paymentAttempts || 0) + 1;
+        record.lastPaymentError = error.message;
+        record.lastPaymentAttemptAt = new Date().toISOString();
+        const maxRetries = Math.max(1, Number(cfg.atmosPostRideMaxRetries || 10));
+        if (record.paymentAttempts >= maxRetries) {
+          record.status = 'payment_debt';
+          record.nextPaymentAttemptAt = null;
+        } else {
+          record.status = 'payment_retry';
+          record.nextPaymentAttemptAt = new Date(Date.now() + paymentRetryDelayMs(record.paymentAttempts)).toISOString();
+        }
+        await setPayment(record.checkoutId, record);
+        console.warn(new Date().toISOString(), `[CARD] order #${record.orderId} payment ${record.status}; attempt ${record.paymentAttempts}: ${error.message}`);
+        throw error;
+      }
+    }
+
+    const waitMs = Math.max(0, Number(cfg.tmDriverCreditDelaySec || 0)) * 1000;
+    const finishedSeenAt = Date.parse(record.finishedSeenAt);
+    if (Number.isFinite(finishedSeenAt) && Date.now() - finishedSeenAt < waitMs) return record;
+
+    const crewId = Number(record.crewId || state.crew_id || 0);
+    if (!crewId) {
+      record.status = 'finished_missing_crew';
+      await setPayment(record.checkoutId, record);
+      return record;
+    }
+
+    const crew = await tmGet('get_crew_info', { crew_id: crewId, fields: 'driver_id' });
+    const driverId = Number(crew.driver_id || 0);
+    if (!driverId) {
+      record.status = 'finished_missing_driver';
+      await setPayment(record.checkoutId, record);
+      return record;
+    }
+    record.driverId = driverId;
+
+    const existing = await findExistingDriverCredit(record, driverId);
+    if (existing) {
+      record.driverCreditOperId = Number(existing.oper_id || 0);
+      record.driverCreditAmount = Number(record.amount);
+      record.driverCreditedAt = record.driverCreditedAt || new Date().toISOString();
+      record.status = 'driver_credited';
+      delete record.lastSettlementError;
+      delete record.lastSettlementAttemptAt;
+      await setPayment(record.checkoutId, record);
+      return record;
+    }
+
+    const marker = driverCreditMarker(record);
+    const operation = await tmPostJson('create_driver_operation', {
+      driver_id: driverId,
+      oper_sum: Number(record.amount),
+      oper_type: 'receipt',
+      name: 'Yangi Taxi: оплата картой',
+      comment: `${marker}; ATMOS checkout ${record.checkoutId}`,
+      account_kind: 0
+    });
+
+    record.driverCreditOperId = Number(operation.oper_id || 0);
+    record.driverCreditAmount = Number(record.amount);
+    record.driverCreditedAt = new Date().toISOString();
+    record.status = 'driver_credited';
+    delete record.lastSettlementError;
+    delete record.lastSettlementAttemptAt;
+    await setPayment(record.checkoutId, record);
+    console.log(new Date().toISOString(), `[CARD] order #${record.orderId} driver #${driverId} credited ${record.amount} UZS`);
+    return record;
+  })();
+
+  driverCreditLocks.set(key, task);
+  try {
+    return await task;
+  } finally {
+    driverCreditLocks.delete(key);
+  }
+}
+
+async function diagnoseAtmosCardBinding() {
+  if (!cfg.atmosEnabled) {
+    console.log('ATMOS: disabled');
+    return;
+  }
+  if (!atmosConfigured()) {
+    console.warn('ATMOS: enabled but Consumer Key / Consumer Secret / Store ID are incomplete [NOT READY]');
+    return;
+  }
+  try {
+    await getAtmosAccessToken();
+    console.log('ATMOS authorization: OK');
+  } catch (error) {
+    console.warn(`ATMOS authorization: FAILED — ${error.message}`);
+    return;
+  }
+  try {
+    const payload = await atmosJson('/partner/list-cards', { page: 1, page_size: 1 });
+    assertAtmosResult(payload, 'ATMOS /partner/list-cards');
+    console.log('ATMOS card binding (/partner): READY');
+  } catch (error) {
+    console.warn(`ATMOS card binding (/partner): NOT READY — ${error.message}`);
+    console.warn('ATMOS hint: ask ATMOS support to enable owner card binding/tokenization endpoints /partner/bind-card/* for this Consumer Key.');
+  }
+}
+
+async function settleFinishedCardOrders() {
+  await loadPayments();
+  for (const record of paymentStore.values()) {
+    if (!record?.orderId || record.paymentMethod !== 'card' || record.refundRequired) continue;
+    if (['order_aborted_no_charge', 'driver_credited', 'payment_debt'].includes(record.status)) continue;
+    try {
+      await settleFinishedCardPayment(record);
+    } catch (error) {
+      record.lastSettlementError = error.message;
+      record.lastSettlementAttemptAt = new Date().toISOString();
+      try { await setPayment(record.checkoutId, record); } catch {}
+      console.warn(new Date().toISOString(), `Post-ride card settlement failed for checkout ${record.checkoutId}:`, error.message);
+    }
+  }
+}
+
 let mockOrder = null;
 let mockStarted = null;
 let mockClientPhoto = '';
@@ -500,6 +1535,9 @@ async function mockRoute(req, res, path, url) {
     return send(res, path.endsWith('register') ? 201 : 200, { ok: true, data: { token: issueSession(501, phone), clientId: 501 } });
   }
   const session = auth(req);
+  const profileHandled = await handleClientProfileRoute(req, res, path, session);
+  if (profileHandled !== false) return profileHandled;
+
   if (req.method === 'GET' && path === '/api/me') {
     return send(res, 200, {
       ok: true,
@@ -668,6 +1706,19 @@ function verifyRegistrationCode(phone, code) {
 }
 
 async function realRoute(req, res, path, url) {
+  if (req.method === 'GET' && path === '/api/payments/config') {
+    return send(res, 200, {
+      ok: true,
+      data: {
+        atmosEnabled: atmosConfigured(),
+        provider: 'ATMOS',
+        driverSettlement: 'tm-driver-balance-after-finish',
+        cardFlow: 'atmos-linked-card-pay-after-ride',
+        chargeMoment: 'after-tm-finished-final-cost',
+        cardBindingAvailable: cardBindingConfigured(),
+      },
+    });
+  }
   if (req.method === 'POST' && path === '/api/auth/register/request-code') {
     const body = await readJson(req);
     const phone = normalizePhone(body.phone);
@@ -722,6 +1773,120 @@ async function realRoute(req, res, path, url) {
 
   const session = auth(req);
 
+  const profileHandled = await handleClientProfileRoute(req, res, path, session);
+  if (profileHandled !== false) return profileHandled;
+
+  if (req.method === 'GET' && path === '/api/cards') {
+    const bundle = await cardsForClient(session.clientId);
+    return send(res, 200, {
+      ok: true,
+      data: {
+        provider: 'ATMOS',
+        cardBindingAvailable: cardBindingConfigured(),
+        defaultCardId: Number(bundle.defaultCardId || 0),
+        cards: bundle.cards.map((card) => publicCard(card, bundle.defaultCardId)),
+      },
+    });
+  }
+
+  if (req.method === 'POST' && path === '/api/cards/bind/init') {
+    const body = await readJson(req);
+    if (!body.cardNumber || !body.expiry) {
+      const e = new Error('cardNumber and expiry are required');
+      e.statusCode = 400;
+      throw e;
+    }
+    const data = await beginAtmosCardBind(session.clientId, body.cardNumber, body.expiry);
+    return send(res, 200, { ok: true, data });
+  }
+
+  if (req.method === 'POST' && path === '/api/cards/bind/confirm') {
+    const body = await readJson(req);
+    if (!body.transactionId || !body.otp) {
+      const e = new Error('transactionId and otp are required');
+      e.statusCode = 400;
+      throw e;
+    }
+    const card = await confirmAtmosCardBind(session.clientId, Number(body.transactionId), String(body.otp));
+    return send(res, 201, { ok: true, data: { card } });
+  }
+
+  const setDefaultCardMatch = /^\/api\/cards\/(\d+)\/default$/.exec(path);
+  if (req.method === 'POST' && setDefaultCardMatch) {
+    const cardId = Number(setDefaultCardMatch[1]);
+    const bundle = await cardsForClient(session.clientId);
+    if (!bundle.cards.some((c) => Number(c.cardId) === cardId)) {
+      const e = new Error('Card not found');
+      e.statusCode = 404;
+      throw e;
+    }
+    bundle.defaultCardId = cardId;
+    await saveClientCards(session.clientId, bundle);
+    return send(res, 200, { ok: true, data: { defaultCardId: cardId } });
+  }
+
+  const removeCardMatch = /^\/api\/cards\/(\d+)\/remove$/.exec(path);
+  if (req.method === 'POST' && removeCardMatch) {
+    const cardId = Number(removeCardMatch[1]);
+    await loadPayments();
+    const active = [...paymentStore.values()].find((p) =>
+      Number(p?.clientId || 0) === Number(session.clientId) &&
+      Number(p?.cardId || 0) === cardId &&
+      p?.paymentMethod === 'card' &&
+      !p?.paidAt &&
+      String(p?.status || '') !== 'order_aborted_no_charge'
+    );
+    if (active) {
+      const e = new Error(`Карта используется в активном заказе #${active.orderId || ''}. Удалить её можно после завершения оплаты.`);
+      e.statusCode = 409;
+      throw e;
+    }
+    const data = await removeAtmosCard(session.clientId, cardId);
+    return send(res, 200, { ok: true, data });
+  }
+
+  if (req.method === 'GET' && path === '/api/crews/nearby') {
+    const lat = Number(url.searchParams.get('lat'));
+    const lon = Number(url.searchParams.get('lon'));
+    const radiusKm = Math.min(20, Math.max(0.5, Number(url.searchParams.get('radius') || 6)));
+    const limit = Math.min(30, Math.max(1, Number(url.searchParams.get('limit') || 15)));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      const e = new Error('lat/lon are required');
+      e.statusCode = 400;
+      throw e;
+    }
+    let coords;
+    try {
+      coords = await tmGet('get_crews_coords');
+    } catch (error) {
+      if (Number(error.tmCode) === 100) return send(res, 200, { ok: true, data: [] });
+      throw error;
+    }
+    const waiting = (coords.crews_coords || [])
+      .map((c) => {
+        const crewLat = Number(c.lat);
+        const crewLon = Number(c.lon);
+        if (!Number.isFinite(crewLat) || !Number.isFinite(crewLon)) return null;
+        return {
+          crewId: Number(c.crew_id || 0),
+          code: String(c.crew_code || ''),
+          lat: crewLat,
+          lon: crewLon,
+          speed: Number(c.speed || 0),
+          direction: Number(c.direction ?? -1),
+          stateKind: String(c.state_kind || ''),
+          coordsTime: c.coords_time || null,
+          distanceKm: Number(haversineKm(lat, lon, crewLat, crewLon).toFixed(3)),
+        };
+      })
+      .filter(Boolean)
+      .filter((c) => c.stateKind === 'waiting')
+      .sort((a, b) => a.distanceKm - b.distanceKm);
+    let crews = waiting.filter((c) => c.distanceKm <= radiusKm).slice(0, limit);
+    if (crews.length === 0) crews = waiting.filter((c) => c.distanceKm <= 50).slice(0, Math.min(limit, 8));
+    return send(res, 200, { ok: true, data: crews });
+  }
+
   if (req.method === 'GET' && path === '/api/me') {
     let data;
     try {
@@ -743,6 +1908,15 @@ async function realRoute(req, res, path, url) {
     } catch (error) {
       console.warn('[profile] client_photo is unavailable:', error.message || error);
     }
+    const clientProfile = await profileForClient(session.clientId);
+    data.yangi_profile = {
+      favorite_addresses_count: clientProfile.favorites.length,
+      promo_saved: Boolean(clientProfile.promo?.code),
+      settings: {
+        lang: clientProfile.settings.lang || null,
+        theme: clientProfile.settings.theme || null,
+      },
+    };
     return send(res, 200, { ok: true, data });
   }
 
@@ -858,6 +2032,25 @@ async function realRoute(req, res, path, url) {
 
   if (req.method === 'POST' && path === '/api/orders') {
     const body = await readJson(req);
+    const incomingPromoCode = String(body.promoCode || '').trim();
+    if (incomingPromoCode) {
+      const code = validatePromoCode(incomingPromoCode);
+      const profile = await profileForClient(session.clientId);
+      const now = new Date().toISOString();
+      profile.promo = {
+        code,
+        savedAt: profile.promo?.savedAt || now,
+        updatedAt: now,
+      };
+      await persistClientProfile(session.clientId, profile);
+    }
+    const paymentMethod = String(body.paymentMethod || 'cash').toLowerCase();
+    if (!['cash', 'card'].includes(paymentMethod)) {
+      const e = new Error('Unsupported payment method');
+      e.statusCode = 400;
+      throw e;
+    }
+
     const source = point(body, 'source');
     const tariffKey = String(body.tariffKey || 'start').toLowerCase();
     const definition = tariffDefinition(tariffKey);
@@ -867,7 +2060,6 @@ async function realRoute(req, res, path, url) {
       throw e;
     }
     const destination = optionalPoint(body, 'destination');
-
     if (!destination && tariffKey !== 'delivery') {
       const e = new Error('destination is required');
       e.statusCode = 400;
@@ -881,9 +2073,7 @@ async function realRoute(req, res, path, url) {
 
     const tariffId = await selectTariffId(definition, session, source, destination, sourceTime);
     const tariff = catalog.tariffs.get(tariffId);
-    if (!tariff || tariff.is_active === false) {
-      throw new Error('TaxiMaster tariff is unavailable for ' + tariffKey);
-    }
+    if (!tariff || tariff.is_active === false) throw new Error('TaxiMaster tariff is unavailable for ' + tariffKey);
 
     const payload = {
       client_id: session.clientId,
@@ -909,26 +2099,152 @@ async function realRoute(req, res, path, url) {
         sourceTime,
       });
       const startAmount = Number(baseCost.sum);
-      if (!Number.isFinite(startAmount) || startAmount <= 0) {
-        throw new Error('TaxiMaster returned invalid Start cost');
-      }
-      payload.total_cost = Math.max(
-        0,
-        Math.round(startAmount * (1 - cfg.togetherDiscountPercent / 100)),
-      );
+      if (!Number.isFinite(startAmount) || startAmount <= 0) throw new Error('TaxiMaster returned invalid Start cost');
+      payload.total_cost = Math.max(0, Math.round(startAmount * (1 - cfg.togetherDiscountPercent / 100)));
       payload.cost_freeze = true;
     }
 
+    if (paymentMethod === 'cash') {
+      const data = await tmPostJson('create_order2', payload);
+      return send(res, 201, {
+        ok: true,
+        data: { ...data, paymentMethod: 'cash', paymentStatus: 'cash', tariffId, crewGroupId: definition.crewGroupId, tariffKey },
+      });
+    }
+
+    if (!cardBindingConfigured()) {
+      const e = new Error('ATMOS card payments are not configured yet');
+      e.statusCode = 409;
+      throw e;
+    }
+    const { card } = await getStoredCard(session.clientId, Number(body.cardId || 0));
+    const checkoutId = crypto.randomUUID();
+    payload.comment = [
+      body.comment ? String(body.comment) : '',
+      `[Yangi Taxi] Класс: ${tariffKey}`,
+      !destination && tariffKey === 'delivery' ? '[Yangi Taxi] Доставка: конечный адрес не указан' : '',
+      `[Yangi Taxi] Оплата: карта ATMOS после поездки; checkout ${checkoutId}`,
+    ].filter(Boolean).join('\n');
+
     const data = await tmPostJson('create_order2', payload);
+    const orderId = Number(data.order_id || 0);
+    if (!orderId) {
+      const e = new Error('TaxiMaster did not return order_id');
+      e.statusCode = 502;
+      throw e;
+    }
+    const record = {
+      checkoutId,
+      clientId: Number(session.clientId),
+      phone: String(session.phone || ''),
+      paymentMethod: 'card',
+      paymentKind: 'stored_card_post_ride',
+      tariffId: Number(tariffId),
+      crewGroupId: Number(definition.crewGroupId),
+      tariffKey,
+      addresses: payload.addresses,
+      cardId: Number(card.cardId),
+      maskedPan: String(card.maskedPan || ''),
+      estimatedAmount: Number(payload.total_cost || 0),
+      amount: 0,
+      amountTiyin: 0,
+      orderId,
+      status: 'order_created_waiting_finish',
+      createdAt: new Date().toISOString(),
+      orderCreatedAt: new Date().toISOString(),
+    };
+    await setPayment(checkoutId, record);
+    console.log(new Date().toISOString(), `[CARD] order #${orderId} created; ATMOS charge deferred until finished`);
     return send(res, 201, {
       ok: true,
       data: {
         ...data,
+        paymentRequired: false,
+        paymentMethod: 'card',
+        provider: 'ATMOS',
+        checkoutId,
+        maskedPan: record.maskedPan,
+        paymentStatus: 'waiting_finish',
+        chargeMoment: 'after_ride',
         tariffId,
         crewGroupId: definition.crewGroupId,
         tariffKey,
       },
     });
+  }
+
+  const paymentStatusMatch = /^\/api\/payments\/([^/]+)\/status$/.exec(path);
+  if (req.method === 'GET' && paymentStatusMatch) {
+    const checkoutId = decodeURIComponent(paymentStatusMatch[1]);
+    const record = await getPayment(checkoutId);
+    if (!record || Number(record.clientId) !== Number(session.clientId)) {
+      const e = new Error('Payment not found');
+      e.statusCode = 404;
+      throw e;
+    }
+    return send(res, 200, { ok: true, data: {
+      status: record.status || 'order_created_waiting_finish',
+      orderId: record.orderId || null,
+      paid: Boolean(record.paidAt),
+      amount: Number(record.amount || 0) || null,
+      finalAmount: Number(record.finalAmount || 0) || null,
+      maskedPan: record.maskedPan || '',
+      paymentAttempts: Number(record.paymentAttempts || 0),
+      lastPaymentError: record.lastPaymentError || null,
+      nextPaymentAttemptAt: record.nextPaymentAttemptAt || null,
+      driverCreditOperId: record.driverCreditOperId || null,
+      driverCreditStatus: record.driverCreditOperId ? 'credited' : (record.paidAt ? 'waiting_credit' : 'not_paid_yet'),
+    } });
+  }
+
+  const orderPaymentMatch = /^\/api\/orders\/(\d+)\/payment$/.exec(path);
+  if (req.method === 'GET' && orderPaymentMatch) {
+    const orderId = Number(orderPaymentMatch[1]);
+    await loadPayments();
+    const record = [...paymentStore.values()].find((p) => Number(p?.orderId || 0) === orderId);
+    if (!record || Number(record.clientId) !== Number(session.clientId)) {
+      const e = new Error('Payment not found');
+      e.statusCode = 404;
+      throw e;
+    }
+    return send(res, 200, { ok: true, data: {
+      checkoutId: record.checkoutId,
+      orderId,
+      status: record.status,
+      paid: Boolean(record.paidAt),
+      amount: Number(record.amount || 0) || null,
+      finalAmount: Number(record.finalAmount || 0) || null,
+      maskedPan: record.maskedPan || '',
+      paymentAttempts: Number(record.paymentAttempts || 0),
+      lastPaymentError: record.lastPaymentError || null,
+      nextPaymentAttemptAt: record.nextPaymentAttemptAt || null,
+      driverCredited: Boolean(record.driverCreditOperId),
+    } });
+  }
+
+  const retryPaymentMatch = /^\/api\/payments\/([^/]+)\/retry$/.exec(path);
+  if (req.method === 'POST' && retryPaymentMatch) {
+    const checkoutId = decodeURIComponent(retryPaymentMatch[1]);
+    const record = await getPayment(checkoutId);
+    if (!record || Number(record.clientId) !== Number(session.clientId)) {
+      const e = new Error('Payment not found');
+      e.statusCode = 404;
+      throw e;
+    }
+    if (record.paidAt) return send(res, 200, { ok: true, data: { status: record.status, paid: true, orderId: record.orderId } });
+    record.paymentAttempts = 0;
+    record.nextPaymentAttemptAt = null;
+    record.status = 'payment_retry';
+    await setPayment(checkoutId, record);
+    try { await settleFinishedCardPayment(record, { forcePaymentRetry: true }); } catch (_) {}
+    return send(res, 200, { ok: true, data: {
+      status: record.status,
+      paid: Boolean(record.paidAt),
+      orderId: record.orderId,
+      amount: Number(record.amount || 0) || null,
+      lastPaymentError: record.lastPaymentError || null,
+      nextPaymentAttemptAt: record.nextPaymentAttemptAt || null,
+    } });
   }
 
   if (req.method === 'GET' && path === '/api/orders/current') {
@@ -1031,6 +2347,22 @@ async function realRoute(req, res, path, url) {
       new_state: stateId,
       cancel_order_penalty_sum: p.cancel_order_penalty_sum || 0,
     });
+    try {
+      await loadPayments();
+      const payment = [...paymentStore.values()].find((pmt) => Number(pmt?.orderId || 0) === orderId);
+      if (payment && !payment.paidAt) {
+        payment.status = 'order_aborted_no_charge';
+        payment.abortedAt = new Date().toISOString();
+        payment.cancelPenalty = Number(p.cancel_order_penalty_sum || 0);
+        await setPayment(payment.checkoutId, payment);
+      } else if (payment?.paidAt && !payment.driverCreditOperId) {
+        payment.status = 'paid_order_aborted_refund_required';
+        payment.refundRequired = true;
+        await setPayment(payment.checkoutId, payment);
+      }
+    } catch (error) {
+      console.warn(new Date().toISOString(), 'Could not update card payment after cancellation:', error.message);
+    }
     return send(res, 200, { ok: true, data: { ...data, penalty: p.cancel_order_penalty_sum || 0 } });
   }
 
@@ -1067,4 +2399,27 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(cfg.port, cfg.host, () => {
   console.log('Yangi Taxi backend listening on http://' + cfg.host + ':' + cfg.port + ' mock=' + cfg.mock);
+  if (!cfg.mock) {
+    if (cfg.paymentSettlementEnabled) {
+      const intervalMs = cfg.tmDriverSettlementIntervalSec * 1000;
+      setTimeout(() => {
+        settleFinishedCardOrders().catch((error) =>
+          console.warn(new Date().toISOString(), 'Initial post-ride settlement check failed:', error.message)
+        );
+      }, 5000).unref();
+      setInterval(() => {
+        settleFinishedCardOrders().catch((error) =>
+          console.warn(new Date().toISOString(), 'Post-ride settlement worker failed:', error.message)
+        );
+      }, intervalMs).unref();
+      console.log('Post-ride ATMOS/driver settlement: every ' + Math.round(intervalMs / 1000) + 's');
+    } else {
+      console.log('Post-ride ATMOS/driver settlement: disabled for this process');
+    }
+    setTimeout(() => {
+      diagnoseAtmosCardBinding().catch((error) =>
+        console.warn('ATMOS diagnostics failed:', error.message)
+      );
+    }, 1200).unref();
+  }
 });
