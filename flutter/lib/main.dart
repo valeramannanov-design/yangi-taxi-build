@@ -109,8 +109,9 @@ const defaultBackendUrl = String.fromEnvironment(
 );
 
 class ApiException implements Exception {
-  ApiException(this.message);
+  ApiException(this.message, {this.statusCode});
   final String message;
+  final int? statusCode;
   @override
   String toString() => message;
 }
@@ -182,6 +183,14 @@ class ApiClient {
     return _decode(r);
   }
 
+  Future<dynamic> delete(String path) async {
+    if (isDemo) return <String, dynamic>{'removed': true};
+    final r = await http
+        .delete(Uri.parse(baseUrl + path), headers: headers)
+        .timeout(const Duration(seconds: 20));
+    return _decode(r);
+  }
+
   dynamic _decode(http.Response r) {
     dynamic b;
     try {
@@ -194,7 +203,7 @@ class ApiClient {
       if (b is Map && b['error'] is Map && b['error']['message'] != null) {
         message = b['error']['message'].toString();
       }
-      throw ApiException(message);
+      throw ApiException(message, statusCode: r.statusCode);
     }
     return b['data'];
   }
@@ -680,13 +689,16 @@ Future<String> _clientScopedStorageKey(ApiClient api, String prefix) async {
       if (id != null && id > 0) return '${prefix}_client_$id';
     }
   } catch (_) {
-    // Local profile conveniences must not block the app if /api/me is temporarily unavailable.
+    // Local migration/fallback must not block the app if /api/me is unavailable.
   }
   final tokenHash = (api.token ?? 'anonymous').hashCode.abs();
   return '${prefix}_session_$tokenHash';
 }
 
-Future<List<Map<String, dynamic>>> _loadFavoriteAddresses(ApiClient api) async {
+bool _profileEndpointMissing(Object error) =>
+    error is ApiException && (error.statusCode == 404 || error.statusCode == 405);
+
+Future<List<Map<String, dynamic>>> _loadLocalFavoriteAddresses(ApiClient api) async {
   final key = await _clientScopedStorageKey(api, 'favorite_addresses_v1');
   final raw = await _clientProfileStorage.read(key: key);
   if (raw == null || raw.trim().isEmpty) return <Map<String, dynamic>>[];
@@ -706,7 +718,7 @@ Future<List<Map<String, dynamic>>> _loadFavoriteAddresses(ApiClient api) async {
   }
 }
 
-Future<void> _saveFavoriteAddresses(
+Future<void> _cacheFavoriteAddresses(
   ApiClient api,
   List<Map<String, dynamic>> values,
 ) async {
@@ -714,18 +726,176 @@ Future<void> _saveFavoriteAddresses(
   await _clientProfileStorage.write(key: key, value: jsonEncode(values));
 }
 
-Future<String> _loadSavedPromoCode(ApiClient api) async {
+List<Map<String, dynamic>> _favoritesFromPayload(dynamic raw) {
+  if (raw is! Map || raw['favorites'] is! List) return <Map<String, dynamic>>[];
+  return (raw['favorites'] as List)
+      .whereType<Map>()
+      .map((item) => Map<String, dynamic>.from(item))
+      .where((item) =>
+          (item['address'] ?? '').toString().trim().isNotEmpty &&
+          double.tryParse((item['lat'] ?? '').toString()) != null &&
+          double.tryParse((item['lon'] ?? '').toString()) != null)
+      .toList();
+}
+
+Future<List<Map<String, dynamic>>> _loadFavoriteAddresses(ApiClient api) async {
+  final local = await _loadLocalFavoriteAddresses(api);
+  if (api.isDemo) return local;
+
+  try {
+    var remote = _favoritesFromPayload(await api.get('/api/profile/favorites'));
+
+    // One-time migration from the pre-server version of the app.
+    if (remote.isEmpty && local.isNotEmpty) {
+      for (final item in local.take(30)) {
+        await api.post('/api/profile/favorites', <String, dynamic>{
+          'name': (item['name'] ?? '').toString().trim(),
+          'address': (item['address'] ?? '').toString().trim(),
+          'lat': double.parse(item['lat'].toString()),
+          'lon': double.parse(item['lon'].toString()),
+        });
+      }
+      remote = _favoritesFromPayload(await api.get('/api/profile/favorites'));
+    }
+
+    await _cacheFavoriteAddresses(api, remote);
+    return remote;
+  } catch (e) {
+    if (_profileEndpointMissing(e)) return local;
+    rethrow;
+  }
+}
+
+Future<List<Map<String, dynamic>>> _saveFavoriteAddresses(
+  ApiClient api,
+  List<Map<String, dynamic>> values,
+) async {
+  if (api.isDemo) {
+    await _cacheFavoriteAddresses(api, values);
+    return values;
+  }
+
+  try {
+    final existing =
+        _favoritesFromPayload(await api.get('/api/profile/favorites'));
+    final existingById = <String, Map<String, dynamic>>{
+      for (final item in existing)
+        if ((item['id'] ?? '').toString().isNotEmpty)
+          item['id'].toString(): item,
+    };
+    final desiredIds = values
+        .map((item) => (item['id'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    for (final item in existing) {
+      final id = (item['id'] ?? '').toString();
+      if (id.isNotEmpty && !desiredIds.contains(id)) {
+        await api.delete('/api/profile/favorites/' + Uri.encodeComponent(id));
+      }
+    }
+
+    for (final item in values.take(30)) {
+      final id = (item['id'] ?? '').toString();
+      final body = <String, dynamic>{
+        'name': (item['name'] ?? '').toString().trim(),
+        'address': (item['address'] ?? '').toString().trim(),
+        'lat': double.parse(item['lat'].toString()),
+        'lon': double.parse(item['lon'].toString()),
+      };
+      if (id.isNotEmpty && existingById.containsKey(id)) {
+        await api.post(
+          '/api/profile/favorites/' + Uri.encodeComponent(id),
+          body,
+        );
+      } else {
+        await api.post('/api/profile/favorites', body);
+      }
+    }
+
+    final fresh =
+        _favoritesFromPayload(await api.get('/api/profile/favorites'));
+    await _cacheFavoriteAddresses(api, fresh);
+    return fresh;
+  } catch (e) {
+    if (_profileEndpointMissing(e)) {
+      await _cacheFavoriteAddresses(api, values);
+      return values;
+    }
+    rethrow;
+  }
+}
+
+Future<String> _loadLocalPromoCode(ApiClient api) async {
   final key = await _clientScopedStorageKey(api, 'promo_code_v1');
   return (await _clientProfileStorage.read(key: key) ?? '').trim();
 }
 
-Future<void> _savePromoCode(ApiClient api, String value) async {
+Future<void> _cachePromoCode(ApiClient api, String value) async {
   final key = await _clientScopedStorageKey(api, 'promo_code_v1');
-  final normalized = value.trim();
+  final normalized = value.trim().toUpperCase();
   if (normalized.isEmpty) {
     await _clientProfileStorage.delete(key: key);
   } else {
     await _clientProfileStorage.write(key: key, value: normalized);
+  }
+}
+
+Future<String> _loadSavedPromoCode(ApiClient api) async {
+  final local = await _loadLocalPromoCode(api);
+  if (api.isDemo) return local;
+
+  try {
+    final raw = await api.get('/api/profile/promo');
+    var code = '';
+    if (raw is Map && raw['promo'] is Map) {
+      code = ((raw['promo'] as Map)['code'] ?? '').toString().trim().toUpperCase();
+    }
+
+    // One-time migration from the local secure-storage implementation.
+    if (code.isEmpty && local.isNotEmpty) {
+      final saved = await api.post(
+        '/api/profile/promo',
+        <String, dynamic>{'code': local.toUpperCase()},
+      );
+      if (saved is Map && saved['promo'] is Map) {
+        code = ((saved['promo'] as Map)['code'] ?? local).toString().trim().toUpperCase();
+      } else {
+        code = local.toUpperCase();
+      }
+    }
+
+    await _cachePromoCode(api, code);
+    return code;
+  } catch (e) {
+    if (_profileEndpointMissing(e)) return local;
+    rethrow;
+  }
+}
+
+Future<void> _savePromoCode(ApiClient api, String value) async {
+  final normalized = value.trim().toUpperCase();
+  if (api.isDemo) {
+    await _cachePromoCode(api, normalized);
+    return;
+  }
+
+  try {
+    if (normalized.isEmpty) {
+      await api.delete('/api/profile/promo');
+    } else {
+      await api.post(
+        '/api/profile/promo',
+        <String, dynamic>{'code': normalized},
+      );
+    }
+    await _cachePromoCode(api, normalized);
+  } catch (e) {
+    if (_profileEndpointMissing(e)) {
+      await _cachePromoCode(api, normalized);
+      return;
+    }
+    rethrow;
   }
 }
 
@@ -805,7 +975,8 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     if (session != null) {
       api.token = session;
       try {
-        await api.get('/api/me');
+        final me = await api.get('/api/me');
+        await syncProfileSettings(me);
         loggedIn = true;
       } catch (_) {
         api.token = null;
@@ -816,9 +987,66 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     if (mounted) setState(() => loading = false);
   }
 
+  Future<void> syncProfileSettings(dynamic me) async {
+    if (api.isDemo || api.token == null) return;
+    try {
+      String? remoteLang;
+      String? remoteTheme;
+      if (me is Map && me['yangi_profile'] is Map) {
+        final profile = me['yangi_profile'] as Map;
+        if (profile['settings'] is Map) {
+          final settings = profile['settings'] as Map;
+          final l = settings['lang']?.toString();
+          final t = settings['theme']?.toString();
+          if (l == 'ru' || l == 'uz') remoteLang = l;
+          if (t == 'system' || t == 'light' || t == 'dark') remoteTheme = t;
+        }
+      }
+
+      if (remoteLang != null || remoteTheme != null) {
+        if (remoteLang != null) {
+          lang = remoteLang;
+          await storage.write(key: 'lang', value: remoteLang);
+        }
+        if (remoteTheme != null) {
+          themeSetting = remoteTheme;
+          await storage.write(key: 'theme_mode', value: remoteTheme);
+        }
+      }
+
+      // Fill missing server values from the device on first migration.
+      if (remoteLang == null || remoteTheme == null) {
+        await api.post('/api/profile/settings', <String, dynamic>{
+          'lang': lang,
+          'theme': themeSetting,
+        });
+      }
+    } catch (e) {
+      // Personal settings are non-critical and must never block login.
+      if (!_profileEndpointMissing(e)) {
+        debugPrint('Profile settings sync failed: $e');
+      }
+    }
+  }
+
+  Future<void> pushProfileSettings() async {
+    if (api.isDemo || api.token == null) return;
+    try {
+      await api.post('/api/profile/settings', <String, dynamic>{
+        'lang': lang,
+        'theme': themeSetting,
+      });
+    } catch (e) {
+      if (!_profileEndpointMissing(e)) {
+        debugPrint('Profile settings save failed: $e');
+      }
+    }
+  }
+
   Future<void> saveLang(String value) async {
     lang = value;
     await storage.write(key: 'lang', value: value);
+    await pushProfileSettings();
     if (mounted) setState(() {});
   }
 
@@ -826,6 +1054,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     if (value != 'light' && value != 'dark' && value != 'system') return;
     themeSetting = value;
     await storage.write(key: 'theme_mode', value: value);
+    await pushProfileSettings();
     if (mounted) setState(() {});
   }
 
@@ -870,6 +1099,12 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
       await storage.delete(key: 'remembered_phone');
     }
 
+    try {
+      final me = await api.get('/api/me');
+      await syncProfileSettings(me);
+    } catch (_) {
+      // Authentication already succeeded; profile sync must not block login.
+    }
     await prepareLocationPermission();
     if (mounted) setState(() => loggedIn = true);
   }
@@ -9582,8 +9817,8 @@ class _FavoriteAddressesScreenState extends State<FavoriteAddressesScreen> {
       },
     ];
     try {
-      await _saveFavoriteAddresses(widget.api, next);
-      if (mounted) setState(() => values = next);
+      final saved = await _saveFavoriteAddresses(widget.api, next);
+      if (mounted) setState(() => values = saved);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -9596,8 +9831,8 @@ class _FavoriteAddressesScreenState extends State<FavoriteAddressesScreen> {
   Future<void> removeFavorite(int index) async {
     final next = <Map<String, dynamic>>[...values]..removeAt(index);
     try {
-      await _saveFavoriteAddresses(widget.api, next);
-      if (mounted) setState(() => values = next);
+      final saved = await _saveFavoriteAddresses(widget.api, next);
+      if (mounted) setState(() => values = saved);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -9837,15 +10072,15 @@ class _PromoCodesScreenState extends State<PromoCodesScreen> {
                     ),
                     subtitle: Text(
                       widget.lang == 'uz'
-                          ? 'Buyurtma bilan serverga yuboriladi'
-                          : 'Будет отправлен вместе с новым заказом',
+                          ? 'Yangi Taxi serverida saqlangan'
+                          : 'Сохранён на сервере Yangi Taxi',
                     ),
                   ),
                 const SizedBox(height: 8),
                 Text(
                   widget.lang == 'uz'
-                      ? 'Promokod chegirmasi yoki bonusini TaxiMaster tasdiqlashi kerak.'
-                      : 'Скидку или начисление по промокоду должен подтвердить TaxiMaster.',
+                      ? 'Kod saqlanadi, lekin TaxiMaster chegirmasi hozircha qo‘llanmaydi.'
+                      : 'Код сохраняется, но скидка TaxiMaster пока не применяется.',
                   style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                 ),
               ],
