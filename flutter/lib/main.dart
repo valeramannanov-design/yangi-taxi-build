@@ -669,6 +669,66 @@ class Place {
       );
 }
 
+const _clientProfileStorage = FlutterSecureStorage();
+
+Future<String> _clientScopedStorageKey(ApiClient api, String prefix) async {
+  try {
+    final raw = await api.get('/api/me');
+    if (raw is Map) {
+      final idRaw = raw['client_id'] ?? raw['clientId'] ?? raw['id'];
+      final id = idRaw is num ? idRaw.toInt() : int.tryParse(idRaw?.toString() ?? '');
+      if (id != null && id > 0) return '${prefix}_client_$id';
+    }
+  } catch (_) {
+    // Local profile conveniences must not block the app if /api/me is temporarily unavailable.
+  }
+  final tokenHash = (api.token ?? 'anonymous').hashCode.abs();
+  return '${prefix}_session_$tokenHash';
+}
+
+Future<List<Map<String, dynamic>>> _loadFavoriteAddresses(ApiClient api) async {
+  final key = await _clientScopedStorageKey(api, 'favorite_addresses_v1');
+  final raw = await _clientProfileStorage.read(key: key);
+  if (raw == null || raw.trim().isEmpty) return <Map<String, dynamic>>[];
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return <Map<String, dynamic>>[];
+    return decoded
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((item) =>
+            (item['address'] ?? '').toString().trim().isNotEmpty &&
+            double.tryParse((item['lat'] ?? '').toString()) != null &&
+            double.tryParse((item['lon'] ?? '').toString()) != null)
+        .toList();
+  } catch (_) {
+    return <Map<String, dynamic>>[];
+  }
+}
+
+Future<void> _saveFavoriteAddresses(
+  ApiClient api,
+  List<Map<String, dynamic>> values,
+) async {
+  final key = await _clientScopedStorageKey(api, 'favorite_addresses_v1');
+  await _clientProfileStorage.write(key: key, value: jsonEncode(values));
+}
+
+Future<String> _loadSavedPromoCode(ApiClient api) async {
+  final key = await _clientScopedStorageKey(api, 'promo_code_v1');
+  return (await _clientProfileStorage.read(key: key) ?? '').trim();
+}
+
+Future<void> _savePromoCode(ApiClient api, String value) async {
+  final key = await _clientScopedStorageKey(api, 'promo_code_v1');
+  final normalized = value.trim();
+  if (normalized.isEmpty) {
+    await _clientProfileStorage.delete(key: key);
+  } else {
+    await _clientProfileStorage.write(key: key, value: normalized);
+  }
+}
+
 class NearbyCrew {
   NearbyCrew({
     required this.crewId,
@@ -2162,6 +2222,8 @@ class _ShellState extends State<Shell> {
         api: widget.api,
         lang: widget.lang,
         onLang: widget.onLang,
+        themeSetting: widget.themeSetting,
+        onTheme: widget.onTheme,
         onBackend: widget.onBackend,
         onLogout: widget.onLogout,
         onMenu: () => selectTab(0),
@@ -2992,6 +3054,7 @@ class _OrderScreenState extends State<OrderScreen> {
   bool cardBindingAvailable = false;
   List<Map<String, dynamic>> cards = <Map<String, dynamic>>[];
   int selectedCardId = 0;
+  String promoCode = '';
   bool pickupPinnedByUser = false;
   late final ys.SearchManager locationSearchManager;
   ys.SearchSession? locationSearchSession;
@@ -3008,6 +3071,7 @@ class _OrderScreenState extends State<OrderScreen> {
     loadPaymentConfig();
     loadCards();
     loadTariffCatalog();
+    loadPromoCode();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       detectMyLocation(auto: true);
     });
@@ -3096,6 +3160,11 @@ class _OrderScreenState extends State<OrderScreen> {
 
     if (pickup) await loadNearbyCars();
     scheduleEstimate();
+  }
+
+  Future<void> loadPromoCode() async {
+    final value = await _loadSavedPromoCode(widget.api);
+    if (mounted) setState(() => promoCode = value);
   }
 
   Future<void> loadPaymentConfig() async {
@@ -4152,6 +4221,7 @@ class _OrderScreenState extends State<OrderScreen> {
         'tariffKey': selectedTariffKey,
         'paymentMethod': paymentMethod,
         if (paymentMethod == 'card' && selectedCardId > 0) 'cardId': selectedCardId,
+        if (promoCode.isNotEmpty) 'promoCode': promoCode,
       });
 
       if (data is Map && data['paymentRequired'] == true) {
@@ -6356,6 +6426,7 @@ class _AddressSheetState extends State<AddressSheet> {
   late final ys.SearchManager searchManager;
   late final ys.SearchSuggestSession suggestSession;
   List<Place> results = <Place>[];
+  List<Map<String, dynamic>> favoriteAddresses = <Map<String, dynamic>>[];
   bool busy = false;
   String? error;
 
@@ -6369,6 +6440,12 @@ class _AddressSheetState extends State<AddressSheet> {
     super.initState();
     searchManager = ys.SearchFactory.instance.createSearchManager(ys.SearchManagerType.Online);
     suggestSession = searchManager.createSuggestSession();
+    unawaited(loadFavoriteAddresses());
+  }
+
+  Future<void> loadFavoriteAddresses() async {
+    final values = await _loadFavoriteAddresses(widget.api);
+    if (mounted) setState(() => favoriteAddresses = values);
   }
 
   void change(String value) {
@@ -6633,6 +6710,31 @@ class _AddressSheetState extends State<AddressSheet> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                if (favoriteAddresses.isNotEmpty) ...<Widget>[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      widget.lang == 'uz' ? 'Sevimli manzillar' : 'Любимые адреса',
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  ...favoriteAddresses.take(5).map((item) {
+                    final address = (item['address'] ?? '').toString();
+                    final label = (item['name'] ?? '').toString().trim();
+                    final lat = double.tryParse((item['lat'] ?? '').toString()) ?? 0;
+                    final lon = double.tryParse((item['lon'] ?? '').toString()) ?? 0;
+                    return quickRow(
+                      Icons.star_rounded,
+                      label.isEmpty
+                          ? (widget.lang == 'uz' ? 'Sevimli manzil' : 'Любимый адрес')
+                          : label,
+                      address,
+                      onTap: () => Navigator.pop(context, Place(address, lat, lon)),
+                    );
+                  }),
+                  const SizedBox(height: 10),
+                ],
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -9371,6 +9473,347 @@ class _CardsScreenState extends State<CardsScreen> {
   }
 }
 
+
+class FavoriteAddressesScreen extends StatefulWidget {
+  const FavoriteAddressesScreen({
+    super.key,
+    required this.api,
+    required this.lang,
+  });
+
+  final ApiClient api;
+  final String lang;
+
+  @override
+  State<FavoriteAddressesScreen> createState() => _FavoriteAddressesScreenState();
+}
+
+class _FavoriteAddressesScreenState extends State<FavoriteAddressesScreen> {
+  List<Map<String, dynamic>> values = <Map<String, dynamic>>[];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    final loaded = await _loadFavoriteAddresses(widget.api);
+    if (mounted) {
+      setState(() {
+        values = loaded;
+        loading = false;
+      });
+    }
+  }
+
+  Future<void> addFavorite() async {
+    final place = await showModalBottomSheet<Place>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => AddressSheet(
+        api: widget.api,
+        lang: widget.lang,
+        title: widget.lang == 'uz' ? 'Sevimli manzil' : 'Любимый адрес',
+      ),
+    );
+    if (place == null || !mounted) return;
+
+    final controller = TextEditingController(
+      text: values.isEmpty
+          ? (widget.lang == 'uz' ? 'Uy' : 'Дом')
+          : values.length == 1
+              ? (widget.lang == 'uz' ? 'Ish' : 'Работа')
+              : (widget.lang == 'uz' ? 'Sevimli joy' : 'Любимое место'),
+    );
+    final label = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(widget.lang == 'uz' ? 'Manzil nomi' : 'Название адреса'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(
+            hintText: widget.lang == 'uz' ? 'Masalan: Uy' : 'Например: Дом',
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(widget.lang == 'uz' ? 'Bekor' : 'Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: Text(widget.lang == 'uz' ? 'Saqlash' : 'Сохранить'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (label == null || label.trim().isEmpty || !mounted) return;
+
+    final next = <Map<String, dynamic>>[
+      ...values.where((item) =>
+          (item['address'] ?? '').toString().trim().toLowerCase() !=
+          place.address.trim().toLowerCase()),
+      <String, dynamic>{
+        'name': label.trim(),
+        'address': place.address,
+        'lat': place.lat,
+        'lon': place.lon,
+      },
+    ];
+    await _saveFavoriteAddresses(widget.api, next);
+    if (mounted) setState(() => values = next);
+  }
+
+  Future<void> removeFavorite(int index) async {
+    final next = <Map<String, dynamic>>[...values]..removeAt(index);
+    await _saveFavoriteAddresses(widget.api, next);
+    if (mounted) setState(() => values = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+        ),
+        title: Text(widget.lang == 'uz' ? 'Sevimli manzillar' : 'Любимые адреса'),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: addFavorite,
+        icon: const Icon(Icons.add_location_alt_rounded),
+        label: Text(widget.lang == 'uz' ? 'Qo‘shish' : 'Добавить'),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator(strokeWidth: 2.3))
+          : values.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(Icons.star_outline_rounded, size: 58, color: scheme.outline),
+                        const SizedBox(height: 12),
+                        Text(
+                          widget.lang == 'uz'
+                              ? 'Hali sevimli manzillar yo‘q'
+                              : 'Любимых адресов пока нет',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          widget.lang == 'uz'
+                              ? 'Manzil qo‘shing — u buyurtma berishda tezkor tanlovda ko‘rinadi.'
+                              : 'Добавьте адрес — он появится в быстром выборе при заказе.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 100),
+                  itemCount: values.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, index) {
+                    final item = values[index];
+                    return Card(
+                      elevation: 0,
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: yangiLime,
+                          child: Icon(Icons.star_rounded, color: yangiGraphite),
+                        ),
+                        title: Text(
+                          (item['name'] ?? '').toString(),
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        subtitle: Text(
+                          (item['address'] ?? '').toString(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: IconButton(
+                          tooltip: widget.lang == 'uz' ? 'O‘chirish' : 'Удалить',
+                          onPressed: () => removeFavorite(index),
+                          icon: const Icon(Icons.delete_outline_rounded),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+class PromoCodesScreen extends StatefulWidget {
+  const PromoCodesScreen({
+    super.key,
+    required this.api,
+    required this.lang,
+  });
+
+  final ApiClient api;
+  final String lang;
+
+  @override
+  State<PromoCodesScreen> createState() => _PromoCodesScreenState();
+}
+
+class _PromoCodesScreenState extends State<PromoCodesScreen> {
+  final controller = TextEditingController();
+  bool loading = true;
+  bool saving = false;
+  String activeCode = '';
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    final value = await _loadSavedPromoCode(widget.api);
+    controller.text = value;
+    if (mounted) {
+      setState(() {
+        activeCode = value;
+        loading = false;
+      });
+    }
+  }
+
+  Future<void> save() async {
+    final value = controller.text.trim();
+    setState(() => saving = true);
+    await _savePromoCode(widget.api, value);
+    if (!mounted) return;
+    setState(() {
+      activeCode = value;
+      saving = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          value.isEmpty
+              ? (widget.lang == 'uz' ? 'Promokod olib tashlandi' : 'Промокод удалён')
+              : (widget.lang == 'uz' ? 'Promokod saqlandi' : 'Промокод сохранён'),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+        ),
+        title: Text(widget.lang == 'uz' ? 'Promokodlar' : 'Промокоды'),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator(strokeWidth: 2.3))
+          : ListView(
+              padding: const EdgeInsets.all(18),
+              children: <Widget>[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      Text(
+                        widget.lang == 'uz' ? 'Promokodni kiriting' : 'Введите промокод',
+                        style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        widget.lang == 'uz'
+                            ? 'Katta-kichik harflar muhim. Kod aynan berilgan ko‘rinishda kiritilishi kerak.'
+                            : 'Регистр символов важен. Вводите код точно в том виде, в котором он выдан.',
+                        style: TextStyle(color: scheme.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: controller,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.local_offer_outlined),
+                          hintText: 'PROMO2026',
+                          suffixIcon: controller.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () => setState(controller.clear),
+                                  icon: const Icon(Icons.close_rounded),
+                                ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: saving ? null : save,
+                        child: Text(
+                          saving
+                              ? (widget.lang == 'uz' ? 'Saqlanmoqda…' : 'Сохраняем…')
+                              : (widget.lang == 'uz' ? 'Saqlash' : 'Сохранить'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (activeCode.isNotEmpty)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const CircleAvatar(
+                      backgroundColor: yangiLime,
+                      child: Icon(Icons.check_rounded, color: yangiGraphite),
+                    ),
+                    title: Text(
+                      activeCode,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      widget.lang == 'uz'
+                          ? 'Buyurtma bilan serverga yuboriladi'
+                          : 'Будет отправлен вместе с новым заказом',
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Text(
+                  widget.lang == 'uz'
+                      ? 'Promokod chegirmasi yoki bonusini TaxiMaster tasdiqlashi kerak.'
+                      : 'Скидку или начисление по промокоду должен подтвердить TaxiMaster.',
+                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
     super.key,
@@ -9381,6 +9824,7 @@ class SettingsScreen extends StatelessWidget {
     required this.onTheme,
     required this.onBackend,
     required this.onMenu,
+    this.backButton = false,
   });
 
   final ApiClient api;
@@ -9390,6 +9834,7 @@ class SettingsScreen extends StatelessWidget {
   final Future<void> Function(String) onTheme;
   final Future<void> Function(String) onBackend;
   final VoidCallback onMenu;
+  final bool backButton;
 
   Future<void> locationSettings() async {
     final permission = await Geolocator.checkPermission();
@@ -9508,7 +9953,10 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(onPressed: onMenu, icon: const Icon(Icons.menu_rounded)),
+        leading: IconButton(
+          onPressed: onMenu,
+          icon: Icon(backButton ? Icons.arrow_back_ios_new_rounded : Icons.menu_rounded),
+        ),
         centerTitle: true,
         title: const YangiWordmark(compact: true),
       ),
@@ -9741,6 +10189,8 @@ class ProfileScreen extends StatefulWidget {
     required this.api,
     required this.lang,
     required this.onLang,
+    required this.themeSetting,
+    required this.onTheme,
     required this.onBackend,
     required this.onLogout,
     this.onMenu,
@@ -9748,6 +10198,8 @@ class ProfileScreen extends StatefulWidget {
   final ApiClient api;
   final String lang;
   final ValueChanged<String> onLang;
+  final String themeSetting;
+  final Future<void> Function(String) onTheme;
   final Future<void> Function(String) onBackend;
   final VoidCallback onLogout;
   final VoidCallback? onMenu;
@@ -9793,6 +10245,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return first.toString();
     }
     return '';
+  }
+
+  double get bonusBalance {
+    final raw = me?['bonus_balance'] ?? me?['bonusBalance'] ?? 0;
+    return double.tryParse(raw.toString()) ?? 0;
+  }
+
+  String bonusBalanceLabel() {
+    final rounded = bonusBalance.round().toString();
+    final chars = rounded.split('').reversed.toList();
+    final out = <String>[];
+    for (var i = 0; i < chars.length; i++) {
+      if (i > 0 && i % 3 == 0) out.add(' ');
+      out.add(chars[i]);
+    }
+    return out.reversed.join() + (widget.lang == 'uz' ? ' bonus' : ' бонусов');
   }
 
   double? get clientRating {
@@ -10064,7 +10532,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 26),
+                    const SizedBox(height: 18),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                      decoration: BoxDecoration(
+                        color: yangiLime.withValues(alpha: dark ? 0.14 : 0.20),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: yangiLime.withValues(alpha: dark ? 0.30 : 0.45),
+                        ),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: yangiLime,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.stars_rounded, color: yangiGraphite),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  widget.lang == 'uz' ? 'Bonus balansi' : 'Бонусный баланс',
+                                  style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  bonusBalanceLabel(),
+                                  style: const TextStyle(
+                                    fontSize: 21,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: load,
+                            tooltip: widget.lang == 'uz' ? 'Yangilash' : 'Обновить',
+                            icon: const Icon(Icons.refresh_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
                     row(
                       icon: Icons.receipt_long_outlined,
                       title: widget.lang == 'uz' ? 'Mening safarlarim' : 'Мои поездки',
@@ -10090,17 +10612,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     row(
                       icon: Icons.local_offer_outlined,
                       title: widget.lang == 'uz' ? 'Promokodlar' : 'Промокоды',
-                      onTap: () => notReady(widget.lang == 'uz' ? 'Promokodlar' : 'Промокоды'),
+                      onTap: () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(
+                          builder: (_) => PromoCodesScreen(
+                            api: widget.api,
+                            lang: widget.lang,
+                          ),
+                        ),
+                      ),
                     ),
                     row(
                       icon: Icons.location_on_outlined,
                       title: widget.lang == 'uz' ? 'Sevimli manzillar' : 'Любимые адреса',
-                      onTap: () => notReady(widget.lang == 'uz' ? 'Sevimli manzillar' : 'Любимые адреса'),
+                      onTap: () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(
+                          builder: (_) => FavoriteAddressesScreen(
+                            api: widget.api,
+                            lang: widget.lang,
+                          ),
+                        ),
+                      ),
                     ),
                     row(
                       icon: Icons.settings_outlined,
-                      title: widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки',
-                      onTap: () => notReady(widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки'),
+                      title: widget.lang == 'uz' ? 'Shaxsiy sozlamalar' : 'Личные настройки',
+                      onTap: () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(
+                          builder: (routeContext) => SettingsScreen(
+                            api: widget.api,
+                            lang: widget.lang,
+                            themeSetting: widget.themeSetting,
+                            onLang: widget.onLang,
+                            onTheme: widget.onTheme,
+                            onBackend: widget.onBackend,
+                            onMenu: () => Navigator.pop(routeContext),
+                            backButton: true,
+                          ),
+                        ),
+                      ),
                     ),
                     row(
                       icon: Icons.help_outline_rounded,
