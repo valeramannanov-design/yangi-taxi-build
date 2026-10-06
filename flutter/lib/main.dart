@@ -9507,12 +9507,20 @@ class _FavoriteAddressesScreenState extends State<FavoriteAddressesScreen> {
   }
 
   Future<void> load() async {
-    final loaded = await _loadFavoriteAddresses(widget.api);
-    if (mounted) {
-      setState(() {
-        values = loaded;
-        loading = false;
-      });
+    try {
+      final loaded = await _loadFavoriteAddresses(widget.api);
+      if (mounted) {
+        setState(() {
+          values = loaded;
+          loading = false;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     }
   }
 
@@ -9573,14 +9581,30 @@ class _FavoriteAddressesScreenState extends State<FavoriteAddressesScreen> {
         'lon': place.lon,
       },
     ];
-    await _saveFavoriteAddresses(widget.api, next);
-    if (mounted) setState(() => values = next);
+    try {
+      await _saveFavoriteAddresses(widget.api, next);
+      if (mounted) setState(() => values = next);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    }
   }
 
   Future<void> removeFavorite(int index) async {
     final next = <Map<String, dynamic>>[...values]..removeAt(index);
-    await _saveFavoriteAddresses(widget.api, next);
-    if (mounted) setState(() => values = next);
+    try {
+      await _saveFavoriteAddresses(widget.api, next);
+      if (mounted) setState(() => values = next);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    }
   }
 
   @override
@@ -9702,23 +9726,31 @@ class _PromoCodesScreenState extends State<PromoCodesScreen> {
   }
 
   Future<void> save() async {
-    final value = controller.text.trim();
+    final value = controller.text.trim().toUpperCase();
     setState(() => saving = true);
-    await _savePromoCode(widget.api, value);
-    if (!mounted) return;
-    setState(() {
-      activeCode = value;
-      saving = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          value.isEmpty
-              ? (widget.lang == 'uz' ? 'Promokod olib tashlandi' : 'Промокод удалён')
-              : (widget.lang == 'uz' ? 'Promokod saqlandi' : 'Промокод сохранён'),
+    try {
+      await _savePromoCode(widget.api, value);
+      if (!mounted) return;
+      controller.text = value;
+      setState(() => activeCode = value);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value.isEmpty
+                ? (widget.lang == 'uz' ? 'Promokod olib tashlandi' : 'Промокод удалён')
+                : (widget.lang == 'uz' ? 'Promokod saqlandi' : 'Промокод сохранён'),
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
   }
 
   @override
@@ -10256,8 +10288,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   double get bonusBalance {
-    final raw = me?['bonus_balance'] ?? me?['bonusBalance'] ?? 0;
-    return double.tryParse(raw.toString()) ?? 0;
+    final raw = me?['bonus_balance'] ??
+        me?['bonusBalance'] ??
+        me?['bonus_sum'] ??
+        me?['bonusSum'] ??
+        me?['bonuses'] ??
+        0;
+    return double.tryParse(raw.toString().replaceAll(',', '.')) ?? 0;
   }
 
   String bonusBalanceLabel() {
