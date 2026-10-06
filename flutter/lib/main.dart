@@ -2027,6 +2027,7 @@ class _ShellState extends State<Shell> {
     }
     if (!mounted) return;
     setState(() {
+      activeId = null;
       orderFormGeneration += 1;
       tab = 0;
     });
@@ -2134,7 +2135,13 @@ class _ShellState extends State<Shell> {
         onMenu: openMenu,
         onProfile: () => selectTab(5),
       ),
-      RideScreen(api: widget.api, lang: widget.lang, orderId: activeId, onMenu: openMenu),
+      RideScreen(
+        api: widget.api,
+        lang: widget.lang,
+        orderId: activeId,
+        onMenu: openMenu,
+        onNewTrip: startNewTrip,
+      ),
       HistoryScreen(api: widget.api, lang: widget.lang, onMenu: openMenu),
       CardsScreen(
         api: widget.api,
@@ -6940,11 +6947,13 @@ class RideScreen extends StatefulWidget {
     required this.lang,
     required this.orderId,
     required this.onMenu,
+    required this.onNewTrip,
   });
   final ApiClient api;
   final String lang;
   final int? orderId;
   final VoidCallback onMenu;
+  final VoidCallback onNewTrip;
 
   @override
   State<RideScreen> createState() => _RideScreenState();
@@ -7716,6 +7725,16 @@ class _RideScreenState extends State<RideScreen> {
                 backgroundColor: const Color(0xFF101719),
                 foregroundColor: Colors.white,
                 minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: widget.onNewTrip,
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: Text(widget.lang == 'uz' ? 'Yangi safarga qaytish' : 'Назад'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
               ),
             ),
