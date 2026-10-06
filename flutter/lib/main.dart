@@ -1230,17 +1230,14 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
       home: loading
           ? const _YangiSplashScreen()
           : loggedIn
-              ? ExitConfirmScope(
+              ? Shell(
+                  api: api,
                   lang: lang,
-                  child: Shell(
-                    api: api,
-                    lang: lang,
-                    themeSetting: themeSetting,
-                    onLang: saveLang,
-                    onTheme: saveTheme,
-                    onBackend: saveBackend,
-                    onLogout: logout,
-                  ),
+                  themeSetting: themeSetting,
+                  onLang: saveLang,
+                  onTheme: saveTheme,
+                  onBackend: saveBackend,
+                  onLogout: logout,
                 )
               : LoginScreen(
                   api: api,
@@ -2277,6 +2274,7 @@ class _ShellState extends State<Shell> {
   int tab = 0;
   int? activeId;
   int orderFormGeneration = 0;
+  bool _exitDialogOpen = false;
 
   @override
   void initState() {
@@ -2305,6 +2303,52 @@ class _ShellState extends State<Shell> {
   }
 
   void openMenu() => shellKey.currentState?.openDrawer();
+
+  Future<void> handleAndroidBack() async {
+    final scaffold = shellKey.currentState;
+    if (scaffold?.isDrawerOpen == true) {
+      scaffold!.closeDrawer();
+      return;
+    }
+    if (tab != 0) {
+      selectTab(0);
+      return;
+    }
+    if (_exitDialogOpen || !mounted) return;
+
+    _exitDialogOpen = true;
+    try {
+      final shouldExit = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.exit_to_app_rounded, size: 34),
+          title: Text(widget.lang == 'uz' ? 'Ilovadan chiqasizmi?' : 'Выйти из приложения?'),
+          content: Text(
+            widget.lang == 'uz'
+                ? 'Yangi Taxi ilovasini yopmoqchimisiz?'
+                : 'Вы действительно хотите закрыть Yangi Taxi?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(widget.lang == 'uz' ? 'Bekor' : 'Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: yangiLime,
+                foregroundColor: yangiGraphite,
+              ),
+              child: Text(widget.lang == 'uz' ? 'Chiqish' : 'Выйти'),
+            ),
+          ],
+        ),
+      );
+      if (shouldExit == true) SystemNavigator.pop();
+    } finally {
+      _exitDialogOpen = false;
+    }
+  }
 
   void selectTab(int value) {
     final scaffold = shellKey.currentState;
@@ -2336,14 +2380,15 @@ class _ShellState extends State<Shell> {
     });
   }
 
-  void openDrawerPage(Widget page) {
+  Future<void> openDrawerPage(Widget page) async {
     final scaffold = shellKey.currentState;
     if (scaffold?.isDrawerOpen == true) {
       scaffold!.closeDrawer();
     }
-    Navigator.of(context).push<void>(
+    await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => page),
     );
+    if (mounted) selectTab(0);
   }
 
   void openDrawerSettings() {
@@ -2534,6 +2579,7 @@ class _ShellState extends State<Shell> {
         lang: widget.lang,
         onOrder: orderCreated,
         onMenu: openMenu,
+        isActive: tab == 0,
       ),
       RideScreen(
         api: widget.api,
@@ -2541,6 +2587,7 @@ class _ShellState extends State<Shell> {
         orderId: activeId,
         onMenu: openMenu,
         onNewTrip: startNewTrip,
+        isActive: tab == 1,
       ),
       HistoryScreen(api: widget.api, lang: widget.lang, onMenu: startNewTrip),
       CardsScreen(
@@ -2573,8 +2620,13 @@ class _ShellState extends State<Shell> {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      key: shellKey,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) unawaited(handleAndroidBack());
+      },
+      child: Scaffold(
+        key: shellKey,
       drawerScrimColor: Colors.black.withValues(alpha: dark ? 0.58 : 0.34),
       drawerEdgeDragWidth: 44,
       drawer: Drawer(
@@ -2709,7 +2761,7 @@ class _ShellState extends State<Shell> {
                       menuItem(
                         index: 4,
                         icon: Icons.settings_outlined,
-                        title: widget.lang == 'uz' ? 'Shaxsiy sozlamalar' : 'Личные настройки',
+                        title: widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки',
                       ),
                       menuActionItem(
                         icon: Icons.help_outline_rounded,
@@ -2764,8 +2816,9 @@ class _ShellState extends State<Shell> {
           ),
         ),
       ),
-      body: IndexedStack(index: tab, children: pages),
-      bottomNavigationBar: null,
+        body: IndexedStack(index: tab, children: pages),
+        bottomNavigationBar: null,
+      ),
     );
   }
 }
@@ -3450,11 +3503,13 @@ class OrderScreen extends StatefulWidget {
     required this.lang,
     required this.onOrder,
     required this.onMenu,
+    required this.isActive,
   });
   final ApiClient api;
   final String lang;
   final ValueChanged<int> onOrder;
   final VoidCallback onMenu;
+  final bool isActive;
 
   @override
   State<OrderScreen> createState() => _OrderScreenState();
@@ -3508,7 +3563,7 @@ class _OrderScreenState extends State<OrderScreen> {
       detectMyLocation(auto: true);
     });
     nearbyCarsTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      loadNearbyCars();
+      if (widget.isActive) loadNearbyCars();
     });
   }
 
@@ -3521,11 +3576,14 @@ class _OrderScreenState extends State<OrderScreen> {
     super.dispose();
   }
 
-  Future<Place?> selectAddress(String title, Place? initial) => showModalBottomSheet<Place>(
-        context: context,
-        isScrollControlled: true,
-        builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
-      );
+  Future<Place?> selectAddress(String title, Place? initial) async {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return null;
+    return showModalBottomSheet<Place>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => AddressSheet(api: widget.api, lang: widget.lang, title: title, initial: initial),
+    );
+  }
 
   Future<void> ensurePickupFromCurrentLocation() async {
     if (from != null) return;
@@ -3548,6 +3606,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> pickRoutePointOnMap({required bool pickup}) async {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
     final title = pickup ? tx(widget.lang, 'from') : tx(widget.lang, 'to');
     final initial = pickup
         ? (from ?? (currentLocation == null
@@ -4813,8 +4872,9 @@ class _OrderScreenState extends State<OrderScreen> {
       backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: <Widget>[
-          Positioned.fill(
-            child: TaxiYandexMap(
+          if (widget.isActive)
+            Positioned.fill(
+              child: TaxiYandexMap(
               center: center,
               route: route,
               from: from?.point,
@@ -6231,7 +6291,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> _showTariffComparisonSheet() async {
     final items = visibleTariffs;
-    if (items.isEmpty) return;
+    if (items.isEmpty || !mounted || ModalRoute.of(context)?.isCurrent != true) return;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -6417,6 +6477,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> _showPaymentSheet(bool canUseCard) async {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
     await loadCards();
     if (!mounted) return;
 
@@ -6645,6 +6706,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> _showRideOptionsSheet() async {
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -7475,12 +7537,14 @@ class RideScreen extends StatefulWidget {
     required this.orderId,
     required this.onMenu,
     required this.onNewTrip,
+    required this.isActive,
   });
   final ApiClient api;
   final String lang;
   final int? orderId;
   final VoidCallback onMenu;
   final VoidCallback onNewTrip;
+  final bool isActive;
 
   @override
   State<RideScreen> createState() => _RideScreenState();
@@ -7497,6 +7561,7 @@ class _RideScreenState extends State<RideScreen> {
   yd.DrivingRouter? drivingRouter;
   yd.DrivingSession? drivingSession;
   bool routeRequestInFlight = false;
+  bool refreshInFlight = false;
   ym.Point? lastRouteStart;
   ym.Point? lastRouteEnd;
 
@@ -7508,8 +7573,10 @@ class _RideScreenState extends State<RideScreen> {
         yd.DrivingRouterType.Combined,
       );
     }
-    refresh();
-    timer = Timer.periodic(const Duration(seconds: 4), (_) => refresh());
+    if (widget.isActive) refresh();
+    timer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (widget.isActive) refresh();
+    });
   }
 
   @override
@@ -7523,6 +7590,8 @@ class _RideScreenState extends State<RideScreen> {
         roadRoute = <ym.Point>[];
         loading = true;
       });
+      if (widget.isActive) refresh();
+    } else if (!oldWidget.isActive && widget.isActive) {
       refresh();
     }
   }
@@ -7651,6 +7720,8 @@ class _RideScreenState extends State<RideScreen> {
   }
 
   Future<void> refresh() async {
+    if (!widget.isActive || refreshInFlight) return;
+    refreshInFlight = true;
     try {
       var id = widget.orderId;
       if (id == null) {
@@ -7676,7 +7747,6 @@ class _RideScreenState extends State<RideScreen> {
       final resolvedOrderId = (state['order_id'] as num?)?.toInt() ?? id;
       final shouldAskRating =
           stateKind == 'finished' && feedbackPromptedOrderId != resolvedOrderId;
-      if (shouldAskRating) feedbackPromptedOrderId = resolvedOrderId;
       if (mounted) {
         setState(() {
           order = state;
@@ -7685,10 +7755,13 @@ class _RideScreenState extends State<RideScreen> {
           error = null;
         });
         unawaited(_refreshRoadRoute(state, d));
-        if (shouldAskRating) {
+        if (shouldAskRating && widget.isActive) {
           final driverName = (state['driver_name'] ?? '').toString();
           WidgetsBinding.instance.addPostFrameCallback((_) async {
-            if (!mounted) return;
+            if (!mounted || !widget.isActive) return;
+            if (ModalRoute.of(context)?.isCurrent != true) return;
+            if (feedbackPromptedOrderId == resolvedOrderId) return;
+            feedbackPromptedOrderId = resolvedOrderId;
             await showDriverRatingDialog(
               context,
               widget.api,
@@ -7728,6 +7801,8 @@ class _RideScreenState extends State<RideScreen> {
           });
         }
       }
+    } finally {
+      refreshInFlight = false;
     }
   }
 
@@ -8706,16 +8781,9 @@ class _RideScreenState extends State<RideScreen> {
       );
     }
 
-    final showMap = !finished && !aborted;
-    return PopScope(
-      canPop: !(finished || aborted),
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && (finished || aborted)) {
-          widget.onNewTrip();
-        }
-      },
-      child: Scaffold(
-        backgroundColor: dark ? const Color(0xFF0C0E0F) : Colors.white,
+    final showMap = widget.isActive && !finished && !aborted;
+    return Scaffold(
+      backgroundColor: dark ? const Color(0xFF0C0E0F) : Colors.white,
       body: Stack(
         children: <Widget>[
           if (showMap)
@@ -8810,7 +8878,6 @@ class _RideScreenState extends State<RideScreen> {
             ),
           ),
         ],
-      ),
       ),
     );
   }
