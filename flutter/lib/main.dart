@@ -8580,7 +8580,7 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   List<dynamic> orders = <dynamic>[];
   bool loading = true;
-  String filter = 'all';
+  String filter = 'finished';
 
   @override
   void initState() {
@@ -8732,7 +8732,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                         child: Row(
                           children: <Widget>[
-                            filterButton('all', widget.lang == 'uz' ? 'Barchasi' : 'Все'),
                             filterButton('finished', widget.lang == 'uz' ? 'Tugallangan' : 'Завершённые'),
                             filterButton('aborted', widget.lang == 'uz' ? 'Bekor' : 'Отменённые'),
                           ],
