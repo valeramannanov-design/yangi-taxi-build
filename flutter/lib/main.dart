@@ -667,44 +667,57 @@ String _compactAddress(String value) {
   final raw = value.trim();
   if (raw.isEmpty) return raw;
 
-  // Coordinate fallbacks must stay untouched.
-  if (RegExp(r'^-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}$').hasMatch(raw)) {
+  if (RegExp(r'^-?\\d{1,3}\\.\\d{3,}\\s*,\\s*-?\\d{1,3}\\.\\d{3,}$')
+      .hasMatch(raw)) {
     return raw;
   }
 
-  bool administrativePart(String part) {
-    final s = part
-        .toLowerCase()
-        .replaceAll('’', "'")
-        .replaceAll('ʻ', "'")
-        .trim();
+  String normalized(String part) => part
+      .toLowerCase()
+      .replaceAll('’', "'")
+      .replaceAll('ʻ', "'")
+      .replaceAll(RegExp(r'\\s+'), ' ')
+      .trim();
 
-    if (<String>{
-      'tashkent',
-      'toshkent',
-      'ташкент',
-      'узбекистан',
-      "o'zbekiston",
-      'ozbekiston',
-      'uzbekistan',
-    }.contains(s)) {
+  bool administrativePart(String part) {
+    final s = normalized(part);
+    if (s.isEmpty) return true;
+
+    if (s == 'uzbekistan' ||
+        s == 'o\'zbekiston' ||
+        s == 'ozbekiston' ||
+        s == 'узбекистан') {
       return true;
     }
 
-    return s.endsWith(' область') ||
-        s.endsWith(' обл.') ||
+    if (s.contains(' область') ||
+        s.contains(' обл.') ||
         s.endsWith(' обл') ||
         s.contains(' район') ||
-        s.endsWith(' р-н') ||
+        s.contains(' р-н') ||
         s.startsWith('р-н ') ||
+        s.contains(' district') ||
         s.endsWith(' viloyati') ||
         s.endsWith(' viloyat') ||
-        s.endsWith(' tumani') ||
-        s.endsWith(' tuman') ||
+        s.contains(' tumani') ||
+        s.endsWith(' tuman')) {
+      return true;
+    }
+
+    final cityMarker = s.startsWith('город ') ||
+        s.startsWith('г. ') ||
+        s.startsWith('г.') ||
         s.endsWith(' shahri') ||
-        s == 'город ташкент' ||
-        s == 'г. ташкент' ||
-        s == 'toshkent shahri';
+        s.endsWith(' shahar');
+
+    final tashkentOnly = (s.contains('ташкент') ||
+            s.contains('toshkent') ||
+            s.contains('tashkent')) &&
+        !RegExp(
+          r'улиц|кўча|ko\'cha|kocha|street|просп|шоссе|дом|mahall|махалл|мфй',
+        ).hasMatch(s);
+
+    return cityMarker || tashkentOnly;
   }
 
   final parts = raw
@@ -716,32 +729,59 @@ String _compactAddress(String value) {
   final compact = <String>[];
   for (final part in parts) {
     if (administrativePart(part)) continue;
-    if (compact.isNotEmpty &&
-        compact.last.toLowerCase() == part.toLowerCase()) {
-      continue;
-    }
+    if (compact.any((item) => normalized(item) == normalized(part))) continue;
     compact.add(part);
   }
 
-  return compact.isEmpty ? raw : compact.join(', ');
+  if (compact.isEmpty) return raw;
+  // The passenger UI intentionally shows only a short local address:
+  // street / house / mahalla (or the closest available 1-3 components).
+  return compact.take(3).join(', ');
 }
 
 class Place {
-  Place(this.address, this.lat, this.lon, {this.isFavorite = false});
+  Place(
+    this.address,
+    this.lat,
+    this.lon, {
+    this.isFavorite = false,
+    String? displayLabel,
+  }) : _displayLabel = displayLabel?.trim();
+
   final String address;
   final double lat;
   final double lon;
   final bool isFavorite;
-  ym.Point get point => ym.Point(latitude: lat, longitude: lon);
-  String get displayAddress => _compactAddress(address);
-  Map<String, dynamic> toJson() => <String, dynamic>{'address': address, 'lat': lat, 'lon': lon};
+  final String? _displayLabel;
 
-  factory Place.fromJson(Map<String, dynamic> j) => Place(
-        (j['label'] ?? '').toString(),
-        (j['lat'] as num).toDouble(),
-        (j['lon'] as num).toDouble(),
-      );
+  ym.Point get point => ym.Point(latitude: lat, longitude: lon);
+
+  String get displayAddress {
+    final explicit = _displayLabel;
+    if (explicit != null && explicit.isNotEmpty) {
+      return _compactAddress(explicit);
+    }
+    return _compactAddress(address);
+  }
+
+  Map<String, dynamic> toJson() =>
+      <String, dynamic>{'address': address, 'lat': lat, 'lon': lon};
+
+  factory Place.fromJson(Map<String, dynamic> j) {
+    final full = (j['fullLabel'] ?? j['label'] ?? '').toString().trim();
+    final display =
+        (j['shortLabel'] ?? j['displayLabel'] ?? '').toString().trim();
+    return Place(
+      full,
+      (j['lat'] as num).toDouble(),
+      (j['lon'] as num).toDouble(),
+      displayLabel: display.isEmpty ? null : display,
+    );
+  }
 }
+
+const _activeOrderIdStorageKey = 'active_order_id_v2';
+const _activeOrderSessionStorageKey = 'active_order_session_v2';
 
 const _clientProfileStorage = FlutterSecureStorage();
 
@@ -1023,8 +1063,13 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     final savedTheme = await storage.read(key: 'theme_mode');
     final remember = await storage.read(key: 'remember_me');
     final shouldRemember = remember == 'true';
-    final session = shouldRemember ? await storage.read(key: 'session') : null;
-    final savedPhone = shouldRemember ? await storage.read(key: 'remembered_phone') : null;
+    final rememberedSession =
+        shouldRemember ? await storage.read(key: 'session') : null;
+    final activeOrderSession =
+        await storage.read(key: _activeOrderSessionStorageKey);
+    final session = rememberedSession ?? activeOrderSession;
+    final savedPhone =
+        shouldRemember ? await storage.read(key: 'remembered_phone') : null;
     api.setBaseUrl(savedUrl ?? defaultBackendUrl);
     if (savedLang == 'uz' || savedLang == 'ru') lang = savedLang!;
     if (savedTheme == 'light' || savedTheme == 'dark' || savedTheme == 'system') {
@@ -1047,6 +1092,8 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
         api.token = null;
         await storage.delete(key: 'session');
         await storage.delete(key: 'remember_me');
+        await storage.delete(key: _activeOrderIdStorageKey);
+        await storage.delete(key: _activeOrderSessionStorageKey);
       }
     }
     if (mounted) setState(() => loading = false);
@@ -1129,6 +1176,8 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     await storage.delete(key: 'session');
     await storage.delete(key: 'remember_me');
     await storage.delete(key: 'remembered_phone');
+    await storage.delete(key: _activeOrderIdStorageKey);
+    await storage.delete(key: _activeOrderSessionStorageKey);
     rememberedPhone = '';
     loggedIn = false;
     if (mounted) setState(() {});
@@ -1180,6 +1229,8 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
     await storage.delete(key: 'session');
     await storage.delete(key: 'remember_me');
     await storage.delete(key: 'remembered_phone');
+    await storage.delete(key: _activeOrderIdStorageKey);
+    await storage.delete(key: _activeOrderSessionStorageKey);
     if (mounted) setState(() => loggedIn = false);
   }
 
@@ -2770,23 +2821,83 @@ class _ShellState extends State<Shell> {
     }
   }
 
+  int? _readOrderId(dynamic raw) {
+    if (raw is! Map) return null;
+    final value = raw['order_id'] ?? raw['orderId'] ?? raw['id'];
+    final id = value is num ? value.toInt() : int.tryParse(value?.toString() ?? '');
+    return id != null && id > 0 ? id : null;
+  }
+
+  Future<void> _persistActiveOrder(int id) async {
+    await _clientProfileStorage.write(
+      key: _activeOrderIdStorageKey,
+      value: id.toString(),
+    );
+    final token = widget.api.token?.trim() ?? '';
+    if (token.isNotEmpty) {
+      await _clientProfileStorage.write(
+        key: _activeOrderSessionStorageKey,
+        value: token,
+      );
+    }
+  }
+
+  Future<void> _clearPersistedActiveOrder() async {
+    await _clientProfileStorage.delete(key: _activeOrderIdStorageKey);
+    await _clientProfileStorage.delete(key: _activeOrderSessionStorageKey);
+  }
+
   Future<void> restoreActiveOrder() async {
-    try {
-      final data = await widget.api.get('/api/orders/current');
-      if (!mounted || data is! List || data.isEmpty) return;
+    final savedRaw =
+        await _clientProfileStorage.read(key: _activeOrderIdStorageKey);
+    final savedId = int.tryParse(savedRaw ?? '');
 
-      final raw = data.first;
-      if (raw is! Map) return;
-      final rawId = raw['order_id'];
-      final id = rawId is num ? rawId.toInt() : int.tryParse(rawId?.toString() ?? '');
-      if (id == null || id <= 0) return;
-
+    // Show the locally remembered trip immediately. Network verification below
+    // will refresh or discard it only when the backend confirms it is invalid.
+    if (savedId != null && savedId > 0 && mounted) {
       setState(() {
-        activeId = id;
+        activeId = savedId;
         tab = 1;
       });
+    }
+
+    try {
+      final data = await widget.api.get('/api/orders/current');
+      if (!mounted || data is! List) return;
+
+      if (data.isNotEmpty) {
+        final id = _readOrderId(data.first);
+        if (id != null) {
+          await _persistActiveOrder(id);
+          if (!mounted) return;
+          setState(() {
+            activeId = id;
+            tab = 1;
+          });
+          return;
+        }
+      }
+
+      if (savedId == null || savedId <= 0) return;
+
+      // get_current_orders can briefly return an empty list while TaxiMaster
+      // updates state. Validate the exact saved order before dropping it.
+      try {
+        await widget.api.get(
+          '/api/orders/' + savedId.toString() + '/driver-location',
+        );
+      } on ApiException catch (e) {
+        if (e.statusCode == 403 || e.statusCode == 404) {
+          await _clearPersistedActiveOrder();
+          if (!mounted) return;
+          setState(() {
+            activeId = null;
+            tab = 0;
+          });
+        }
+      }
     } catch (_) {
-      // A failed restore must not block the home screen.
+      // Keep the local active order during a temporary network failure.
     }
   }
 
@@ -2853,6 +2964,7 @@ class _ShellState extends State<Shell> {
     if (scaffold?.isDrawerOpen == true) {
       scaffold!.closeDrawer();
     }
+    unawaited(_clearPersistedActiveOrder());
     if (!mounted) return;
     setState(() {
       activeId = null;
@@ -2862,6 +2974,7 @@ class _ShellState extends State<Shell> {
   }
 
   void orderCreated(int id) {
+    unawaited(_persistActiveOrder(id));
     setState(() {
       activeId = id;
       tab = 1;
@@ -5103,7 +5216,15 @@ class _OrderScreenState extends State<OrderScreen> {
           label = widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение';
         }
         if (!completer.isCompleted) {
-          completer.complete(Place(label, point.latitude, point.longitude));
+          final shortLabel = name.isEmpty ? _compactAddress(label) : name;
+          completer.complete(
+            Place(
+              label,
+              point.latitude,
+              point.longitude,
+              displayLabel: shortLabel,
+            ),
+          );
         }
       },
       onSearchError: (_) {
@@ -7826,8 +7947,16 @@ class _AddressSheetState extends State<AddressSheet> {
             if (p == null) continue;
             final title = item.title.text.trim();
             final subtitle = item.subtitle?.text.trim() ?? '';
-            final label = subtitle.isEmpty || subtitle == title ? title : '$title, $subtitle';
-            places.add(Place(label, p.latitude, p.longitude));
+            final label =
+                subtitle.isEmpty || subtitle == title ? title : '$title, $subtitle';
+            places.add(
+              Place(
+                label,
+                p.latitude,
+                p.longitude,
+                displayLabel: title.isEmpty ? null : title,
+              ),
+            );
           }
           if (!completer.isCompleted) completer.complete(places);
         },
@@ -8231,7 +8360,15 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
           label = '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
         }
         if (!completer.isCompleted) {
-          completer.complete(Place(label, point.latitude, point.longitude));
+          final shortLabel = name.isEmpty ? _compactAddress(label) : name;
+          completer.complete(
+            Place(
+              label,
+              point.latitude,
+              point.longitude,
+              displayLabel: shortLabel,
+            ),
+          );
         }
       },
       onSearchError: (_) {
@@ -8587,7 +8724,14 @@ class _RideScreenState extends State<RideScreen> {
           });
           return;
         }
-        id = (current.first['order_id'] as num).toInt();
+        final raw = current.first;
+        final rawId = raw is Map
+            ? (raw['order_id'] ?? raw['orderId'] ?? raw['id'])
+            : null;
+        id = rawId is num ? rawId.toInt() : int.tryParse(rawId?.toString() ?? '');
+        if (id == null || id <= 0) {
+          throw ApiException('TaxiMaster returned current order without id');
+        }
       }
       final data = await widget.api.get('/api/orders/' + id.toString() + '/driver-location');
       final state = Map<String, dynamic>.from(data['state'] as Map);
