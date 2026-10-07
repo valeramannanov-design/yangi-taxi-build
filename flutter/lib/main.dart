@@ -5216,7 +5216,7 @@ class _OrderScreenState extends State<OrderScreen> {
           label = widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение';
         }
         if (!completer.isCompleted) {
-          final shortLabel = name.isEmpty ? _compactAddress(label) : name;
+          final shortLabel = _compactAddress(label);
           completer.complete(
             Place(
               label,
@@ -8360,7 +8360,7 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
           label = '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
         }
         if (!completer.isCompleted) {
-          final shortLabel = name.isEmpty ? _compactAddress(label) : name;
+          final shortLabel = _compactAddress(label);
           completer.complete(
             Place(
               label,
