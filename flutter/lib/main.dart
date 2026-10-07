@@ -1906,7 +1906,59 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Image.asset(
               'assets/yangi_auth_bg.webp',
               fit: BoxFit.cover,
-              filterQuality: FilterQuality.medium,
+              alignment: Alignment.topCenter,
+              filterQuality: FilterQuality.high,
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(0.72, -0.45),
+                  radius: 0.92,
+                  colors: <Color>[
+                    yangiLime.withValues(alpha: 0.22),
+                    yangiLime.withValues(alpha: 0.055),
+                    Colors.transparent,
+                  ],
+                  stops: const <double>[0, 0.36, 1],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: -115,
+            top: 118,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: 0.54,
+                child: Image.asset(
+                  'assets/yangi_vehicle_sprite.webp',
+                  width: 430,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: -80,
+            top: 330,
+            child: IgnorePointer(
+              child: Container(
+                width: 310,
+                height: 7,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(99),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: yangiLime.withValues(alpha: 0.62),
+                      blurRadius: 26,
+                      spreadRadius: 7,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
           Positioned.fill(
@@ -2579,11 +2631,58 @@ class _ShellState extends State<Shell> {
   int? activeId;
   int orderFormGeneration = 0;
   bool _exitDialogOpen = false;
+  Map<String, dynamic>? _drawerMe;
+  List<Map<String, dynamic>> _drawerFavorites = <Map<String, dynamic>>[];
 
   @override
   void initState() {
     super.initState();
     restoreActiveOrder();
+    unawaited(_loadDrawerData());
+  }
+
+  Future<void> _loadDrawerData() async {
+    try {
+      final raw = await widget.api.get('/api/me');
+      if (mounted && raw is Map) {
+        setState(() => _drawerMe = Map<String, dynamic>.from(raw));
+      }
+    } catch (_) {
+      // Drawer profile is decorative and must never block the booking flow.
+    }
+
+    try {
+      final values = await _loadFavoriteAddresses(widget.api);
+      if (mounted) setState(() => _drawerFavorites = values);
+    } catch (_) {
+      // Favorites remain accessible from their dedicated screen.
+    }
+  }
+
+  String get _drawerName {
+    final value = (_drawerMe?['name'] ?? '').toString().trim();
+    return value.isEmpty ? 'Yangi Taxi' : value;
+  }
+
+  String get _drawerPhone {
+    final phones = _drawerMe?['phones'];
+    if (phones is List && phones.isNotEmpty) {
+      final first = phones.first;
+      if (first is Map) return (first['phone'] ?? '').toString().trim();
+      return first.toString().trim();
+    }
+    return '';
+  }
+
+  Uint8List? get _drawerPhotoBytes {
+    var raw = (_drawerMe?['client_photo'] ?? '').toString().trim();
+    if (raw.isEmpty) return null;
+    raw = raw.replaceFirst(RegExp(r'^data:image/[^;]+;base64,'), '');
+    try {
+      return base64Decode(raw);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> restoreActiveOrder() async {
@@ -2732,18 +2831,13 @@ class _ShellState extends State<Shell> {
     );
   }
 
-  Widget menuSection(String title) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-        child: Text(
-          title,
-          style: const TextStyle(
-            color: Color(0xFF8B8F97),
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.0,
-          ),
-        ),
-      );
+  void showComingSoon(String ru, String uz) {
+    final scaffold = shellKey.currentState;
+    if (scaffold?.isDrawerOpen == true) scaffold!.closeDrawer();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(widget.lang == 'uz' ? uz : ru)),
+    );
+  }
 
   Widget menuItem({
     required int index,
@@ -2752,65 +2846,67 @@ class _ShellState extends State<Shell> {
     String? subtitle,
   }) {
     final selected = tab == index;
-    final theme = Theme.of(context);
-    final dark = theme.brightness == Brightness.dark;
-    final selectedBg = Color.alphaBlend(
-      yangiLime.withValues(alpha: dark ? 0.17 : 0.14),
-      theme.colorScheme.surface,
-    );
-
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        decoration: BoxDecoration(
-          color: selected ? selectedBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: ListTile(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          leading: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: selected
-                  ? yangiLime
-                  : theme.colorScheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              size: 20,
-              color: selected ? yangiGraphite : theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          title: Text(
-            title,
-            style: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
-            ),
-          ),
-          subtitle: subtitle == null
-              ? null
-              : Text(
-                  subtitle,
-                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-                ),
-          trailing: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: selected
-                ? Icon(
-                    Icons.chevron_right_rounded,
-                    key: const ValueKey<String>('selected'),
-                    size: 20,
-                    color: theme.colorScheme.onSurface,
-                  )
-                : const SizedBox(key: ValueKey<String>('idle'), width: 20),
-          ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 1),
+      child: Material(
+        color: selected ? const Color(0xFFE9FFD0) : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
           onTap: () => index == 0 ? startNewTrip() : selectTab(index),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 50),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              child: Row(
+                children: <Widget>[
+                  SizedBox(
+                    width: 34,
+                    child: Icon(
+                      icon,
+                      size: 23,
+                      color: selected ? const Color(0xFF111711) : const Color(0xFF161A17),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            color: Color(0xFF111411),
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (subtitle != null) ...<Widget>[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF737A74),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 21,
+                    color: Color(0xFF4D554E),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -2820,53 +2916,135 @@ class _ShellState extends State<Shell> {
     required IconData icon,
     required String title,
     required VoidCallback onTap,
+    String? trailingText,
+    bool danger = false,
   }) {
-    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 1),
       child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        color: danger ? const Color(0xFFFFE9E9) : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            height: 56,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 50),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               child: Row(
                 children: <Widget>[
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                  SizedBox(
+                    width: 34,
                     child: Icon(
                       icon,
-                      size: 20,
-                      color: theme.colorScheme.onSurfaceVariant,
+                      size: 23,
+                      color: danger ? const Color(0xFFFF3131) : const Color(0xFF161A17),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       title,
                       style: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        fontWeight: FontWeight.w700,
+                        color: danger ? const Color(0xFFFF3131) : const Color(0xFF111411),
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
+                  if (trailingText != null) ...<Widget>[
+                    Text(
+                      trailingText,
+                      style: const TextStyle(
+                        color: Color(0xFF667067),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   Icon(
                     Icons.chevron_right_rounded,
-                    size: 20,
-                    color: theme.colorScheme.onSurfaceVariant,
+                    size: 21,
+                    color: danger ? const Color(0xFFFF3131) : const Color(0xFF4D554E),
                   ),
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget drawerFavoriteCard({
+    required Map<String, dynamic>? favorite,
+    required String fallbackTitle,
+    required IconData icon,
+  }) {
+    final title = (favorite?['name'] ?? '').toString().trim();
+    final address = (favorite?['address'] ?? '').toString().trim();
+    return Expanded(
+      child: Material(
+        color: const Color(0xFFFFFFFF),
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => openDrawerPage(
+            FavoriteAddressesScreen(api: widget.api, lang: widget.lang),
+          ),
+          child: Container(
+            height: 78,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE4E8E3)),
+            ),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE7FFD0),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: const Color(0xFF111611), size: 21),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        title.isEmpty ? fallbackTitle : title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF151815),
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        address.isEmpty
+                            ? (widget.lang == 'uz' ? 'Manzil qo‘shish' : 'Добавить адрес')
+                            : address,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF788079),
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF555D56)),
+              ],
             ),
           ),
         ),
@@ -2923,6 +3101,9 @@ class _ShellState extends State<Shell> {
 
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
+    final drawerPhoto = _drawerPhotoBytes;
+    final firstFavorite = _drawerFavorites.isNotEmpty ? _drawerFavorites[0] : null;
+    final secondFavorite = _drawerFavorites.length > 1 ? _drawerFavorites[1] : null;
 
     return PopScope(
       canPop: false,
@@ -2934,189 +3115,339 @@ class _ShellState extends State<Shell> {
       drawerScrimColor: Colors.black.withValues(alpha: dark ? 0.58 : 0.34),
       drawerEdgeDragWidth: 44,
       drawer: Drawer(
-        width: math.min(352.0, MediaQuery.sizeOf(context).width * 0.88),
-        elevation: 22,
-        backgroundColor: theme.colorScheme.surface,
+        width: math.min(372.0, MediaQuery.sizeOf(context).width * 0.91),
+        elevation: 26,
+        backgroundColor: const Color(0xFFFDFEFC),
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.horizontal(right: Radius.circular(32)),
+          borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
         ),
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0, end: 1),
-          duration: const Duration(milliseconds: 360),
-          curve: Curves.easeOutQuart,
-          builder: (context, value, child) => Opacity(
-            opacity: value,
-            child: Transform.translate(
-              offset: Offset(-18 * (1 - value), 0),
-              child: Transform.scale(
-                scale: 0.985 + 0.015 * value,
-                alignment: Alignment.centerLeft,
-                child: child,
-              ),
-            ),
-          ),
-          child: SafeArea(
-            child: Column(
-              children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(14, 13, 8, 13),
-                    decoration: BoxDecoration(
-                      color: Color.alphaBlend(
-                        yangiLime.withValues(alpha: dark ? 0.13 : 0.18),
-                        theme.colorScheme.surface,
+        child: SafeArea(
+          child: ListView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 14),
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 2, 2, 8),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: yangiLime,
+                        borderRadius: BorderRadius.circular(13),
                       ),
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: yangiLime.withValues(alpha: dark ? 0.22 : 0.35),
+                      child: const Icon(
+                        Icons.local_taxi_rounded,
+                        color: yangiGraphite,
+                        size: 24,
                       ),
                     ),
-                    child: Row(
-                      children: <Widget>[
-                        Container(
-                          width: 46,
-                          height: 46,
-                          decoration: BoxDecoration(
-                            color: yangiLime,
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          child: const Icon(
-                            Icons.local_taxi_rounded,
-                            color: yangiGraphite,
-                            size: 25,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              const YangiWordmark(compact: true),
-                              const SizedBox(height: 4),
-                              Text(
-                                widget.lang == 'uz'
-                                    ? 'Barcha bo‘limlar bir joyda'
-                                    : 'Все разделы в одном меню',
-                                style: TextStyle(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => shellKey.currentState?.closeDrawer(),
-                          icon: const Icon(Icons.close_rounded),
-                          tooltip: widget.lang == 'uz' ? 'Yopish' : 'Закрыть',
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: ListView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.only(bottom: 8),
-                    children: <Widget>[
-                      menuSection(widget.lang == 'uz' ? 'SAFARLAR' : 'ПОЕЗДКИ'),
-                      menuItem(
-                        index: 0,
-                        icon: Icons.add_road_rounded,
-                        title: widget.lang == 'uz' ? 'Yangi safar' : 'Новая поездка',
-                      ),
-                      menuItem(
-                        index: 1,
-                        icon: Icons.local_taxi_outlined,
-                        title: widget.lang == 'uz' ? 'Joriy safar' : 'Текущая поездка',
-                      ),
-                      menuItem(
-                        index: 2,
-                        icon: Icons.receipt_long_outlined,
-                        title: widget.lang == 'uz' ? 'Mening safarlarim' : 'Мои поездки',
-                      ),
-                      menuSection(widget.lang == 'uz' ? 'AKKAUNT' : 'АККАУНТ'),
-                      menuItem(
-                        index: 5,
-                        icon: Icons.person_outline_rounded,
-                        title: widget.lang == 'uz' ? 'Profil' : 'Профиль',
-                      ),
-                      menuItem(
-                        index: 3,
-                        icon: Icons.credit_card_rounded,
-                        title: widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
-                      ),
-                      menuActionItem(
-                        icon: Icons.location_on_outlined,
-                        title: widget.lang == 'uz' ? 'Sevimli manzillar' : 'Любимые адреса',
-                        onTap: () => openDrawerPage(
-                          FavoriteAddressesScreen(api: widget.api, lang: widget.lang),
-                        ),
-                      ),
-                      menuActionItem(
-                        icon: Icons.local_offer_outlined,
-                        title: widget.lang == 'uz' ? 'Promokodlar' : 'Промокоды',
-                        onTap: () => openDrawerPage(
-                          PromoCodesScreen(api: widget.api, lang: widget.lang),
-                        ),
-                      ),
-                      menuItem(
-                        index: 4,
-                        icon: Icons.settings_outlined,
-                        title: widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки',
-                      ),
-                      menuActionItem(
-                        icon: Icons.help_outline_rounded,
-                        title: widget.lang == 'uz' ? 'Yordam' : 'Помощь',
-                        onTap: showHelpFromDrawer,
-                      ),
-                    ],
-                  ),
-                ),
-                Divider(height: 1, color: theme.colorScheme.outlineVariant),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                  child: Material(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(16),
-                    child: InkWell(
-                      onTap: widget.onLogout,
-                      borderRadius: BorderRadius.circular(16),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        child: Row(
-                          children: <Widget>[
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.errorContainer.withValues(alpha: 0.55),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                Icons.logout_rounded,
-                                color: theme.colorScheme.error,
-                                size: 20,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          children: <InlineSpan>[
+                            const TextSpan(
+                              text: 'Yangi',
+                              style: TextStyle(
+                                color: Color(0xFF111411),
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -1,
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Text(
-                              widget.lang == 'uz' ? 'Chiqish' : 'Выйти',
+                            TextSpan(
+                              text: 'Taxi',
                               style: TextStyle(
-                                color: theme.colorScheme.error,
+                                color: yangiLime,
+                                fontSize: 24,
                                 fontWeight: FontWeight.w900,
+                                letterSpacing: -1,
                               ),
                             ),
                           ],
                         ),
                       ),
                     ),
+                    IconButton(
+                      onPressed: () => shellKey.currentState?.closeDrawer(),
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFFF0F2F0),
+                        foregroundColor: const Color(0xFF111411),
+                      ),
+                      icon: const Icon(Icons.close_rounded),
+                      tooltip: widget.lang == 'uz' ? 'Yopish' : 'Закрыть',
+                    ),
+                  ],
+                ),
+              ),
+              Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(18),
+                child: InkWell(
+                  onTap: () => selectTab(5),
+                  borderRadius: BorderRadius.circular(18),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
+                    child: Row(
+                      children: <Widget>[
+                        CircleAvatar(
+                          radius: 30,
+                          backgroundColor: const Color(0xFFE9FFD0),
+                          backgroundImage: drawerPhoto == null ? null : MemoryImage(drawerPhoto),
+                          child: drawerPhoto == null
+                              ? Text(
+                                  _drawerName.substring(0, 1).toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Color(0xFF111411),
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                _drawerName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF111411),
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                _drawerPhone.isEmpty
+                                    ? (widget.lang == 'uz' ? 'Profilni ko‘rish' : 'Открыть профиль')
+                                    : _drawerPhone,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF687069),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right_rounded, color: Color(0xFF4D554E)),
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(18),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => showComingSoon(
+                      'YangiTaxi Plus появится в одном из следующих обновлений',
+                      'YangiTaxi Plus keyingi yangilanishlardan birida qo‘shiladi',
+                    ),
+                    child: Container(
+                      height: 82,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: <Color>[Color(0xFF07170A), Color(0xFF2D8215)],
+                        ),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: yangiLime,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.workspace_premium_rounded, color: yangiGraphite, size: 28),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text.rich(
+                                  TextSpan(
+                                    children: <InlineSpan>[
+                                      const TextSpan(
+                                        text: 'YangiTaxi ',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      TextSpan(
+                                        text: 'Plus',
+                                        style: TextStyle(
+                                          color: yangiLime,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  widget.lang == 'uz'
+                                      ? 'Ko‘proq imkoniyatlar siz uchun'
+                                      : 'Больше возможностей для вас',
+                                  style: const TextStyle(
+                                    color: Color(0xFFDCE6DC),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded, color: Colors.white),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              menuItem(
+                index: 0,
+                icon: Icons.home_rounded,
+                title: widget.lang == 'uz' ? 'Bosh sahifa' : 'Главная',
+              ),
+              if (activeId != null)
+                menuItem(
+                  index: 1,
+                  icon: Icons.local_taxi_outlined,
+                  title: widget.lang == 'uz' ? 'Joriy safar' : 'Текущая поездка',
+                ),
+              menuItem(
+                index: 2,
+                icon: Icons.history_rounded,
+                title: widget.lang == 'uz' ? 'Safarlar tarixi' : 'История поездок',
+              ),
+              menuActionItem(
+                icon: Icons.location_on_outlined,
+                title: widget.lang == 'uz' ? 'Saqlangan manzillar' : 'Сохранённые адреса',
+                onTap: () => openDrawerPage(
+                  FavoriteAddressesScreen(api: widget.api, lang: widget.lang),
+                ),
+              ),
+              menuItem(
+                index: 3,
+                icon: Icons.credit_card_rounded,
+                title: widget.lang == 'uz' ? 'To‘lov usullari' : 'Способы оплаты',
+              ),
+              menuActionItem(
+                icon: Icons.local_offer_outlined,
+                title: widget.lang == 'uz' ? 'Promo kodlar' : 'Промокоды',
+                onTap: () => openDrawerPage(
+                  PromoCodesScreen(api: widget.api, lang: widget.lang),
+                ),
+              ),
+              menuActionItem(
+                icon: Icons.headset_mic_outlined,
+                title: widget.lang == 'uz' ? 'Yordam va qo‘llab-quvvatlash' : 'Помощь и поддержка',
+                onTap: showHelpFromDrawer,
+              ),
+              menuItem(
+                index: 4,
+                icon: Icons.settings_outlined,
+                title: widget.lang == 'uz' ? 'Sozlamalar' : 'Настройки',
+              ),
+              menuActionItem(
+                icon: Icons.language_rounded,
+                title: widget.lang == 'uz' ? 'Ilova tili' : 'Язык приложения',
+                trailingText: widget.lang == 'uz' ? 'O‘zbekcha' : 'Русский',
+                onTap: () {
+                  shellKey.currentState?.closeDrawer();
+                  widget.onLang(widget.lang == 'uz' ? 'ru' : 'uz');
+                },
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 14, 16, 7),
+                child: Divider(height: 1, color: Color(0xFFE2E6E2)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        widget.lang == 'uz' ? 'Saqlangan manzillar' : 'Сохранённые адреса',
+                        style: const TextStyle(
+                          color: Color(0xFF5D665E),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => openDrawerPage(
+                        FavoriteAddressesScreen(api: widget.api, lang: widget.lang),
+                      ),
+                      child: Text(
+                        widget.lang == 'uz' ? 'Barchasini ko‘rish' : 'Все',
+                        style: const TextStyle(
+                          color: Color(0xFF667067),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Row(
+                  children: <Widget>[
+                    drawerFavoriteCard(
+                      favorite: firstFavorite,
+                      fallbackTitle: widget.lang == 'uz' ? 'Uy' : 'Дом',
+                      icon: Icons.home_rounded,
+                    ),
+                    const SizedBox(width: 8),
+                    drawerFavoriteCard(
+                      favorite: secondFavorite,
+                      fallbackTitle: widget.lang == 'uz' ? 'Ish' : 'Работа',
+                      icon: Icons.business_rounded,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 9),
+              menuActionItem(
+                icon: Icons.steering_outlined,
+                title: widget.lang == 'uz' ? 'Haydovchi bo‘lish' : 'Стать водителем',
+                onTap: () => showComingSoon(
+                  'Подключение водителей появится позже',
+                  'Haydovchilarni ulash keyinroq qo‘shiladi',
+                ),
+              ),
+              const SizedBox(height: 5),
+              menuActionItem(
+                icon: Icons.logout_rounded,
+                title: widget.lang == 'uz' ? 'Chiqish' : 'Выйти',
+                danger: true,
+                onTap: widget.onLogout,
+              ),
+            ],
           ),
         ),
       ),
