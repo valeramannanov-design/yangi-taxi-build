@@ -54,6 +54,9 @@ const cfg = {
     delivery: Number(process.env.TM_CREW_GROUP_DELIVERY_ID || 16),
     cargo: Number(process.env.TM_CREW_GROUP_CARGO_ID || 15),
   },
+  crewGroupNames: {
+    delivery: String(process.env.TM_CREW_GROUP_DELIVERY_NAME || 'Хатирчи').trim(),
+  },
   fixedTariffs: {
     delivery: Number(process.env.TM_TARIFF_DELIVERY_ID || 27),
     cargo: Number(process.env.TM_TARIFF_CARGO_ID || 28),
@@ -270,8 +273,25 @@ function point(body, name) {
   return { address: String(p.address), lat, lon };
 }
 
+function uniqueAddressParts(values) {
+  const seen = new Set();
+  return values
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .filter((value) => {
+      const key = value.toLocaleLowerCase('ru-RU');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 function addressLabel(a) {
-  return [a.city, a.street, a.house, a.point].filter(Boolean).join(', ') || a.address || a.name || '';
+  return uniqueAddressParts([a.city, a.street, a.house, a.point]).join(', ') || a.address || a.name || '';
+}
+
+function shortAddressLabel(a) {
+  return uniqueAddressParts([a.point, a.street, a.house]).join(', ') || addressLabel(a);
 }
 
 function optionalPoint(body, name) {
@@ -306,15 +326,30 @@ async function liveCatalog() {
   return { groups, tariffs };
 }
 
+function normalizeCatalogName(value) {
+  return String(value || '').trim().toLocaleLowerCase('ru-RU').replace(/s+/g, ' ');
+}
+
+function resolvedCrewGroupId(definition, catalog) {
+  const configuredName = definition.key === 'delivery' ? cfg.crewGroupNames.delivery : '';
+  if (configuredName) {
+    const wanted = normalizeCatalogName(configuredName);
+    for (const [id, group] of catalog.groups.entries()) {
+      if (normalizeCatalogName(group?.name) === wanted) return Number(id);
+    }
+  }
+  return Number(definition.crewGroupId);
+}
+
 function routeAddresses(source, destination) {
   return destination ? [source, destination] : [source];
 }
 
-async function selectTariffId(definition, session, source, destination, sourceTime) {
+async function selectTariffId(definition, session, source, destination, sourceTime, crewGroupId = definition.crewGroupId) {
   if (definition.tariffId) return Number(definition.tariffId);
   const data = await tmPostJson('select_tariff_for_order', {
     client_id: session.clientId,
-    crew_group_id: definition.crewGroupId,
+    crew_group_id: crewGroupId,
     source_time: sourceTime,
     is_prize: false,
     addresses: routeAddresses(source, destination).map((x) => ({ lat: x.lat, lon: x.lon })),
@@ -378,33 +413,34 @@ async function buildLiveEstimateOptions(session, source, destination) {
   const resolved = {};
 
   await Promise.all(baseDefinitions.map(async (definition) => {
+    const crewGroupId = resolvedCrewGroupId(definition, catalog);
     try {
       if (!tariffEnabled(definition)) {
         resolved[definition.key] = {
           available: false,
           error: 'tariff_disabled_until_configured',
           tariffId: definition.tariffId || null,
-          crewGroupId: definition.crewGroupId,
+          crewGroupId,
         };
         return;
       }
-      const crew = catalog.groups.get(Number(definition.crewGroupId));
+      const crew = catalog.groups.get(crewGroupId);
       if (!crew) {
         resolved[definition.key] = {
           available: false,
           error: 'crew_group_not_found',
-          crewGroupId: definition.crewGroupId,
+          crewGroupId,
         };
         return;
       }
-      const tariffId = await selectTariffId(definition, session, source, destination, sourceTime);
+      const tariffId = await selectTariffId(definition, session, source, destination, sourceTime, crewGroupId);
       const tariff = catalog.tariffs.get(tariffId);
       if (!tariff || tariff.is_active === false) {
         resolved[definition.key] = {
           available: false,
           error: 'tariff_not_active',
           tariffId,
-          crewGroupId: definition.crewGroupId,
+          crewGroupId,
         };
         return;
       }
@@ -414,7 +450,7 @@ async function buildLiveEstimateOptions(session, source, destination) {
         destination,
         route,
         tariffId,
-        crewGroupId: definition.crewGroupId,
+        crewGroupId,
         sourceTime,
       });
       const amount = Number(cost.sum);
@@ -422,7 +458,7 @@ async function buildLiveEstimateOptions(session, source, destination) {
         available: Number.isFinite(amount) && amount > 0,
         tariffId,
         tariffName: tariff.name || '',
-        crewGroupId: definition.crewGroupId,
+        crewGroupId,
         crewGroupName: crew.name || '',
         cost: amount,
         costInfo: cost.info || [],
@@ -432,7 +468,7 @@ async function buildLiveEstimateOptions(session, source, destination) {
       resolved[definition.key] = {
         available: false,
         error: error.message || String(error),
-        crewGroupId: definition.crewGroupId,
+        crewGroupId,
       };
     }
   }));
@@ -479,7 +515,7 @@ async function buildLiveEstimateOptions(session, source, destination) {
       available: item.available === true,
       tariffId: item.tariffId || null,
       tariffName: item.tariffName || '',
-      crewGroupId: definition.crewGroupId,
+      crewGroupId: item.crewGroupId || definition.crewGroupId,
       crewGroupName: item.crewGroupName || '',
       cost: item.available ? item.cost : null,
       costInfo: item.costInfo || [],
@@ -1969,23 +2005,29 @@ async function realRoute(req, res, path, url) {
       search_in_tmgeoservice: cfg.searchGeo,
       search_in_2gis: cfg.search2gis,
     });
-    const list = (data.addresses || []).map((a) => ({
-      label: addressLabel(a),
-      lat: Number(a.coords?.lat || 0),
-      lon: Number(a.coords?.lon || 0),
-      source: a.address_source || '',
-    }));
+    const list = (data.addresses || []).map((a) => {
+      const fullLabel = addressLabel(a);
+      return {
+        label: fullLabel,
+        fullLabel,
+        shortLabel: shortAddressLabel(a),
+        lat: Number(a.coords?.lat || 0),
+        lon: Number(a.coords?.lon || 0),
+        source: a.address_source || '',
+      };
+    });
     return send(res, 200, { ok: true, data: list });
   }
 
   if (req.method === 'GET' && path === '/api/tariffs') {
     const catalog = await liveCatalog();
     const data = appTariffs.map((definition) => {
-      const crewAvailable = catalog.groups.has(Number(definition.crewGroupId));
+      const crewGroupId = resolvedCrewGroupId(definition, catalog);
+      const crewAvailable = catalog.groups.has(crewGroupId);
       const fixedTariffAvailable = !definition.tariffId ||
         (catalog.tariffs.has(Number(definition.tariffId)) &&
           catalog.tariffs.get(Number(definition.tariffId))?.is_active !== false);
-      const crew = catalog.groups.get(Number(definition.crewGroupId));
+      const crew = catalog.groups.get(crewGroupId);
       const fixedTariff = definition.tariffId
         ? catalog.tariffs.get(Number(definition.tariffId))
         : null;
@@ -1993,7 +2035,7 @@ async function realRoute(req, res, path, url) {
         key: definition.key,
         nameRu: definition.nameRu,
         nameUz: definition.nameUz,
-        crewGroupId: definition.crewGroupId,
+        crewGroupId,
         crewGroupName: crew?.name || '',
         tariffId: definition.tariffId || null,
         tariffName: fixedTariff?.name || '',
@@ -2074,10 +2116,11 @@ async function realRoute(req, res, path, url) {
 
     const sourceTime = tmTime();
     const catalog = await liveCatalog();
-    const crew = catalog.groups.get(Number(definition.crewGroupId));
+    const crewGroupId = resolvedCrewGroupId(definition, catalog);
+    const crew = catalog.groups.get(crewGroupId);
     if (!crew) throw new Error('TaxiMaster crew group is unavailable for ' + tariffKey);
 
-    const tariffId = await selectTariffId(definition, session, source, destination, sourceTime);
+    const tariffId = await selectTariffId(definition, session, source, destination, sourceTime, crewGroupId);
     const tariff = catalog.tariffs.get(tariffId);
     if (!tariff || tariff.is_active === false) throw new Error('TaxiMaster tariff is unavailable for ' + tariffKey);
 
@@ -2087,7 +2130,7 @@ async function realRoute(req, res, path, url) {
       source_time: sourceTime,
       is_prior: false,
       check_duplicate: true,
-      crew_group_id: definition.crewGroupId,
+      crew_group_id: crewGroupId,
       tariff_id: tariffId,
       addresses: routeAddresses(source, destination),
     };
@@ -2115,7 +2158,7 @@ async function realRoute(req, res, path, url) {
       const data = await tmPostJson('create_order2', payload);
       return send(res, 201, {
         ok: true,
-        data: { ...data, paymentMethod: 'cash', paymentStatus: 'cash', tariffId, crewGroupId: definition.crewGroupId, tariffKey },
+        data: { ...data, paymentMethod: 'cash', paymentStatus: 'cash', tariffId, crewGroupId, tariffKey },
       });
     }
 
@@ -2147,7 +2190,7 @@ async function realRoute(req, res, path, url) {
       paymentMethod: 'card',
       paymentKind: 'stored_card_post_ride',
       tariffId: Number(tariffId),
-      crewGroupId: Number(definition.crewGroupId),
+      crewGroupId: Number(crewGroupId),
       tariffKey,
       addresses: payload.addresses,
       cardId: Number(card.cardId),
@@ -2174,7 +2217,7 @@ async function realRoute(req, res, path, url) {
         paymentStatus: 'waiting_finish',
         chargeMoment: 'after_ride',
         tariffId,
-        crewGroupId: definition.crewGroupId,
+        crewGroupId,
         tariffKey,
       },
     });

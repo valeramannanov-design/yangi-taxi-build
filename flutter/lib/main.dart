@@ -667,7 +667,7 @@ String _compactAddress(String value) {
   final raw = value.trim();
   if (raw.isEmpty) return raw;
 
-  if (RegExp(r'^-?\\d{1,3}\\.\\d{3,}\\s*,\\s*-?\\d{1,3}\\.\\d{3,}$')
+  if (RegExp(r'^-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}$')
       .hasMatch(raw)) {
     return raw;
   }
@@ -676,48 +676,77 @@ String _compactAddress(String value) {
       .toLowerCase()
       .replaceAll('’', "'")
       .replaceAll('ʻ', "'")
-      .replaceAll(RegExp(r'\\s+'), ' ')
+      .replaceAll('‘', "'")
+      .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
   bool administrativePart(String part) {
     final s = normalized(part);
     if (s.isEmpty) return true;
-
     if (s == 'uzbekistan' ||
         s == 'o\'zbekiston' ||
         s == 'ozbekiston' ||
         s == 'узбекистан') {
       return true;
     }
-
+    if (RegExp(r'^\d{5,6}$').hasMatch(s)) return true;
     if (s.contains(' область') ||
+        s.endsWith(' область') ||
         s.contains(' обл.') ||
         s.endsWith(' обл') ||
         s.contains(' район') ||
+        s.endsWith(' район') ||
         s.contains(' р-н') ||
         s.startsWith('р-н ') ||
         s.contains(' district') ||
-        s.endsWith(' viloyati') ||
+        s.endsWith(' district') ||
+        s.contains(' viloyati') ||
         s.endsWith(' viloyat') ||
+        s.contains(' вилояти') ||
+        s.endsWith(' вилоят') ||
         s.contains(' tumani') ||
-        s.endsWith(' tuman')) {
+        s.endsWith(' tuman') ||
+        s.contains(' тумани') ||
+        s.endsWith(' туман')) {
       return true;
     }
-
-    final cityMarker = s.startsWith('город ') ||
+    return s.startsWith('город ') ||
         s.startsWith('г. ') ||
         s.startsWith('г.') ||
         s.endsWith(' shahri') ||
-        s.endsWith(' shahar');
+        s.endsWith(' shahar') ||
+        s.endsWith(' шаҳри') ||
+        s.endsWith(' шаҳар');
+  }
 
-    final tashkentOnly = (s.contains('ташкент') ||
-            s.contains('toshkent') ||
-            s.contains('tashkent')) &&
-        !RegExp(
-          r"улиц|кўча|ko'cha|kocha|street|просп|шоссе|дом|mahall|махалл|мфй",
-        ).hasMatch(s);
+  bool mahallaPart(String part) {
+    final s = normalized(part);
+    return s.contains('mahall') ||
+        s.contains('махалл') ||
+        s.contains('мфй') ||
+        RegExp(r'(^|\s)mfy($|\s)').hasMatch(s);
+  }
 
-    return cityMarker || tashkentOnly;
+  bool streetPart(String part) {
+    final s = normalized(part);
+    return s.contains('улиц') ||
+        s.startsWith('ул. ') ||
+        s.startsWith('ул ') ||
+        s.contains('просп') ||
+        s.contains('шоссе') ||
+        s.contains("ko'cha") ||
+        s.contains('kocha') ||
+        s.contains('кўча') ||
+        s.contains('street') ||
+        s.contains("yo'li") ||
+        s.contains('yoli') ||
+        s.contains('йўли');
+  }
+
+  bool housePart(String part) {
+    final s = normalized(part);
+    if (RegExp(r'^(дом|д\.?|uy|house)\s*\S+').hasMatch(s)) return true;
+    return RegExp(r'^\d+[a-zа-яёқғҳў0-9\-\/]*$').hasMatch(s);
   }
 
   final parts = raw
@@ -732,11 +761,48 @@ String _compactAddress(String value) {
     if (compact.any((item) => normalized(item) == normalized(part))) continue;
     compact.add(part);
   }
-
   if (compact.isEmpty) return raw;
-  // The passenger UI intentionally shows only a short local address:
-  // street / house / mahalla (or the closest available 1-3 components).
-  return compact.take(3).join(', ');
+
+  final mahallas = compact.where(mahallaPart).toList();
+  final streets = compact.where(streetPart).toList();
+  final houses = compact.where(housePart).toList();
+
+  if (mahallas.isNotEmpty || streets.isNotEmpty || houses.isNotEmpty) {
+    final visible = <String>[];
+
+    void addUnique(String? part) {
+      final value = part?.trim() ?? '';
+      if (value.isEmpty) return;
+      if (visible.any((item) => normalized(item) == normalized(value))) return;
+      visible.add(value);
+    }
+
+    if (mahallas.isNotEmpty) addUnique(mahallas.first);
+    if (streets.isNotEmpty) {
+      addUnique(streets.first);
+    } else if (houses.isNotEmpty) {
+      final houseIndex = compact.indexOf(houses.first);
+      final candidates = <MapEntry<int, String>>[];
+      for (var i = 0; i < compact.length; i++) {
+        final part = compact[i];
+        if (mahallaPart(part) || housePart(part)) continue;
+        candidates.add(MapEntry(i, part));
+      }
+      candidates.sort((a, b) {
+        final da = (a.key - houseIndex).abs();
+        final db = (b.key - houseIndex).abs();
+        if (da != db) return da.compareTo(db);
+        return a.key.compareTo(b.key);
+      });
+      if (candidates.isNotEmpty) addUnique(candidates.first.value);
+    }
+    if (houses.isNotEmpty) addUnique(houses.first);
+
+    if (visible.length >= 2) return visible.take(3).join(', ');
+  }
+
+  final start = compact.length > 3 ? compact.length - 3 : 0;
+  return compact.sublist(start).join(', ');
 }
 
 class Place {
