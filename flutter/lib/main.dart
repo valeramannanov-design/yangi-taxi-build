@@ -1617,7 +1617,7 @@ class _LoginScreenState extends State<LoginScreen> {
           children: <Widget>[
             Positioned.fill(
               child: Image.asset(
-                'assets/password_bg.webp',
+                'assets/yangi_auth_bg.webp',
                 fit: BoxFit.cover,
                 alignment: Alignment.topCenter,
                 filterQuality: FilterQuality.high,
@@ -1906,7 +1906,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Image.asset(
               'assets/yangi_auth_bg.webp',
               fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
+              alignment: Alignment.center,
               filterQuality: FilterQuality.high,
             ),
           ),
@@ -1926,41 +1926,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
-          Positioned(
-            right: -115,
-            top: 118,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.54,
-                child: Image.asset(
-                  'assets/yangi_vehicle_sprite.webp',
-                  width: 430,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            right: -80,
-            top: 330,
-            child: IgnorePointer(
-              child: Container(
-                width: 310,
-                height: 7,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(99),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: yangiLime.withValues(alpha: 0.62),
-                      blurRadius: 26,
-                      spreadRadius: 7,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -1968,12 +1933,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: <Color>[
-                    Colors.black.withValues(alpha: 0.26),
-                    Colors.black.withValues(alpha: 0.42),
-                    Colors.black.withValues(alpha: 0.76),
+                    Colors.black.withValues(alpha: 0.18),
+                    Colors.black.withValues(alpha: 0.34),
+                    Colors.black.withValues(alpha: 0.72),
                     Colors.black.withValues(alpha: 0.94),
                   ],
-                  stops: const <double>[0, 0.34, 0.68, 1],
+                  stops: const <double>[0, 0.32, 0.68, 1],
                 ),
               ),
             ),
@@ -2019,6 +1984,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 22),
                       GestureDetector(
                         onLongPress: busy
                             ? null
@@ -2028,15 +1994,46 @@ class _LoginScreenState extends State<LoginScreen> {
                                   widget.onBackend,
                                 ),
                         child: Center(
-                          child: Image.asset(
-                            'assets/yangi_brand_lockup.webp',
-                            width: 290,
-                            fit: BoxFit.contain,
-                            filterQuality: FilterQuality.high,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: yangiLime,
+                                  borderRadius: BorderRadius.circular(22),
+                                  boxShadow: <BoxShadow>[
+                                    BoxShadow(
+                                      color: yangiLime.withValues(alpha: 0.28),
+                                      blurRadius: 30,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.local_taxi_rounded,
+                                  color: yangiGraphite,
+                                  size: 38,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              const YangiWordmark(onDarkSurface: true),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'TEZ VA QULAY HARAKAT',
+                                style: TextStyle(
+                                  color: Color(0xFFBFC5BF),
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 2.6,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 28),
                       Text(
                         widget.lang == 'uz'
                             ? (register
