@@ -714,7 +714,7 @@ String _compactAddress(String value) {
             s.contains('toshkent') ||
             s.contains('tashkent')) &&
         !RegExp(
-          r'улиц|кўча|ko\'cha|kocha|street|просп|шоссе|дом|mahall|махалл|мфй',
+          r"улиц|кўча|ko'cha|kocha|street|просп|шоссе|дом|mahall|махалл|мфй",
         ).hasMatch(s);
 
     return cityMarker || tashkentOnly;
