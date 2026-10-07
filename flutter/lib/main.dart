@@ -2843,10 +2843,17 @@ class _ShellState extends State<Shell> {
     String? subtitle,
   }) {
     final selected = tab == index;
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final selectedBg = dark
+        ? yangiLime.withValues(alpha: 0.18)
+        : const Color(0xFFE9FFD0);
+    final primary = theme.colorScheme.onSurface;
+    final secondary = theme.colorScheme.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 1),
       child: Material(
-        color: selected ? const Color(0xFFE9FFD0) : Colors.transparent,
+        color: selected ? selectedBg : Colors.transparent,
         borderRadius: BorderRadius.circular(14),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -2862,7 +2869,7 @@ class _ShellState extends State<Shell> {
                     child: Icon(
                       icon,
                       size: 23,
-                      color: selected ? const Color(0xFF111711) : const Color(0xFF161A17),
+                      color: selected ? (dark ? yangiLime : yangiGraphite) : primary,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -2873,8 +2880,8 @@ class _ShellState extends State<Shell> {
                       children: <Widget>[
                         Text(
                           title,
-                          style: const TextStyle(
-                            color: Color(0xFF111411),
+                          style: TextStyle(
+                            color: primary,
                             fontSize: 15.5,
                             fontWeight: FontWeight.w800,
                           ),
@@ -2885,8 +2892,8 @@ class _ShellState extends State<Shell> {
                             subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFF737A74),
+                            style: TextStyle(
+                              color: secondary,
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600,
                             ),
@@ -2895,10 +2902,10 @@ class _ShellState extends State<Shell> {
                       ],
                     ),
                   ),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
                     size: 21,
-                    color: Color(0xFF4D554E),
+                    color: secondary,
                   ),
                 ],
               ),
@@ -2916,10 +2923,18 @@ class _ShellState extends State<Shell> {
     String? trailingText,
     bool danger = false,
   }) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.onSurface;
+    final secondary = theme.colorScheme.onSurfaceVariant;
+    final dangerColor = dark ? const Color(0xFFFF7474) : const Color(0xFFFF3131);
+    final dangerBg = dark
+        ? const Color(0xFF3A171A)
+        : const Color(0xFFFFE9E9);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 1),
       child: Material(
-        color: danger ? const Color(0xFFFFE9E9) : Colors.transparent,
+        color: danger ? dangerBg : Colors.transparent,
         borderRadius: BorderRadius.circular(14),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -2935,7 +2950,7 @@ class _ShellState extends State<Shell> {
                     child: Icon(
                       icon,
                       size: 23,
-                      color: danger ? const Color(0xFFFF3131) : const Color(0xFF161A17),
+                      color: danger ? dangerColor : primary,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -2943,7 +2958,7 @@ class _ShellState extends State<Shell> {
                     child: Text(
                       title,
                       style: TextStyle(
-                        color: danger ? const Color(0xFFFF3131) : const Color(0xFF111411),
+                        color: danger ? dangerColor : primary,
                         fontSize: 15.5,
                         fontWeight: FontWeight.w800,
                       ),
@@ -2952,8 +2967,8 @@ class _ShellState extends State<Shell> {
                   if (trailingText != null) ...<Widget>[
                     Text(
                       trailingText,
-                      style: const TextStyle(
-                        color: Color(0xFF667067),
+                      style: TextStyle(
+                        color: secondary,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
@@ -2963,7 +2978,7 @@ class _ShellState extends State<Shell> {
                   Icon(
                     Icons.chevron_right_rounded,
                     size: 21,
-                    color: danger ? const Color(0xFFFF3131) : const Color(0xFF4D554E),
+                    color: danger ? dangerColor : secondary,
                   ),
                 ],
               ),
@@ -2981,9 +2996,13 @@ class _ShellState extends State<Shell> {
   }) {
     final title = (favorite?['name'] ?? '').toString().trim();
     final address = (favorite?['address'] ?? '').toString().trim();
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.onSurface;
+    final secondary = theme.colorScheme.onSurfaceVariant;
     return Expanded(
       child: Material(
-        color: const Color(0xFFFFFFFF),
+        color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -2995,18 +3014,24 @@ class _ShellState extends State<Shell> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE4E8E3)),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
             ),
             child: Row(
               children: <Widget>[
                 Container(
                   width: 38,
                   height: 38,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE7FFD0),
+                  decoration: BoxDecoration(
+                    color: dark
+                        ? yangiLime.withValues(alpha: 0.18)
+                        : const Color(0xFFE7FFD0),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, color: const Color(0xFF111611), size: 21),
+                  child: Icon(
+                    icon,
+                    color: dark ? yangiLime : yangiGraphite,
+                    size: 21,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -3018,8 +3043,8 @@ class _ShellState extends State<Shell> {
                         title.isEmpty ? fallbackTitle : title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF151815),
+                        style: TextStyle(
+                          color: primary,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w900,
                         ),
@@ -3031,8 +3056,8 @@ class _ShellState extends State<Shell> {
                             : address,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF788079),
+                        style: TextStyle(
+                          color: secondary,
                           fontSize: 9.5,
                           fontWeight: FontWeight.w600,
                         ),
@@ -3040,7 +3065,11 @@ class _ShellState extends State<Shell> {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF555D56)),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: secondary,
+                ),
               ],
             ),
           ),
@@ -3114,7 +3143,7 @@ class _ShellState extends State<Shell> {
       drawer: Drawer(
         width: math.min(372.0, MediaQuery.sizeOf(context).width * 0.91),
         elevation: 26,
-        backgroundColor: const Color(0xFFFDFEFC),
+        backgroundColor: theme.colorScheme.surface,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
         ),
@@ -3128,39 +3157,39 @@ class _ShellState extends State<Shell> {
                 child: Row(
                   children: <Widget>[
                     Container(
-                      width: 42,
-                      height: 42,
+                      width: 50,
+                      height: 50,
                       decoration: BoxDecoration(
                         color: yangiLime,
-                        borderRadius: BorderRadius.circular(13),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       child: const Icon(
-                        Icons.local_taxi_rounded,
+                        Icons.directions_car_filled_rounded,
                         color: yangiGraphite,
-                        size: 24,
+                        size: 29,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text.rich(
                         TextSpan(
                           children: <InlineSpan>[
-                            const TextSpan(
+                            TextSpan(
                               text: 'Yangi',
                               style: TextStyle(
-                                color: Color(0xFF111411),
-                                fontSize: 24,
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 26,
                                 fontWeight: FontWeight.w900,
-                                letterSpacing: -1,
+                                letterSpacing: -1.2,
                               ),
                             ),
                             TextSpan(
                               text: 'Taxi',
                               style: TextStyle(
                                 color: yangiLime,
-                                fontSize: 24,
+                                fontSize: 26,
                                 fontWeight: FontWeight.w900,
-                                letterSpacing: -1,
+                                letterSpacing: -1.2,
                               ),
                             ),
                           ],
@@ -3170,8 +3199,8 @@ class _ShellState extends State<Shell> {
                     IconButton(
                       onPressed: () => shellKey.currentState?.closeDrawer(),
                       style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFFF0F2F0),
-                        foregroundColor: const Color(0xFF111411),
+                        backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                        foregroundColor: theme.colorScheme.onSurface,
                       ),
                       icon: const Icon(Icons.close_rounded),
                       tooltip: widget.lang == 'uz' ? 'Yopish' : 'Закрыть',
@@ -3191,13 +3220,15 @@ class _ShellState extends State<Shell> {
                       children: <Widget>[
                         CircleAvatar(
                           radius: 30,
-                          backgroundColor: const Color(0xFFE9FFD0),
+                          backgroundColor: dark
+                              ? yangiLime.withValues(alpha: 0.18)
+                              : const Color(0xFFE9FFD0),
                           backgroundImage: drawerPhoto == null ? null : MemoryImage(drawerPhoto),
                           child: drawerPhoto == null
                               ? Text(
                                   _drawerName.substring(0, 1).toUpperCase(),
-                                  style: const TextStyle(
-                                    color: Color(0xFF111411),
+                                  style: TextStyle(
+                                    color: dark ? yangiLime : yangiGraphite,
                                     fontSize: 22,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -3213,8 +3244,8 @@ class _ShellState extends State<Shell> {
                                 _drawerName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFF111411),
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurface,
                                   fontSize: 18,
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -3226,8 +3257,8 @@ class _ShellState extends State<Shell> {
                                     : _drawerPhone,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFF687069),
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -3235,7 +3266,10 @@ class _ShellState extends State<Shell> {
                             ],
                           ),
                         ),
-                        const Icon(Icons.chevron_right_rounded, color: Color(0xFF4D554E)),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ],
                     ),
                   ),
@@ -3376,9 +3410,12 @@ class _ShellState extends State<Shell> {
                   widget.onLang(widget.lang == 'uz' ? 'ru' : 'uz');
                 },
               ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 14, 16, 7),
-                child: Divider(height: 1, color: Color(0xFFE2E6E2)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 7),
+                child: Divider(
+                  height: 1,
+                  color: theme.colorScheme.outlineVariant,
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
@@ -3387,8 +3424,8 @@ class _ShellState extends State<Shell> {
                     Expanded(
                       child: Text(
                         widget.lang == 'uz' ? 'Saqlangan manzillar' : 'Сохранённые адреса',
-                        style: const TextStyle(
-                          color: Color(0xFF5D665E),
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant,
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
                         ),
@@ -3400,8 +3437,8 @@ class _ShellState extends State<Shell> {
                       ),
                       child: Text(
                         widget.lang == 'uz' ? 'Barchasini ko‘rish' : 'Все',
-                        style: const TextStyle(
-                          color: Color(0xFF667067),
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant,
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
                         ),
