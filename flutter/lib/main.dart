@@ -663,6 +663,69 @@ class ApiClient {
   }
 }
 
+String _compactAddress(String value) {
+  final raw = value.trim();
+  if (raw.isEmpty) return raw;
+
+  // Coordinate fallbacks must stay untouched.
+  if (RegExp(r'^-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}$').hasMatch(raw)) {
+    return raw;
+  }
+
+  bool administrativePart(String part) {
+    final s = part
+        .toLowerCase()
+        .replaceAll('’', "'")
+        .replaceAll('ʻ', "'")
+        .trim();
+
+    if (<String>{
+      'tashkent',
+      'toshkent',
+      'ташкент',
+      'узбекистан',
+      "o'zbekiston",
+      'ozbekiston',
+      'uzbekistan',
+    }.contains(s)) {
+      return true;
+    }
+
+    return s.endsWith(' область') ||
+        s.endsWith(' обл.') ||
+        s.endsWith(' обл') ||
+        s.contains(' район') ||
+        s.endsWith(' р-н') ||
+        s.startsWith('р-н ') ||
+        s.endsWith(' viloyati') ||
+        s.endsWith(' viloyat') ||
+        s.endsWith(' tumani') ||
+        s.endsWith(' tuman') ||
+        s.endsWith(' shahri') ||
+        s == 'город ташкент' ||
+        s == 'г. ташкент' ||
+        s == 'toshkent shahri';
+  }
+
+  final parts = raw
+      .split(',')
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty)
+      .toList();
+
+  final compact = <String>[];
+  for (final part in parts) {
+    if (administrativePart(part)) continue;
+    if (compact.isNotEmpty &&
+        compact.last.toLowerCase() == part.toLowerCase()) {
+      continue;
+    }
+    compact.add(part);
+  }
+
+  return compact.isEmpty ? raw : compact.join(', ');
+}
+
 class Place {
   Place(this.address, this.lat, this.lon, {this.isFavorite = false});
   final String address;
@@ -670,6 +733,7 @@ class Place {
   final double lon;
   final bool isFavorite;
   ym.Point get point => ym.Point(latitude: lat, longitude: lon);
+  String get displayAddress => _compactAddress(address);
   Map<String, dynamic> toJson() => <String, dynamic>{'address': address, 'lat': lat, 'lon': lon};
 
   factory Place.fromJson(Map<String, dynamic> j) => Place(
@@ -3019,7 +3083,7 @@ class _ShellState extends State<Shell> {
     required IconData icon,
   }) {
     final title = (favorite?['name'] ?? '').toString().trim();
-    final address = (favorite?['address'] ?? '').toString().trim();
+    final address = _compactAddress((favorite?['address'] ?? '').toString());
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.onSurface;
@@ -5667,8 +5731,8 @@ class _OrderScreenState extends State<OrderScreen> {
               route: route,
               from: from?.point,
               to: to?.point,
-              fromLabel: from?.address ?? '',
-              toLabel: to?.address ?? '',
+              fromLabel: from?.displayAddress ?? '',
+              toLabel: to?.displayAddress ?? '',
               fromCaption: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
               toCaption: widget.lang == 'uz' ? 'Qayerga' : 'Куда',
               nearbyCars: nearbyCars,
@@ -5738,7 +5802,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          from?.address ??
+                                          from?.displayAddress ??
                                               (locating
                                                   ? (widget.lang == 'uz'
                                                       ? 'Joylashuv aniqlanmoqda…'
@@ -6013,7 +6077,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                       _addressLine(
                                         pickup: true,
                                         title: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
-                                        value: from?.address ??
+                                        value: from?.displayAddress ??
                                             (locating
                                                 ? (widget.lang == 'uz'
                                                     ? 'Joylashuv aniqlanmoqda…'
@@ -6051,7 +6115,7 @@ class _OrderScreenState extends State<OrderScreen> {
                                                 ? 'Qayerga — ixtiyoriy'
                                                 : 'Куда — необязательно')
                                             : (widget.lang == 'uz' ? 'Qayerga' : 'Куда'),
-                                        value: to?.address ??
+                                        value: to?.displayAddress ??
                                             (selectedTariffKey == 'delivery'
                                                 ? (widget.lang == 'uz'
                                                     ? 'Keyinroq ko‘rsatish mumkin'
@@ -7963,7 +8027,7 @@ class _AddressSheetState extends State<AddressSheet> {
                       quickRow(
                         Icons.my_location_rounded,
                         widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение',
-                        widget.initial?.address ??
+                        widget.initial?.displayAddress ??
                             (widget.lang == 'uz' ? 'GPS bo‘yicha aniqlash' : 'Определить по GPS'),
                         onTap: widget.initial == null
                             ? pickOnMap
@@ -7993,6 +8057,7 @@ class _AddressSheetState extends State<AddressSheet> {
                   const SizedBox(height: 6),
                   ...favoriteAddresses.take(5).map((item) {
                     final address = (item['address'] ?? '').toString();
+                    final displayAddress = _compactAddress(address);
                     final label = (item['name'] ?? '').toString().trim();
                     final lat = double.tryParse((item['lat'] ?? '').toString()) ?? 0;
                     final lon = double.tryParse((item['lon'] ?? '').toString()) ?? 0;
@@ -8001,7 +8066,7 @@ class _AddressSheetState extends State<AddressSheet> {
                       label.isEmpty
                           ? (widget.lang == 'uz' ? 'Sevimli manzil' : 'Любимый адрес')
                           : label,
-                      address,
+                      displayAddress,
                       onTap: () => Navigator.pop(
                         context,
                         Place(address, lat, lon, isFavorite: true),
@@ -8087,7 +8152,7 @@ class _AddressSheetState extends State<AddressSheet> {
                                 child: const Icon(Icons.location_on_outlined, size: 19),
                               ),
                               title: Text(
-                                item.address,
+                                item.displayAddress,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
@@ -8803,8 +8868,8 @@ class _RideScreenState extends State<RideScreen> {
         ? 'new_order'
         : rawState;
     final tariffKey = (o['tariff_key'] ?? 'start').toString();
-    final source = (o['source'] ?? '').toString().trim();
-    final destination = (o['destination'] ?? '').toString().trim();
+    final source = _compactAddress((o['source'] ?? '').toString());
+    final destination = _compactAddress((o['destination'] ?? '').toString());
     final cost = o['total_cost'];
     final orderId = (o['order_id'] as num?)?.toInt() ?? widget.orderId ?? 0;
 
@@ -10166,8 +10231,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           final o = Map<String, dynamic>.from(raw as Map);
                           final state = historyState(o);
                           final tariffKey = (o['tariff_key'] ?? 'start').toString();
-                          final source = (o['source'] ?? '').toString().trim();
-                          final destination = (o['destination'] ?? '').toString().trim();
+                          final source = _compactAddress((o['source'] ?? '').toString());
+                          final destination = _compactAddress((o['destination'] ?? '').toString());
                           final total = o['total_cost'];
                           final orderId = (o['order_id'] as num?)?.toInt() ?? 0;
                           final finished = state == 'finished';
@@ -10951,7 +11016,7 @@ class _FavoriteAddressesScreenState extends State<FavoriteAddressesScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                         subtitle: Text(
-                          (item['address'] ?? '').toString(),
+                          _compactAddress((item['address'] ?? '').toString()),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
