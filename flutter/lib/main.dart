@@ -1617,7 +1617,7 @@ class _LoginScreenState extends State<LoginScreen> {
           children: <Widget>[
             Positioned.fill(
               child: Image.asset(
-                'assets/yangi_splash_ref.webp',
+                'assets/password_bg.webp',
                 fit: BoxFit.cover,
                 alignment: Alignment.topCenter,
                 filterQuality: FilterQuality.high,

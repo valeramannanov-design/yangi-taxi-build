@@ -27,6 +27,7 @@ flutter:
     - assets/car.png
     - assets/yangi_vehicle_sprite.webp
     - assets/yangi_splash_ref.webp
+    - assets/password_bg.webp
     - assets/yangi_brand_lockup.webp
     - assets/yangi_auth_bg.webp
     - assets/pin.png
