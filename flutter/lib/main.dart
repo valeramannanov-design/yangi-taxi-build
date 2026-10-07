@@ -1332,6 +1332,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   late final TextEditingController phone;
   final pass = TextEditingController();
+  final passwordFocus = FocusNode();
   final name = TextEditingController();
   final smsCode = TextEditingController();
 
@@ -1359,6 +1360,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     phone.dispose();
     pass.dispose();
+    passwordFocus.dispose();
     name.dispose();
     smsCode.dispose();
     super.dispose();
@@ -1486,6 +1488,9 @@ class _LoginScreenState extends State<LoginScreen> {
         error = null;
         info = null;
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) passwordFocus.requestFocus();
+      });
       return;
     }
     if (!register) return login();
@@ -1595,11 +1600,19 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     if (passwordStep && !register) {
-      final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+      void backToPhone() {
+        passwordFocus.unfocus();
+        setState(() {
+          passwordStep = false;
+          pass.clear();
+          error = null;
+          info = null;
+        });
+      }
 
       return Scaffold(
         backgroundColor: pageBg,
-        resizeToAvoidBottomInset: false,
+        resizeToAvoidBottomInset: true,
         body: Stack(
           children: <Widget>[
             Positioned.fill(
@@ -1617,405 +1630,267 @@ class _LoginScreenState extends State<LoginScreen> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: <Color>[
-                      Colors.black.withValues(alpha: 0.10),
-                      Colors.black.withValues(alpha: 0.20),
+                      Colors.black.withValues(alpha: 0.02),
+                      Colors.black.withValues(alpha: 0.14),
                       Colors.black.withValues(alpha: 0.58),
                       Colors.black.withValues(alpha: 0.96),
                     ],
-                    stops: const <double>[0, 0.42, 0.68, 1],
+                    stops: const <double>[0, 0.44, 0.72, 1],
                   ),
                 ),
               ),
             ),
             SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-                child: Row(
-                  children: <Widget>[
-                    Material(
-                      color: Colors.black.withValues(alpha: 0.40),
-                      shape: CircleBorder(
-                        side: BorderSide(
-                          color: yangiLime.withValues(alpha: 0.34),
-                        ),
-                      ),
-                      child: IconButton(
-                        tooltip: widget.lang == 'uz'
-                            ? 'Telefon raqamini o‘zgartirish'
-                            : 'Изменить номер телефона',
-                        onPressed: busy
-                            ? null
-                            : () => setState(() {
-                                  passwordStep = false;
-                                  pass.clear();
-                                  error = null;
-                                  info = null;
-                                }),
-                        icon: const Icon(
-                          Icons.arrow_back_rounded,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    Material(
-                      color: Colors.black.withValues(alpha: 0.40),
-                      borderRadius: BorderRadius.circular(15),
-                      child: InkWell(
-                        onTap: busy
-                            ? null
-                            : () => widget.onLang(
-                                  widget.lang == 'uz' ? 'ru' : 'uz',
-                                ),
-                        borderRadius: BorderRadius.circular(15),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          child: Text(
-                            widget.lang.toUpperCase(),
-                            style: const TextStyle(
+              child: Column(
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                    child: Row(
+                      children: <Widget>[
+                        Material(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          shape: const CircleBorder(),
+                          child: IconButton(
+                            onPressed: busy ? null : backToPhone,
+                            icon: const Icon(
+                              Icons.arrow_back_rounded,
                               color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.7,
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: SafeArea(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final bottomPadding = math.max(18.0, keyboardInset + 18.0);
-                    return SingleChildScrollView(
-                      reverse: true,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: EdgeInsets.fromLTRB(
-                        18,
-                        110,
-                        18,
-                        bottomPadding,
-                      ),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: math.max(
-                            0,
-                            constraints.maxHeight - 110 - bottomPadding,
+                        const Spacer(),
+                        Material(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(15),
+                          child: InkWell(
+                            onTap: busy
+                                ? null
+                                : () => widget.onLang(
+                                      widget.lang == 'uz' ? 'ru' : 'uz',
+                                    ),
+                            borderRadius: BorderRadius.circular(15),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              child: Text(
+                                widget.lang.toUpperCase(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.7,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: <Widget>[
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 460),
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.fromLTRB(
-                                  18,
-                                  20,
-                                  18,
-                                  16,
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: SingleChildScrollView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 460),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xE80A0D0B),
+                                borderRadius: BorderRadius.circular(22),
+                                border: Border.all(
+                                  color: yangiLime.withValues(alpha: 0.34),
                                 ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xED0C0F0D),
-                                  borderRadius: BorderRadius.circular(28),
-                                  border: Border.all(
-                                    color:
-                                        yangiLime.withValues(alpha: 0.48),
-                                    width: 1.2,
+                                boxShadow: <BoxShadow>[
+                                  const BoxShadow(
+                                    color: Color(0xB0000000),
+                                    blurRadius: 28,
+                                    offset: Offset(0, 12),
                                   ),
-                                  boxShadow: <BoxShadow>[
-                                    BoxShadow(
-                                      color:
-                                          yangiLime.withValues(alpha: 0.13),
-                                      blurRadius: 34,
-                                      spreadRadius: 1,
-                                      offset: const Offset(0, 10),
+                                  BoxShadow(
+                                    color: yangiLime.withValues(alpha: 0.10),
+                                    blurRadius: 24,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: <Widget>[
+                                  Text(
+                                    widget.lang == 'uz'
+                                        ? 'Parolni kiriting'
+                                        : 'Введите пароль',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 27,
+                                      height: 1.05,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.7,
                                     ),
-                                    const BoxShadow(
-                                      color: Color(0x99000000),
-                                      blurRadius: 30,
-                                      offset: Offset(0, 12),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    widget.lang == 'uz'
+                                        ? 'Yangi Taxi akkauntingizga kirish'
+                                        : 'Вход в аккаунт Yangi Taxi',
+                                    style: const TextStyle(
+                                      color: Color(0xFFB9BDB8),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
                                     ),
-                                  ],
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: <Widget>[
-                                    Row(
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 13,
+                                      vertical: 11,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.055),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(alpha: 0.12),
+                                      ),
+                                    ),
+                                    child: Row(
                                       children: <Widget>[
-                                        Container(
-                                          width: 42,
-                                          height: 42,
-                                          decoration: BoxDecoration(
-                                            color: yangiLime,
-                                            borderRadius:
-                                                BorderRadius.circular(14),
-                                            boxShadow: <BoxShadow>[
-                                              BoxShadow(
-                                                color: yangiLime.withValues(
-                                                  alpha: 0.25,
-                                                ),
-                                                blurRadius: 18,
-                                              ),
-                                            ],
-                                          ),
-                                          child: const Icon(
-                                            Icons.lock_rounded,
-                                            color: yangiGraphite,
-                                            size: 22,
-                                          ),
+                                        const Icon(
+                                          Icons.phone_iphone_rounded,
+                                          color: yangiLime,
+                                          size: 18,
                                         ),
-                                        const SizedBox(width: 12),
+                                        const SizedBox(width: 9),
                                         Expanded(
                                           child: Text(
-                                            widget.lang == 'uz'
-                                                ? 'Parolingizni kiriting'
-                                                : 'Введите пароль',
+                                            _authPhone(),
                                             style: const TextStyle(
                                               color: Colors.white,
-                                              fontSize: 26,
-                                              height: 1.05,
-                                              fontWeight: FontWeight.w900,
-                                              letterSpacing: -0.65,
+                                              fontSize: 14.5,
+                                              fontWeight: FontWeight.w800,
                                             ),
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: busy ? null : backToPhone,
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: yangiLime,
+                                            visualDensity: VisualDensity.compact,
+                                          ),
+                                          child: Text(
+                                            widget.lang == 'uz'
+                                                ? 'O‘zgartirish'
+                                                : 'Изменить',
                                           ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      widget.lang == 'uz'
-                                          ? 'Yangi Taxi akkauntingizga kirish'
-                                          : 'Вход в аккаунт Yangi Taxi',
-                                      style: const TextStyle(
-                                        color: Color(0xFFB9BDB8),
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextField(
+                                    controller: pass,
+                                    focusNode: passwordFocus,
+                                    autofocus: true,
+                                    enabled: !busy,
+                                    obscureText: !passwordVisible,
+                                    keyboardType: TextInputType.visiblePassword,
+                                    textInputAction: TextInputAction.done,
+                                    enableSuggestions: false,
+                                    autocorrect: false,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
                                     ),
-                                    const SizedBox(height: 13),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 13,
-                                        vertical: 10,
+                                    onSubmitted: (_) {
+                                      if (!busy) login();
+                                    },
+                                    decoration: darkField(
+                                      hint: widget.lang == 'uz'
+                                          ? 'Parol'
+                                          : 'Пароль',
+                                      prefix: const Icon(
+                                        Icons.lock_outline_rounded,
+                                        color: muted,
                                       ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.055,
-                                        ),
-                                        borderRadius:
-                                            BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.12,
-                                          ),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        children: <Widget>[
-                                          const Icon(
-                                            Icons.phone_iphone_rounded,
-                                            color: yangiLime,
-                                            size: 18,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              _authPhone(),
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 14.5,
-                                                fontWeight: FontWeight.w800,
-                                                letterSpacing: 0.2,
-                                              ),
-                                            ),
-                                          ),
-                                          TextButton(
-                                            onPressed: busy
-                                                ? null
-                                                : () => setState(() {
-                                                      passwordStep = false;
-                                                      pass.clear();
-                                                      error = null;
-                                                      info = null;
-                                                    }),
-                                            style: TextButton.styleFrom(
-                                              foregroundColor: yangiLime,
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                            ),
-                                            child: Text(
-                                              widget.lang == 'uz'
-                                                  ? 'O‘zgartirish'
-                                                  : 'Изменить',
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextField(
-                                      controller: pass,
-                                      autofocus: true,
-                                      enabled: !busy,
-                                      obscureText: !passwordVisible,
-                                      textInputAction: TextInputAction.done,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                      onSubmitted: (_) {
-                                        if (!busy) login();
-                                      },
-                                      decoration: darkField(
-                                        hint: widget.lang == 'uz'
-                                            ? 'Parol'
-                                            : 'Пароль',
-                                        prefix: const Icon(
-                                          Icons.lock_outline_rounded,
+                                      suffix: IconButton(
+                                        onPressed: busy
+                                            ? null
+                                            : () => setState(
+                                                  () => passwordVisible =
+                                                      !passwordVisible,
+                                                ),
+                                        icon: Icon(
+                                          passwordVisible
+                                              ? Icons.visibility_off_outlined
+                                              : Icons.visibility_outlined,
                                           color: muted,
                                         ),
-                                        suffix: IconButton(
-                                          onPressed: busy
-                                              ? null
-                                              : () => setState(
-                                                    () => passwordVisible =
-                                                        !passwordVisible,
-                                                  ),
-                                          icon: Icon(
-                                            passwordVisible
-                                                ? Icons
-                                                    .visibility_off_outlined
-                                                : Icons.visibility_outlined,
-                                            color: muted,
-                                          ),
-                                        ),
                                       ),
                                     ),
-                                    if (error != null) ...<Widget>[
-                                      const SizedBox(height: 9),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 10,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0x22FF6464),
-                                          borderRadius:
-                                              BorderRadius.circular(13),
-                                          border: Border.all(
-                                            color: const Color(0x66FF7070),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          error!,
-                                          style: const TextStyle(
-                                            color: Color(0xFFFF9999),
-                                            fontSize: 12.5,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 14),
-                                    SizedBox(
-                                      height: 58,
-                                      child: FilledButton(
-                                        onPressed: busy ? null : login,
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: yangiLime,
-                                          foregroundColor: yangiGraphite,
-                                          disabledBackgroundColor:
-                                              yangiLime.withValues(
-                                            alpha: 0.36,
-                                          ),
-                                          disabledForegroundColor:
-                                              yangiGraphite.withValues(
-                                            alpha: 0.70,
-                                          ),
-                                          elevation: 8,
-                                          shadowColor:
-                                              yangiLime.withValues(
-                                            alpha: 0.30,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(18),
-                                          ),
-                                        ),
-                                        child: busy
-                                            ? const SizedBox.square(
-                                                dimension: 20,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth: 2.1,
-                                                  color: yangiGraphite,
-                                                ),
-                                              )
-                                            : Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: <Widget>[
-                                                  Text(
-                                                    widget.lang == 'uz'
-                                                        ? 'Kirish'
-                                                        : 'Войти',
-                                                    style: const TextStyle(
-                                                      fontSize: 18,
-                                                      fontWeight:
-                                                          FontWeight.w900,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  const Icon(
-                                                    Icons
-                                                        .arrow_forward_rounded,
-                                                    size: 24,
-                                                  ),
-                                                ],
-                                              ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 7),
-                                    TextButton(
-                                      onPressed: busy
-                                          ? null
-                                          : () => setState(() {
-                                                passwordStep = false;
-                                                pass.clear();
-                                                error = null;
-                                              }),
-                                      child: Text(
-                                        widget.lang == 'uz'
-                                            ? 'Telefon raqamini o‘zgartirish'
-                                            : 'Изменить номер телефона',
-                                        style: const TextStyle(
-                                          color: Color(0xFFD8DCD7),
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                                  ),
+                                  if (error != null) ...<Widget>[
+                                    const SizedBox(height: 9),
+                                    Text(
+                                      error!,
+                                      style: const TextStyle(
+                                        color: Color(0xFFFF8F8F),
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
                                   ],
-                                ),
+                                  const SizedBox(height: 14),
+                                  SizedBox(
+                                    height: 58,
+                                    child: FilledButton(
+                                      onPressed: busy ? null : login,
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: yangiLime,
+                                        foregroundColor: yangiGraphite,
+                                        disabledBackgroundColor:
+                                            yangiLime.withValues(alpha: 0.36),
+                                        disabledForegroundColor:
+                                            yangiGraphite.withValues(alpha: 0.70),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(17),
+                                        ),
+                                      ),
+                                      child: busy
+                                          ? const SizedBox.square(
+                                              dimension: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.1,
+                                                color: yangiGraphite,
+                                              ),
+                                            )
+                                          : Text(
+                                              widget.lang == 'uz'
+                                                  ? 'Kirish'
+                                                  : 'Войти',
+                                              style: const TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
