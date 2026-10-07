@@ -1468,9 +1468,11 @@ class _LoginScreenState extends State<LoginScreen> {
   String _authPhone() {
     final raw = phone.text.trim();
     final digits = raw.replaceAll(RegExp(r'\D'), '');
-    if (digits.length == 9) return '+998' + digits;
-    if (digits.length == 12 && digits.startsWith('998')) return '+' + digits;
-    return raw;
+    if (digits.length == 9) return digits;
+    if (digits.length == 12 && digits.startsWith('998')) {
+      return digits.substring(3);
+    }
+    return digits;
   }
 
   Future<void> submit() async {
