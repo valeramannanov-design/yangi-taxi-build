@@ -118,27 +118,22 @@ async function readJson(req) {
 
 function normalizePhone(value) {
   const digits = String(value || '').replace(/\D/g, '');
-  const local = digits.length === 12 && digits.startsWith('998')
-    ? digits.slice(3)
-    : digits;
-  if (local.length !== 9) {
+  if (digits.length < 9) {
     const e = new Error('Invalid phone number');
     e.statusCode = 400;
     throw e;
   }
-  return local;
+  return '+' + digits;
 }
 
 function tmPhoneDigits(value) {
-  return normalizePhone(value);
+  return String(value || '').replace(/\D/g, '');
 }
 
-function smsPhoneDigits(value) {
-  return '998' + normalizePhone(value);
-}
-
-function legacyPhoneLogin(value) {
-  return '+998' + normalizePhone(value);
+function orderPhoneDigits(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('998')) return digits.slice(3);
+  return digits;
 }
 
 function b64url(value) {
@@ -1681,7 +1676,7 @@ async function sendRegistrationCode(phone) {
     throw e;
   }
   const code = String(crypto.randomInt(100000, 1000000));
-  await tmPostForm('send_sms', { phone: smsPhoneDigits(phone), message: 'Yangi Taxi: kod ' + code });
+  await tmPostForm('send_sms', { phone: tmPhoneDigits(phone), message: 'Yangi Taxi: kod ' + code });
   registrationCodes.set(phone, {
     hash: registrationCodeHash(phone, code),
     sentAt: now,
@@ -1778,20 +1773,7 @@ async function realRoute(req, res, path, url) {
   if (req.method === 'POST' && path === '/api/auth/login') {
     const body = await readJson(req);
     const phone = normalizePhone(body.phone);
-    const password = String(body.password || '');
-    let data;
-    try {
-      data = await tmGet('check_authorization', { login: phone, password });
-    } catch (localLoginError) {
-      try {
-        data = await tmGet('check_authorization', {
-          login: legacyPhoneLogin(phone),
-          password,
-        });
-      } catch {
-        throw localLoginError;
-      }
-    }
+    const data = await tmGet('check_authorization', { login: phone, password: String(body.password || '') });
     return send(res, 200, { ok: true, data: { clientId: data.client_id, token: issueSession(data.client_id, phone) } });
   }
 
@@ -2100,6 +2082,7 @@ async function realRoute(req, res, path, url) {
     if (!tariff || tariff.is_active === false) throw new Error('TaxiMaster tariff is unavailable for ' + tariffKey);
 
     const payload = {
+      phone: orderPhoneDigits(session.phone),
       client_id: session.clientId,
       source_time: sourceTime,
       is_prior: false,
