@@ -1617,27 +1617,10 @@ class _LoginScreenState extends State<LoginScreen> {
           children: <Widget>[
             Positioned.fill(
               child: Image.asset(
-                'assets/yangi_auth_bg.webp',
+                'assets/yangi_login_exact.webp',
                 fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
+                alignment: Alignment.center,
                 filterQuality: FilterQuality.high,
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: <Color>[
-                      Colors.black.withValues(alpha: 0.02),
-                      Colors.black.withValues(alpha: 0.14),
-                      Colors.black.withValues(alpha: 0.58),
-                      Colors.black.withValues(alpha: 0.96),
-                    ],
-                    stops: const <double>[0, 0.44, 0.72, 1],
-                  ),
-                ),
               ),
             ),
             SafeArea(
@@ -1903,78 +1886,11 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Stack(
         children: <Widget>[
           Positioned.fill(
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: <Color>[
-                    Color(0xFF10220E),
-                    Color(0xFF071108),
-                    Color(0xFF020503),
-                  ],
-                  stops: <double>[0, 0.48, 1],
-                ),
-              ),
-            ),
-          ),
-          Positioned.fill(
             child: Image.asset(
-              'assets/yangi_auth_bg.webp',
+              'assets/yangi_login_exact.webp',
               fit: BoxFit.cover,
               alignment: Alignment.center,
-              opacity: const AlwaysStoppedAnimation<double>(0.56),
               filterQuality: FilterQuality.high,
-            ),
-          ),
-          Positioned(
-            right: -150,
-            top: 180,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: 0.34,
-                child: Image.asset(
-                  'assets/yangi_vehicle_sprite.webp',
-                  width: 560,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
-                ),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: const Alignment(0.62, -0.38),
-                    radius: 0.86,
-                    colors: <Color>[
-                      yangiLime.withValues(alpha: 0.26),
-                      yangiLime.withValues(alpha: 0.07),
-                      Colors.transparent,
-                    ],
-                    stops: const <double>[0, 0.43, 1],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[
-                    Colors.black.withValues(alpha: 0.06),
-                    Colors.black.withValues(alpha: 0.18),
-                    Colors.black.withValues(alpha: 0.56),
-                    Colors.black.withValues(alpha: 0.86),
-                  ],
-                  stops: const <double>[0, 0.34, 0.72, 1],
-                ),
-              ),
             ),
           ),
           SafeArea(
@@ -2018,56 +1934,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 22),
-                      GestureDetector(
-                        onLongPress: busy
-                            ? null
-                            : () => backendDialog(
-                                  context,
-                                  widget.api,
-                                  widget.onBackend,
-                                ),
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Container(
-                                width: 72,
-                                height: 72,
-                                decoration: BoxDecoration(
-                                  color: yangiLime,
-                                  borderRadius: BorderRadius.circular(22),
-                                  boxShadow: <BoxShadow>[
-                                    BoxShadow(
-                                      color: yangiLime.withValues(alpha: 0.28),
-                                      blurRadius: 30,
-                                      spreadRadius: 2,
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.local_taxi_rounded,
-                                  color: yangiGraphite,
-                                  size: 38,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              const YangiWordmark(onDarkSurface: true),
-                              const SizedBox(height: 6),
-                              const Text(
-                                'TEZ VA QULAY HARAKAT',
-                                style: TextStyle(
-                                  color: Color(0xFFBFC5BF),
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 2.6,
-                                ),
-                              ),
-                            ],
-                          ),
+                      SizedBox(
+                        height: math.max(
+                          250,
+                          MediaQuery.sizeOf(context).height * 0.29,
                         ),
                       ),
-                      const SizedBox(height: 28),
                       Text(
                         widget.lang == 'uz'
                             ? (register

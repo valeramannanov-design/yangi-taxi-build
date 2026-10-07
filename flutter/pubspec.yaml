@@ -1,7 +1,7 @@
 name: yangi_taxi
 description: Yangi Taxi passenger app
 publish_to: none
-version: 1.9.4+40
+version: 1.9.4+41
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -28,6 +28,7 @@ flutter:
     - assets/yangi_vehicle_sprite.webp
     - assets/yangi_splash_ref.webp
     - assets/password_bg.webp
+    - assets/yangi_login_exact.webp
     - assets/yangi_brand_lockup.webp
     - assets/yangi_auth_bg.webp
     - assets/pin.png
