@@ -3433,7 +3433,7 @@ class _ShellState extends State<Shell> {
               ),
               const SizedBox(height: 9),
               menuActionItem(
-                icon: Icons.steering_outlined,
+                icon: Icons.drive_eta_outlined,
                 title: widget.lang == 'uz' ? 'Haydovchi bo‘lish' : 'Стать водителем',
                 onTap: () => showComingSoon(
                   'Подключение водителей появится позже',
