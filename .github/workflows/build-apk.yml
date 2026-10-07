@@ -49,6 +49,8 @@ jobs:
           if gradle_kts.exists():
               g = gradle_kts.read_text()
               g = g.replace('minSdk = flutter.minSdkVersion', 'minSdk = 26')
+              g = g.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 36')
+              g = g.replace('targetSdk = flutter.targetSdkVersion', 'targetSdk = 36')
               if 'play-services-location:21.1.0' not in g:
                   g += '\n\ndependencies {\n    implementation("com.google.android.gms:play-services-location:21.1.0")\n}\n'
               gradle_kts.write_text(g)
@@ -57,6 +59,8 @@ jobs:
           if gradle.exists():
               g = gradle.read_text()
               g = g.replace('minSdkVersion flutter.minSdkVersion', 'minSdkVersion 26')
+              g = g.replace('compileSdkVersion flutter.compileSdkVersion', 'compileSdkVersion 36')
+              g = g.replace('targetSdkVersion flutter.targetSdkVersion', 'targetSdkVersion 36')
               if 'play-services-location:21.1.0' not in g:
                   g += '\n\ndependencies {\n    implementation "com.google.android.gms:play-services-location:21.1.0"\n}\n'
               gradle.write_text(g)
@@ -162,8 +166,27 @@ jobs:
           flutter build apk --release \
             --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY" \
             --dart-define=BACKEND_URL="$BACKEND_URL"
+      - name: Build Play Store AAB
+        working-directory: flutter
+        env:
+          MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+          BACKEND_URL: https://api.yangi-taxi.uz
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/flutter/android/app/yangi-taxi-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          flutter build appbundle --release \
+            --dart-define=MAPKIT_API_KEY="$MAPKIT_API_KEY" \
+            --dart-define=BACKEND_URL="$BACKEND_URL"
+      - name: Validate Play bundle target API
+        run: |
+          grep -R "targetSdk = 36" flutter/android/app/build.gradle.kts
+          grep -R "compileSdk = 36" flutter/android/app/build.gradle.kts
       - name: Prepare artifact
-        run: cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.9.4.apk
+        run: |
+          cp flutter/build/app/outputs/flutter-apk/app-release.apk Yangi-Taxi-v1.9.4.apk
+          cp flutter/build/app/outputs/bundle/release/app-release.aab Yangi-Taxi-v1.9.4.aab
       - name: Prepare backend package
         run: |
           zip -r Yangi-Taxi-backend-v1.9.4-live.zip backend -x "backend/.env"
@@ -171,6 +194,11 @@ jobs:
         with:
           name: Yangi-Taxi-v1.9.4-apk
           path: Yangi-Taxi-v1.9.4.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Yangi-Taxi-v1.9.4-aab
+          path: Yangi-Taxi-v1.9.4.aab
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
