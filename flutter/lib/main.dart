@@ -1903,25 +1903,59 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Stack(
         children: <Widget>[
           Positioned.fill(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[
+                    Color(0xFF10220E),
+                    Color(0xFF071108),
+                    Color(0xFF020503),
+                  ],
+                  stops: <double>[0, 0.48, 1],
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
             child: Image.asset(
               'assets/yangi_auth_bg.webp',
               fit: BoxFit.cover,
               alignment: Alignment.center,
+              opacity: const AlwaysStoppedAnimation<double>(0.56),
               filterQuality: FilterQuality.high,
             ),
           ),
+          Positioned(
+            right: -150,
+            top: 180,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: 0.34,
+                child: Image.asset(
+                  'assets/yangi_vehicle_sprite.webp',
+                  width: 560,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
+            ),
+          ),
           Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0.72, -0.45),
-                  radius: 0.92,
-                  colors: <Color>[
-                    yangiLime.withValues(alpha: 0.22),
-                    yangiLime.withValues(alpha: 0.055),
-                    Colors.transparent,
-                  ],
-                  stops: const <double>[0, 0.36, 1],
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0.62, -0.38),
+                    radius: 0.86,
+                    colors: <Color>[
+                      yangiLime.withValues(alpha: 0.26),
+                      yangiLime.withValues(alpha: 0.07),
+                      Colors.transparent,
+                    ],
+                    stops: const <double>[0, 0.43, 1],
+                  ),
                 ),
               ),
             ),
@@ -1933,12 +1967,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: <Color>[
+                    Colors.black.withValues(alpha: 0.06),
                     Colors.black.withValues(alpha: 0.18),
-                    Colors.black.withValues(alpha: 0.34),
-                    Colors.black.withValues(alpha: 0.72),
-                    Colors.black.withValues(alpha: 0.94),
+                    Colors.black.withValues(alpha: 0.56),
+                    Colors.black.withValues(alpha: 0.86),
                   ],
-                  stops: const <double>[0, 0.32, 0.68, 1],
+                  stops: const <double>[0, 0.34, 0.72, 1],
                 ),
               ),
             ),
@@ -2597,6 +2631,124 @@ class YangiWordmark extends StatelessWidget {
   }
 }
 
+class _YangiCheckerMark extends StatelessWidget {
+  const _YangiCheckerMark({this.size = 46});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final tile = size * 0.23;
+    Widget square(double left, double top) => Positioned(
+          left: left,
+          top: top,
+          child: Container(
+            width: tile,
+            height: tile,
+            decoration: BoxDecoration(
+              color: yangiGraphite,
+              borderRadius: BorderRadius.circular(tile * 0.08),
+            ),
+          ),
+        );
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          square(size * 0.06, size * 0.40),
+          square(size * 0.26, size * 0.19),
+          square(size * 0.46, size * 0.40),
+          square(size * 0.66, size * 0.19),
+          square(size * 0.26, size * 0.61),
+        ],
+      ),
+    );
+  }
+}
+
+class _DrawerBrandRoutePainter extends CustomPainter {
+  const _DrawerBrandRoutePainter({
+    required this.dark,
+  });
+
+  final bool dark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final faint = Paint()
+      ..color = (dark ? Colors.white : const Color(0xFF89918A))
+          .withValues(alpha: dark ? 0.055 : 0.08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    final mapPaths = <Path>[
+      Path()
+        ..moveTo(size.width * 0.48, 0)
+        ..lineTo(size.width * 0.62, size.height)
+        ..moveTo(size.width * 0.70, 0)
+        ..lineTo(size.width * 0.56, size.height),
+      Path()
+        ..moveTo(size.width * 0.40, size.height * 0.34)
+        ..lineTo(size.width, size.height * 0.15)
+        ..moveTo(size.width * 0.46, size.height * 0.70)
+        ..lineTo(size.width, size.height * 0.50),
+    ];
+    for (final path in mapPaths) {
+      canvas.drawPath(path, faint);
+    }
+
+    final routeGlow = Paint()
+      ..color = yangiLime.withValues(alpha: dark ? 0.15 : 0.20)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 12
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+
+    final route = Paint()
+      ..color = yangiLime
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.2
+      ..strokeCap = StrokeCap.round;
+
+    final path = Path()
+      ..moveTo(size.width * 0.66, size.height * 0.67)
+      ..cubicTo(
+        size.width * 0.75,
+        size.height * 0.66,
+        size.width * 0.78,
+        size.height * 0.42,
+        size.width * 0.86,
+        size.height * 0.34,
+      )
+      ..cubicTo(
+        size.width * 0.91,
+        size.height * 0.29,
+        size.width * 0.94,
+        size.height * 0.22,
+        size.width * 0.98,
+        size.height * 0.08,
+      );
+
+    canvas.drawPath(path, routeGlow);
+    canvas.drawPath(path, route);
+
+    final outer = Paint()..color = yangiLime.withValues(alpha: dark ? 0.30 : 0.24);
+    final mid = Paint()..color = yangiLime;
+    final inner = Paint()..color = dark ? const Color(0xFF161A17) : Colors.white;
+    final p = Offset(size.width * 0.66, size.height * 0.67);
+    canvas.drawCircle(p, 13, outer);
+    canvas.drawCircle(p, 9, mid);
+    canvas.drawCircle(p, 4.5, inner);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DrawerBrandRoutePainter oldDelegate) =>
+      oldDelegate.dark != dark;
+}
+
 class Shell extends StatefulWidget {
   const Shell({
     super.key,
@@ -3152,58 +3304,153 @@ class _ShellState extends State<Shell> {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(10, 8, 10, 14),
             children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 2, 2, 8),
-                child: Row(
+              Container(
+                height: 112,
+                margin: const EdgeInsets.fromLTRB(8, 2, 8, 10),
+                decoration: BoxDecoration(
+                  color: dark
+                      ? theme.colorScheme.surfaceContainerLow
+                      : const Color(0xFFFCFDFB),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: dark
+                        ? theme.colorScheme.outlineVariant
+                        : const Color(0xFFE8ECE7),
+                  ),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: dark ? 0.24 : 0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 7),
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
                   children: <Widget>[
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: yangiLime,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.directions_car_filled_rounded,
-                        color: yangiGraphite,
-                        size: 29,
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: _DrawerBrandRoutePainter(dark: dark),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text.rich(
-                        TextSpan(
-                          children: <InlineSpan>[
-                            TextSpan(
-                              text: 'Yangi',
-                              style: TextStyle(
-                                color: theme.colorScheme.onSurface,
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -1.2,
-                              ),
+                    Positioned(
+                      left: -24,
+                      right: -24,
+                      bottom: -21,
+                      child: Transform.rotate(
+                        angle: -0.035,
+                        child: Container(
+                          height: 34,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: <Color>[
+                                yangiLime.withValues(alpha: dark ? 0.12 : 0.16),
+                                yangiLime.withValues(alpha: dark ? 0.28 : 0.48),
+                                yangiLime.withValues(alpha: dark ? 0.12 : 0.18),
+                              ],
                             ),
-                            TextSpan(
-                              text: 'Taxi',
-                              style: TextStyle(
-                                color: yangiLime,
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -1.2,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => shellKey.currentState?.closeDrawer(),
-                      style: IconButton.styleFrom(
-                        backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                        foregroundColor: theme.colorScheme.onSurface,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 48, 14),
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 66,
+                            height: 66,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: <Color>[
+                                  Color(0xFFD8FF2B),
+                                  yangiLime,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: <BoxShadow>[
+                                BoxShadow(
+                                  color: yangiLime.withValues(alpha: 0.26),
+                                  blurRadius: 16,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                            child: const Center(
+                              child: _YangiCheckerMark(size: 43),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text.rich(
+                                  TextSpan(
+                                    children: <InlineSpan>[
+                                      TextSpan(
+                                        text: 'Yangi',
+                                        style: TextStyle(
+                                          color: theme.colorScheme.onSurface,
+                                          fontSize: 27,
+                                          height: 0.98,
+                                          fontWeight: FontWeight.w900,
+                                          fontStyle: FontStyle.italic,
+                                          letterSpacing: -1.3,
+                                        ),
+                                      ),
+                                      TextSpan(
+                                        text: 'Taxi',
+                                        style: TextStyle(
+                                          color: yangiLime,
+                                          fontSize: 27,
+                                          height: 0.98,
+                                          fontWeight: FontWeight.w900,
+                                          fontStyle: FontStyle.italic,
+                                          letterSpacing: -1.3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Text(
+                                  'Tez va qulay harakat',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w500,
+                                    fontStyle: FontStyle.italic,
+                                    letterSpacing: 0.7,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      icon: const Icon(Icons.close_rounded),
-                      tooltip: widget.lang == 'uz' ? 'Yopish' : 'Закрыть',
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: IconButton(
+                        onPressed: () => shellKey.currentState?.closeDrawer(),
+                        style: IconButton.styleFrom(
+                          backgroundColor:
+                              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.86),
+                          foregroundColor: theme.colorScheme.onSurface,
+                          minimumSize: const Size(34, 34),
+                          padding: EdgeInsets.zero,
+                        ),
+                        iconSize: 19,
+                        icon: const Icon(Icons.close_rounded),
+                        tooltip: widget.lang == 'uz' ? 'Yopish' : 'Закрыть',
+                      ),
                     ),
                   ],
                 ),
