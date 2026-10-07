@@ -11118,22 +11118,6 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
 
-                  const SizedBox(height: 18),
-                  sectionTitle(lang == 'uz' ? 'DIAGNOSTIKA' : 'ДИАГНОСТИКА'),
-                  premiumCard(
-                    ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                      leading: leadingIcon(api.isDemo ? Icons.science_outlined : Icons.dns_outlined),
-                      title: const Text('Backend', style: TextStyle(fontWeight: FontWeight.w900)),
-                      subtitle: Text(
-                        api.baseUrl,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => backendDialog(context, api, onBackend),
-                    ),
-                  ),
                 ],
               ),
             ),
