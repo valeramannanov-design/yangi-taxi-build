@@ -1998,6 +1998,8 @@ async function realRoute(req, res, path, url) {
         label: fullLabel,
         fullLabel,
         shortLabel: shortAddressLabel(a),
+        street: String(a.street || '').trim(),
+        house: String(a.house || '').trim(),
         lat: Number(a.coords?.lat || 0),
         lon: Number(a.coords?.lon || 0),
         source: a.address_source || '',

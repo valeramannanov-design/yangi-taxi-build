@@ -983,7 +983,7 @@ String _taxiMasterDisplayAddress(Map<String, dynamic> json, String full) {
   return _compactAddress(full);
 }
 
-({String full, String display}) _yandexStructuredAddress(
+({String full, String display, String taxiMaster}) _yandexStructuredAddress(
   dynamic geoObject,
   String fallback,
 ) {
@@ -994,7 +994,11 @@ String _taxiMasterDisplayAddress(Map<String, dynamic> json, String full) {
         .get(ys.SearchBusinessObjectMetadata.factory);
     final address = toponym?.address ?? business?.address;
     if (address == null) {
-      return (full: fallback, display: _compactAddress(fallback));
+      return (
+        full: fallback,
+        display: _compactAddress(fallback),
+        taxiMaster: '',
+      );
     }
 
     String? component(ys.SearchAddressComponentKind kind) {
@@ -1030,6 +1034,7 @@ String _taxiMasterDisplayAddress(Map<String, dynamic> json, String full) {
     final street = component(ys.SearchAddressComponentKind.Street);
     final house = component(ys.SearchAddressComponentKind.House);
     var display = _uniqueAddressJoin(<String?>[mahalla, street, house]);
+    final taxiMaster = _uniqueAddressJoin(<String?>[district, street, house]);
 
     if (display.isEmpty) display = _compactAddress(fallback);
 
@@ -1037,9 +1042,14 @@ String _taxiMasterDisplayAddress(Map<String, dynamic> json, String full) {
     return (
       full: formatted.isEmpty ? fallback : formatted,
       display: display,
+      taxiMaster: taxiMaster,
     );
   } catch (_) {
-    return (full: fallback, display: _compactAddress(fallback));
+    return (
+      full: fallback,
+      display: _compactAddress(fallback),
+      taxiMaster: '',
+    );
   }
 }
 
@@ -1050,14 +1060,17 @@ class Place {
     this.lon, {
     this.isFavorite = false,
     String? displayLabel,
+    String? taxiMasterAddress,
     this.resolveDisplayOnSelect = false,
-  }) : _displayLabel = displayLabel?.trim();
+  })  : _displayLabel = displayLabel?.trim(),
+        _taxiMasterAddress = taxiMasterAddress?.trim();
 
   final String address;
   final double lat;
   final double lon;
   final bool isFavorite;
   final String? _displayLabel;
+  final String? _taxiMasterAddress;
   final bool resolveDisplayOnSelect;
 
   ym.Point get point => ym.Point(latitude: lat, longitude: lon);
@@ -1070,17 +1083,35 @@ class Place {
     return _compactAddress(address);
   }
 
-  Map<String, dynamic> toJson() =>
-      <String, dynamic>{'address': address, 'lat': lat, 'lon': lon};
+  String get taxiMasterAddress {
+    final explicit = _taxiMasterAddress;
+    if (explicit != null && explicit.isNotEmpty) {
+      return explicit.replaceAll(RegExp(r'\s+'), ' ').trim();
+    }
+    return displayAddress;
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'address': taxiMasterAddress,
+        'lat': lat,
+        'lon': lon,
+      };
 
   factory Place.fromJson(Map<String, dynamic> j) {
     final full = (j['fullLabel'] ?? j['label'] ?? '').toString().trim();
     final display = _taxiMasterDisplayAddress(j, full);
+    final taxiMaster = _uniqueAddressJoin(<String?>[
+      (j['district'] ?? '').toString(),
+      (j['street'] ?? '').toString(),
+      (j['house'] ?? '').toString(),
+    ]);
     return Place(
       full,
       (j['lat'] as num).toDouble(),
       (j['lon'] as num).toDouble(),
       displayLabel: display.isEmpty ? null : display,
+      taxiMasterAddress: taxiMaster.isEmpty ? null : taxiMaster,
+      resolveDisplayOnSelect: true,
     );
   }
 }
@@ -5550,6 +5581,7 @@ class _OrderScreenState extends State<OrderScreen> {
       onSearchResponse: (response) {
         String label = '';
         String displayLabel = '';
+        String taxiMasterAddress = '';
         for (final item in response.collection.children) {
           final object = item.asGeoObject();
           if (object == null) continue;
@@ -5562,6 +5594,7 @@ class _OrderScreenState extends State<OrderScreen> {
           final structured = _yandexStructuredAddress(object, fallback);
           label = structured.full;
           displayLabel = structured.display;
+          taxiMasterAddress = structured.taxiMaster;
           break;
         }
         if (label.isEmpty) {
@@ -5576,6 +5609,8 @@ class _OrderScreenState extends State<OrderScreen> {
               displayLabel: displayLabel.isEmpty
                   ? _compactAddress(label)
                   : displayLabel,
+              taxiMasterAddress:
+                  taxiMasterAddress.isEmpty ? null : taxiMasterAddress,
             ),
           );
         }
@@ -8449,6 +8484,9 @@ class _AddressSheetState extends State<AddressSheet> {
                 displayLabel: structured.display.isEmpty
                     ? place.displayAddress
                     : structured.display,
+                taxiMasterAddress: structured.taxiMaster.isEmpty
+                    ? place.taxiMasterAddress
+                    : structured.taxiMaster,
               ),
             );
           }
@@ -8679,9 +8717,16 @@ class _AddressSheetState extends State<AddressSheet> {
                           ? (widget.lang == 'uz' ? 'Sevimli manzil' : 'Любимый адрес')
                           : label,
                       displayAddress,
-                      onTap: () => Navigator.pop(
-                        context,
-                        Place(address, lat, lon, isFavorite: true),
+                      onTap: () => unawaited(
+                        _pickResult(
+                          Place(
+                            address,
+                            lat,
+                            lon,
+                            isFavorite: true,
+                            resolveDisplayOnSelect: true,
+                          ),
+                        ),
                       ),
                     );
                   }),
@@ -8830,6 +8875,7 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
       onSearchResponse: (response) {
         String label = '';
         String displayLabel = '';
+        String taxiMasterAddress = '';
         for (final item in response.collection.children) {
           final object = item.asGeoObject();
           if (object == null) continue;
@@ -8842,6 +8888,7 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
           final structured = _yandexStructuredAddress(object, fallback);
           label = structured.full;
           displayLabel = structured.display;
+          taxiMasterAddress = structured.taxiMaster;
           break;
         }
         if (label.isEmpty) {
@@ -8856,6 +8903,8 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
               displayLabel: displayLabel.isEmpty
                   ? _compactAddress(label)
                   : displayLabel,
+              taxiMasterAddress:
+                  taxiMasterAddress.isEmpty ? null : taxiMasterAddress,
             ),
           );
         }
