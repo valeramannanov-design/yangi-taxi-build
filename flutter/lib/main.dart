@@ -941,7 +941,9 @@ String _uniqueAddressJoin(Iterable<String?> values) {
 String _taxiMasterDisplayAddress(Map<String, dynamic> json, String full) {
   final explicit =
       (json['shortLabel'] ?? json['displayLabel'] ?? '').toString().trim();
-  if (explicit.isNotEmpty) return _compactAddress(explicit);
+  if (explicit.isNotEmpty) {
+    return explicit.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
 
   final parts = full
       .replaceAll('\n', ',')
@@ -1048,6 +1050,7 @@ class Place {
     this.lon, {
     this.isFavorite = false,
     String? displayLabel,
+    this.resolveDisplayOnSelect = false,
   }) : _displayLabel = displayLabel?.trim();
 
   final String address;
@@ -1055,13 +1058,14 @@ class Place {
   final double lon;
   final bool isFavorite;
   final String? _displayLabel;
+  final bool resolveDisplayOnSelect;
 
   ym.Point get point => ym.Point(latitude: lat, longitude: lon);
 
   String get displayAddress {
     final explicit = _displayLabel;
     if (explicit != null && explicit.isNotEmpty) {
-      return _compactAddress(explicit);
+      return explicit.replaceAll(RegExp(r'\s+'), ' ').trim();
     }
     return _compactAddress(address);
   }
@@ -8290,6 +8294,7 @@ class _AddressSheetState extends State<AddressSheet> {
   Timer? timer;
   late final ys.SearchManager searchManager;
   late final ys.SearchSuggestSession suggestSession;
+  ys.SearchSession? resolveSession;
   List<Place> results = <Place>[];
   List<Map<String, dynamic>> favoriteAddresses = <Map<String, dynamic>>[];
   bool busy = false;
@@ -8363,6 +8368,7 @@ class _AddressSheetState extends State<AddressSheet> {
                 p.latitude,
                 p.longitude,
                 displayLabel: title.isEmpty ? null : title,
+                resolveDisplayOnSelect: true,
               ),
             );
           }
@@ -8416,6 +8422,74 @@ class _AddressSheetState extends State<AddressSheet> {
     }
   }
 
+  Future<Place> _resolveSelectedSuggestion(Place place) async {
+    if (!place.resolveDisplayOnSelect || yandexMapKitApiKey.isEmpty) return place;
+
+    final point = place.point;
+    final completer = Completer<Place>();
+    final listener = ys.SearchSessionSearchListener(
+      onSearchResponse: (response) {
+        for (final item in response.collection.children) {
+          final object = item.asGeoObject();
+          if (object == null) continue;
+          final name = object.name?.trim() ?? '';
+          final description = object.descriptionText?.trim() ?? '';
+          final fallback = description.isEmpty || description == name
+              ? name
+              : (name.isEmpty ? description : '$name, $description');
+          if (fallback.isEmpty) continue;
+
+          final structured = _yandexStructuredAddress(object, fallback);
+          if (!completer.isCompleted) {
+            completer.complete(
+              Place(
+                structured.full.isEmpty ? place.address : structured.full,
+                place.lat,
+                place.lon,
+                displayLabel: structured.display.isEmpty
+                    ? place.displayAddress
+                    : structured.display,
+              ),
+            );
+          }
+          return;
+        }
+        if (!completer.isCompleted) completer.complete(place);
+      },
+      onSearchError: (_) {
+        if (!completer.isCompleted) completer.complete(place);
+      },
+    );
+
+    resolveSession?.cancel();
+    resolveSession = searchManager.submitPoint(
+      point,
+      const ys.SearchOptions(
+        searchTypes: ys.SearchType.Geo,
+        resultPageSize: 5,
+      ),
+      listener,
+      zoom: 17,
+    );
+
+    return completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () => place,
+    );
+  }
+
+  Future<void> _pickResult(Place item) async {
+    if (!item.resolveDisplayOnSelect) {
+      if (mounted) Navigator.pop(context, item);
+      return;
+    }
+    if (mounted) setState(() => busy = true);
+    final resolved = await _resolveSelectedSuggestion(item);
+    if (!mounted) return;
+    setState(() => busy = false);
+    Navigator.pop(context, resolved);
+  }
+
   Future<void> pickOnMap() async {
     FocusScope.of(context).unfocus();
     final place = await Navigator.of(context).push<Place>(
@@ -8434,6 +8508,7 @@ class _AddressSheetState extends State<AddressSheet> {
   void dispose() {
     timer?.cancel();
     suggestSession.reset();
+    resolveSession?.cancel();
     c.dispose();
     super.dispose();
   }
@@ -8699,7 +8774,7 @@ class _AddressSheetState extends State<AddressSheet> {
                                 style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10),
                               ),
                               trailing: Icon(Icons.north_west_rounded, size: 17, color: scheme.onSurfaceVariant),
-                              onTap: () => Navigator.pop(context, item),
+                              onTap: () => unawaited(_pickResult(item)),
                             );
                           },
                         ),
