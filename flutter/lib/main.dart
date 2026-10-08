@@ -7060,12 +7060,16 @@ class _OrderScreenState extends State<OrderScreen> {
                                                 colors: <Color>[Color(0xFF07110A), Color(0xFF13A83E)],
                                               )
                                             : null,
-                                        color: paymentMethod == 'cash' ? const Color(0xFF65C83C) : null,
+                                        color: paymentMethod == 'bonus'
+                                            ? yangiLime
+                                            : (paymentMethod == 'cash' ? const Color(0xFF65C83C) : null),
                                         borderRadius: BorderRadius.circular(9),
                                       ),
                                       child: Icon(
-                                        paymentMethod == 'card' ? Icons.credit_card_rounded : Icons.payments_rounded,
-                                        color: Colors.white,
+                                        paymentMethod == 'card'
+                                            ? Icons.credit_card_rounded
+                                            : (paymentMethod == 'bonus' ? Icons.stars_rounded : Icons.payments_rounded),
+                                        color: paymentMethod == 'bonus' ? yangiGraphite : Colors.white,
                                         size: 22,
                                       ),
                                     ),
@@ -7077,7 +7081,9 @@ class _OrderScreenState extends State<OrderScreen> {
                                           Text(
                                             paymentMethod == 'card'
                                                 ? maskedCardLabel(selectedCard?['maskedPan'])
-                                                : (widget.lang == 'uz' ? 'Naqd' : 'Наличные'),
+                                                : (paymentMethod == 'bonus'
+                                                    ? (widget.lang == 'uz' ? 'Bonus hisob' : 'Бонусный счёт')
+                                                    : (widget.lang == 'uz' ? 'Naqd' : 'Наличные')),
                                             style: const TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.w900,
@@ -7088,9 +7094,13 @@ class _OrderScreenState extends State<OrderScreen> {
                                                 ? (widget.lang == 'uz'
                                                     ? 'ATMOS orqali xavfsiz to‘lov'
                                                     : 'Безопасная оплата через ATMOS')
-                                                : (widget.lang == 'uz'
-                                                    ? 'Haydovchiga safardan keyin'
-                                                    : 'Оплата водителю после поездки'),
+                                                : (paymentMethod == 'bonus'
+                                                    ? (widget.lang == 'uz'
+                                                        ? _bonusBalanceLabel(bonusBalance, widget.lang) + ' • qolgan summa naqd'
+                                                        : _bonusBalanceLabel(bonusBalance, widget.lang) + ' • остаток наличными')
+                                                    : (widget.lang == 'uz'
+                                                        ? 'Haydovchiga safardan keyin'
+                                                        : 'Оплата водителю после поездки')),
                                             style: TextStyle(
                                               fontSize: 10.5,
                                               color: scheme.onSurfaceVariant,
@@ -7944,34 +7954,47 @@ class _OrderScreenState extends State<OrderScreen> {
                   ),
                 ),
                 const SizedBox(height: 9),
-                Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    color: yangiLime.withValues(alpha: sheetTheme.brightness == Brightness.dark ? 0.13 : 0.18),
+                Material(
+                  color: draftMethod == 'bonus'
+                      ? selectedFill
+                      : yangiLime.withValues(alpha: sheetTheme.brightness == Brightness.dark ? 0.13 : 0.18),
+                  borderRadius: BorderRadius.circular(18),
+                  child: InkWell(
+                    onTap: bonusBalance > 0
+                        ? () => setSheetState(() => draftMethod = 'bonus')
+                        : null,
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: yangiLime.withValues(alpha: 0.36)),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                    leading: Container(
-                      width: 46,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: yangiLime,
-                        borderRadius: BorderRadius.circular(10),
+                    child: Opacity(
+                      opacity: bonusBalance > 0 ? 1 : 0.5,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                        leading: Container(
+                          width: 46,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: yangiLime,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.stars_rounded, color: yangiGraphite, size: 24),
+                        ),
+                        title: Text(
+                          widget.lang == 'uz' ? 'Bonus hisob' : 'Бонусный счёт',
+                          style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                        ),
+                        subtitle: Text(
+                          bonusBalance > 0
+                              ? (widget.lang == 'uz'
+                                  ? _bonusBalanceLabel(bonusBalance, widget.lang) + ' • qolgan summa naqd'
+                                  : _bonusBalanceLabel(bonusBalance, widget.lang) + ' • остаток наличными')
+                              : (widget.lang == 'uz' ? 'Bonuslar mavjud emas' : 'Нет доступных бонусов'),
+                          style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                        ),
+                        trailing: selectIcon(draftMethod == 'bonus'),
                       ),
-                      child: const Icon(Icons.stars_rounded, color: yangiGraphite, size: 24),
-                    ),
-                    title: Text(
-                      widget.lang == 'uz' ? 'Bonus balansi' : 'Бонусный баланс',
-                      style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
-                    ),
-                    subtitle: Text(
-                      _bonusBalanceLabel(bonusBalance, widget.lang),
-                      style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
+                const SizedBox(height: 9),
                 Material(
                   color: draftMethod == 'cash' ? selectedFill : scheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(22),
@@ -10918,15 +10941,20 @@ class _CardsScreenState extends State<CardsScreen> {
             selectedPaymentCardId = list.any((card) => (card['cardId'] as num?)?.toInt() == initialId)
                 ? initialId
                 : defaultCardId;
-            selectedMethod = widget.initialPaymentMethod == 'card' && selectedPaymentCardId > 0
-                ? 'card'
-                : (widget.initialPaymentMethod == 'cash'
-                    ? 'cash'
-                    : (selectedPaymentCardId > 0 ? 'card' : 'cash'));
+            selectedMethod = widget.initialPaymentMethod == 'bonus' && bonusBalance > 0
+                ? 'bonus'
+                : (widget.initialPaymentMethod == 'card' && selectedPaymentCardId > 0
+                    ? 'card'
+                    : (widget.initialPaymentMethod == 'cash'
+                        ? 'cash'
+                        : (selectedPaymentCardId > 0 ? 'card' : 'cash')));
             selectionInitialized = true;
           } else if (!list.any((card) => (card['cardId'] as num?)?.toInt() == selectedPaymentCardId)) {
             selectedPaymentCardId = defaultCardId;
-            if (selectedPaymentCardId <= 0) selectedMethod = 'cash';
+            if (selectedPaymentCardId <= 0 && selectedMethod == 'card') selectedMethod = 'cash';
+          }
+          if (selectedMethod == 'bonus' && bonusBalance <= 0) {
+            selectedMethod = 'cash';
           }
           loading = false;
         });
@@ -11276,34 +11304,53 @@ class _CardsScreenState extends State<CardsScreen> {
                   style: TextStyle(color: scheme.onSurface, fontSize: 22, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 10),
-                Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    color: yangiLime.withValues(alpha: theme.brightness == Brightness.dark ? 0.13 : 0.18),
+                Material(
+                  color: selectedMethod == 'bonus'
+                      ? selectedFill
+                      : yangiLime.withValues(alpha: theme.brightness == Brightness.dark ? 0.13 : 0.18),
+                  borderRadius: BorderRadius.circular(20),
+                  child: InkWell(
+                    onTap: bonusBalance > 0
+                        ? () => setState(() => selectedMethod = 'bonus')
+                        : null,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: yangiLime.withValues(alpha: 0.36)),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    leading: Container(
-                      width: 46,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: yangiLime,
-                        borderRadius: BorderRadius.circular(10),
+                    child: Opacity(
+                      opacity: bonusBalance > 0 ? 1 : 0.5,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        leading: Container(
+                          width: 46,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: yangiLime,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.stars_rounded, color: yangiGraphite, size: 24),
+                        ),
+                        title: Text(
+                          widget.lang == 'uz' ? 'Bonus hisob' : 'Бонусный счёт',
+                          style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                        ),
+                        subtitle: Text(
+                          bonusBalance > 0
+                              ? (widget.lang == 'uz'
+                                  ? _bonusBalanceLabel(bonusBalance, widget.lang) + ' • qolgan summa naqd'
+                                  : _bonusBalanceLabel(bonusBalance, widget.lang) + ' • остаток наличными')
+                              : (widget.lang == 'uz' ? 'Bonuslar mavjud emas' : 'Нет доступных бонусов'),
+                          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 15, fontWeight: FontWeight.w800),
+                        ),
+                        trailing: Icon(
+                          selectedMethod == 'bonus'
+                              ? Icons.check_circle_rounded
+                              : Icons.radio_button_unchecked_rounded,
+                          color: selectedMethod == 'bonus' ? yangiLime : scheme.outline,
+                          size: 30,
+                        ),
                       ),
-                      child: const Icon(Icons.stars_rounded, color: yangiGraphite, size: 24),
-                    ),
-                    title: Text(
-                      widget.lang == 'uz' ? 'Bonus balansi' : 'Бонусный баланс',
-                      style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
-                    ),
-                    subtitle: Text(
-                      _bonusBalanceLabel(bonusBalance, widget.lang),
-                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 15, fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),
+                const SizedBox(height: 10),
                 Container(
                   decoration: BoxDecoration(
                     color: selectedMethod == 'cash' ? selectedFill : scheme.surfaceContainerHigh,

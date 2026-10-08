@@ -1625,7 +1625,13 @@ async function mockRoute(req, res, path, url) {
       car_number: '01 Y 001 TX',
       total_cost: 28000,
     };
-    return send(res, 201, { ok: true, data: { order_id: 40001 } });
+    return send(res, 201, {
+      ok: true,
+      data: {
+        order_id: 40001,
+        paymentMethod: String(body.paymentMethod || 'cash').toLowerCase(),
+      },
+    });
   }
   if (req.method === 'GET' && path === '/api/orders/current') {
     const s = mockState();
@@ -2073,7 +2079,7 @@ async function realRoute(req, res, path, url) {
       await persistClientProfile(session.clientId, profile);
     }
     const paymentMethod = String(body.paymentMethod || 'cash').toLowerCase();
-    if (!['cash', 'card'].includes(paymentMethod)) {
+    if (!['cash', 'card', 'bonus'].includes(paymentMethod)) {
       const e = new Error('Unsupported payment method');
       e.statusCode = 400;
       throw e;
@@ -2138,6 +2144,24 @@ async function realRoute(req, res, path, url) {
       return send(res, 201, {
         ok: true,
         data: { ...data, paymentMethod: 'cash', paymentStatus: 'cash', tariffId, crewGroupId: definition.crewGroupId, tariffKey },
+      });
+    }
+
+    if (paymentMethod === 'bonus') {
+      payload.use_bonus = true;
+      payload.use_cashless = false;
+      const data = await tmPostJson('create_order2', payload);
+      return send(res, 201, {
+        ok: true,
+        data: {
+          ...data,
+          paymentMethod: 'bonus',
+          paymentStatus: 'bonus',
+          bonusMode: 'use_available_balance',
+          tariffId,
+          crewGroupId: definition.crewGroupId,
+          tariffKey,
+        },
       });
     }
 
