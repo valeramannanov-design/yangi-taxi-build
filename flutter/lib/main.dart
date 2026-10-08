@@ -845,6 +845,20 @@ String _compactAddress(String value) {
 
 double _bonusBalanceFromProfile(dynamic rawProfile) {
   if (rawProfile is! Map) return 0;
+
+  final accounts = rawProfile['accounts'];
+  if (accounts is List) {
+    for (final rawAccount in accounts) {
+      if (rawAccount is! Map) continue;
+      final kind = int.tryParse((rawAccount['account_kind'] ?? '').toString());
+      if (kind != 1) continue;
+      final balance = double.tryParse(
+        (rawAccount['balance'] ?? '').toString().replaceAll(',', '.'),
+      );
+      if (balance != null) return balance;
+    }
+  }
+
   final raw = rawProfile['bonus_balance'] ??
       rawProfile['bonusBalance'] ??
       rawProfile['bonus_sum'] ??
@@ -3591,6 +3605,7 @@ class _ShellState extends State<Shell> {
         lang: widget.lang,
         onMenu: openMenu,
         onDone: () => selectTab(0),
+        isActive: tab == 3,
       ),
       SettingsScreen(
         api: widget.api,
@@ -3610,6 +3625,7 @@ class _ShellState extends State<Shell> {
         onBackend: widget.onBackend,
         onLogout: widget.onLogout,
         onMenu: () => selectTab(0),
+        isActive: tab == 5,
       ),
     ];
 
@@ -10836,6 +10852,7 @@ class CardsScreen extends StatefulWidget {
     this.initialPaymentMethod,
     this.initialCardId,
     this.onPaymentChanged,
+    this.isActive = true,
   });
   final ApiClient api;
   final String lang;
@@ -10844,6 +10861,7 @@ class CardsScreen extends StatefulWidget {
   final String? initialPaymentMethod;
   final int? initialCardId;
   final void Function(String method, int cardId)? onPaymentChanged;
+  final bool isActive;
 
   @override
   State<CardsScreen> createState() => _CardsScreenState();
@@ -10864,6 +10882,14 @@ class _CardsScreenState extends State<CardsScreen> {
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void didUpdateWidget(covariant CardsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      unawaited(load());
+    }
   }
 
   Future<void> load() async {
@@ -12090,6 +12116,7 @@ class ProfileScreen extends StatefulWidget {
     required this.onBackend,
     required this.onLogout,
     this.onMenu,
+    this.isActive = true,
   });
   final ApiClient api;
   final String lang;
@@ -12099,6 +12126,7 @@ class ProfileScreen extends StatefulWidget {
   final Future<void> Function(String) onBackend;
   final VoidCallback onLogout;
   final VoidCallback? onMenu;
+  final bool isActive;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -12113,6 +12141,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      unawaited(load());
+    }
   }
 
   Future<void> load() async {
