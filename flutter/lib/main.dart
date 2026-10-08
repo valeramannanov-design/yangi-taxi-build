@@ -7854,34 +7854,6 @@ class _OrderScreenState extends State<OrderScreen> {
                 ),
                 const SizedBox(height: 9),
                 Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    color: yangiLime.withValues(alpha: sheetTheme.brightness == Brightness.dark ? 0.13 : 0.18),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: yangiLime.withValues(alpha: 0.36)),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                    leading: Container(
-                      width: 46,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: yangiLime,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.stars_rounded, color: yangiGraphite, size: 24),
-                    ),
-                    title: Text(
-                      widget.lang == 'uz' ? 'Bonus balansi' : 'Бонусный баланс',
-                      style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
-                    ),
-                    subtitle: Text(
-                      _bonusBalanceLabel(bonusBalance, widget.lang),
-                      style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-                Container(
                   decoration: BoxDecoration(
                     color: scheme.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(22),
@@ -7972,6 +7944,34 @@ class _OrderScreenState extends State<OrderScreen> {
                   ),
                 ),
                 const SizedBox(height: 9),
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: yangiLime.withValues(alpha: sheetTheme.brightness == Brightness.dark ? 0.13 : 0.18),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: yangiLime.withValues(alpha: 0.36)),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                    leading: Container(
+                      width: 46,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: yangiLime,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.stars_rounded, color: yangiGraphite, size: 24),
+                    ),
+                    title: Text(
+                      widget.lang == 'uz' ? 'Bonus balansi' : 'Бонусный баланс',
+                      style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      _bonusBalanceLabel(bonusBalance, widget.lang),
+                      style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
                 Material(
                   color: draftMethod == 'cash' ? selectedFill : scheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(22),
@@ -11174,34 +11174,6 @@ class _CardsScreenState extends State<CardsScreen> {
                 ),
                 const SizedBox(height: 10),
                 Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    color: yangiLime.withValues(alpha: theme.brightness == Brightness.dark ? 0.13 : 0.18),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: yangiLime.withValues(alpha: 0.36)),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    leading: Container(
-                      width: 46,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: yangiLime,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.stars_rounded, color: yangiGraphite, size: 24),
-                    ),
-                    title: Text(
-                      widget.lang == 'uz' ? 'Bonus balansi' : 'Бонусный баланс',
-                      style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
-                    ),
-                    subtitle: Text(
-                      _bonusBalanceLabel(bonusBalance, widget.lang),
-                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 15, fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ),
-                Container(
                   decoration: BoxDecoration(
                     color: scheme.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(22),
@@ -11305,6 +11277,34 @@ class _CardsScreenState extends State<CardsScreen> {
                 ),
                 const SizedBox(height: 10),
                 Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: yangiLime.withValues(alpha: theme.brightness == Brightness.dark ? 0.13 : 0.18),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: yangiLime.withValues(alpha: 0.36)),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    leading: Container(
+                      width: 46,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: yangiLime,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.stars_rounded, color: yangiGraphite, size: 24),
+                    ),
+                    title: Text(
+                      widget.lang == 'uz' ? 'Bonus balansi' : 'Бонусный баланс',
+                      style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      _bonusBalanceLabel(bonusBalance, widget.lang),
+                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+                Container(
                   decoration: BoxDecoration(
                     color: selectedMethod == 'cash' ? selectedFill : scheme.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(22),
@@ -11362,14 +11362,6 @@ class _CardsScreenState extends State<CardsScreen> {
                       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  widget.lang == 'uz'
-                      ? 'Kartalar ATMOS orqali tokenlashtiriladi. Yangi Taxi PAN va CVV ni saqlamaydi.'
-                      : 'Карты токенизируются через ATMOS. Yangi Taxi не хранит PAN и CVV.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                 ),
               ],
             ),
