@@ -4386,6 +4386,14 @@ class _TariffVehicleArt extends StatelessWidget {
   final bool selected;
   final bool available;
 
+  String get assetPath => switch (kind.toLowerCase()) {
+        'comfort' => 'assets/yangi_tariff_comfort_brand.webp',
+        'business' => 'assets/yangi_tariff_business_brand.webp',
+        'delivery' || 'cargo' || 'xl' || 'minivan' || 'miniven' =>
+          'assets/yangi_tariff_van_brand.webp',
+        _ => 'assets/yangi_tariff_start_brand.webp',
+      };
+
   @override
   Widget build(BuildContext context) {
     return Opacity(
@@ -4393,21 +4401,41 @@ class _TariffVehicleArt extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: <Widget>[
-          if (selected)
-            Positioned(
-              left: 8,
-              right: 8,
-              bottom: 5,
-              child: Container(
-                height: 24,
-                decoration: BoxDecoration(
-                  color: yangiLime.withValues(alpha: 0.13),
-                  borderRadius: BorderRadius.circular(999),
+          Positioned(
+            left: 6,
+            right: 6,
+            bottom: 4,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              height: selected ? 27 : 19,
+              decoration: BoxDecoration(
+                color: yangiLime.withValues(alpha: selected ? 0.18 : 0.07),
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: selected
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: yangiLime.withValues(alpha: 0.20),
+                          blurRadius: 14,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : const <BoxShadow>[],
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: AnimatedScale(
+              duration: const Duration(milliseconds: 180),
+              scale: selected ? 1.05 : 1,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(2, 0, 2, 2),
+                child: Image.asset(
+                  assetPath,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
                 ),
               ),
             ),
-          Positioned.fill(
-            child: _VehicleSprite(kind: kind),
           ),
         ],
       ),
