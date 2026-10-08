@@ -3113,7 +3113,7 @@ class _ShellState extends State<Shell> {
     unawaited(_loadDrawerData());
   }
 
-  Future<void> _loadDrawerData() async {
+  Future<void> _refreshDrawerProfile() async {
     try {
       final raw = await widget.api.get('/api/me');
       if (mounted && raw is Map) {
@@ -3122,6 +3122,10 @@ class _ShellState extends State<Shell> {
     } catch (_) {
       // Drawer profile is decorative and must never block the booking flow.
     }
+  }
+
+  Future<void> _loadDrawerData() async {
+    await _refreshDrawerProfile();
 
     try {
       final values = await _loadFavoriteAddresses(widget.api);
@@ -3237,7 +3241,10 @@ class _ShellState extends State<Shell> {
     }
   }
 
-  void openMenu() => shellKey.currentState?.openDrawer();
+  void openMenu() {
+    unawaited(_refreshDrawerProfile());
+    shellKey.currentState?.openDrawer();
+  }
 
   Future<void> handleAndroidBack() async {
     final scaffold = shellKey.currentState;
