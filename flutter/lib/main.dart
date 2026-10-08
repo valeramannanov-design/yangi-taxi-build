@@ -680,17 +680,50 @@ String _compactAddress(String value) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
+  String cleanPart(String part) {
+    var out = part
+        .trim()
+        .replaceAll(RegExp(r'^[\{\[\(]+'), '')
+        .replaceAll(RegExp(r'[\}\]\)]+$'), '')
+        .trim();
+    out = out.replaceFirst(
+      RegExp(
+        r"^(?:city|region|district|street|house|point|address|город|область|район|улица|дом|точка|манзил|shahar|viloyat|tuman|ko'cha|uy)\s*[:=]\s*",
+        caseSensitive: false,
+      ),
+      '',
+    );
+    return out.trim();
+  }
+
   bool administrativePart(String part) {
     final s = normalized(part);
     if (s.isEmpty) return true;
+
+    const plainLocalities = <String>{
+      'ташкент',
+      'toshkent',
+      'tashkent',
+      'навоий',
+      'навои',
+      'navoiy',
+      'хатирчи',
+      'xatirchi',
+      'khatirchi',
+    };
+    if (plainLocalities.contains(s)) return true;
+
     if (s == 'uzbekistan' ||
         s == 'o\'zbekiston' ||
         s == 'ozbekiston' ||
+        s == 'ўзбекистон' ||
         s == 'узбекистан') {
       return true;
     }
+
     if (RegExp(r'^\d{5,6}$').hasMatch(s)) return true;
-    if (s.contains(' область') ||
+
+    return s.contains(' область') ||
         s.endsWith(' область') ||
         s.contains(' обл.') ||
         s.endsWith(' обл') ||
@@ -707,10 +740,8 @@ String _compactAddress(String value) {
         s.contains(' tumani') ||
         s.endsWith(' tuman') ||
         s.contains(' тумани') ||
-        s.endsWith(' туман')) {
-      return true;
-    }
-    return s.startsWith('город ') ||
+        s.endsWith(' туман') ||
+        s.startsWith('город ') ||
         s.startsWith('г. ') ||
         s.startsWith('г.') ||
         s.endsWith(' shahri') ||
@@ -740,7 +771,9 @@ String _compactAddress(String value) {
         s.contains('street') ||
         s.contains("yo'li") ||
         s.contains('yoli') ||
-        s.contains('йўли');
+        s.contains('йўли') ||
+        s.contains('shoh ko') ||
+        s.contains('шоҳ кў');
   }
 
   bool housePart(String part) {
@@ -749,9 +782,14 @@ String _compactAddress(String value) {
     return RegExp(r'^\d+[a-zа-яёқғҳў0-9\-\/]*$').hasMatch(s);
   }
 
-  final parts = raw
+  final prepared = raw
+      .replaceAll('\n', ',')
+      .replaceAll(';', ',')
+      .replaceAll('|', ',');
+
+  final parts = prepared
       .split(',')
-      .map((part) => part.trim())
+      .map(cleanPart)
       .where((part) => part.isNotEmpty)
       .toList();
 
@@ -763,46 +801,68 @@ String _compactAddress(String value) {
   }
   if (compact.isEmpty) return raw;
 
-  final mahallas = compact.where(mahallaPart).toList();
-  final streets = compact.where(streetPart).toList();
-  final houses = compact.where(housePart).toList();
-
-  if (mahallas.isNotEmpty || streets.isNotEmpty || houses.isNotEmpty) {
-    final visible = <String>[];
-
-    void addUnique(String? part) {
-      final value = part?.trim() ?? '';
-      if (value.isEmpty) return;
-      if (visible.any((item) => normalized(item) == normalized(value))) return;
-      visible.add(value);
+  String? firstWhere(bool Function(String) test) {
+    for (final part in compact) {
+      if (test(part)) return part;
     }
-
-    if (mahallas.isNotEmpty) addUnique(mahallas.first);
-    if (streets.isNotEmpty) {
-      addUnique(streets.first);
-    } else if (houses.isNotEmpty) {
-      final houseIndex = compact.indexOf(houses.first);
-      final candidates = <MapEntry<int, String>>[];
-      for (var i = 0; i < compact.length; i++) {
-        final part = compact[i];
-        if (mahallaPart(part) || housePart(part)) continue;
-        candidates.add(MapEntry(i, part));
-      }
-      candidates.sort((a, b) {
-        final da = (a.key - houseIndex).abs();
-        final db = (b.key - houseIndex).abs();
-        if (da != db) return da.compareTo(db);
-        return a.key.compareTo(b.key);
-      });
-      if (candidates.isNotEmpty) addUnique(candidates.first.value);
-    }
-    if (houses.isNotEmpty) addUnique(houses.first);
-
-    if (visible.length >= 2) return visible.take(3).join(', ');
+    return null;
   }
 
-  final start = compact.length > 3 ? compact.length - 3 : 0;
-  return compact.sublist(start).join(', ');
+  final mahalla = firstWhere(mahallaPart);
+  final street = firstWhere(streetPart);
+  final house = firstWhere(housePart);
+  final visible = <String>[];
+
+  void addUnique(String? part) {
+    final v = part?.trim() ?? '';
+    if (v.isEmpty) return;
+    if (visible.any((item) => normalized(item) == normalized(v))) return;
+    visible.add(v);
+  }
+
+  addUnique(mahalla);
+  addUnique(street);
+
+  if (street == null && house != null) {
+    final houseIndex = compact.indexOf(house);
+    for (var i = houseIndex - 1; i >= 0; i--) {
+      final candidate = compact[i];
+      if (mahallaPart(candidate) || housePart(candidate)) continue;
+      addUnique(candidate);
+      break;
+    }
+  }
+
+  addUnique(house);
+
+  if (visible.length >= 2) return visible.take(3).join(', ');
+
+  if (compact.length >= 3) {
+    return compact.sublist(compact.length - 3).join(', ');
+  }
+  return compact.join(', ');
+}
+
+double _bonusBalanceFromProfile(dynamic rawProfile) {
+  if (rawProfile is! Map) return 0;
+  final raw = rawProfile['bonus_balance'] ??
+      rawProfile['bonusBalance'] ??
+      rawProfile['bonus_sum'] ??
+      rawProfile['bonusSum'] ??
+      rawProfile['bonuses'] ??
+      0;
+  return double.tryParse(raw.toString().replaceAll(',', '.')) ?? 0;
+}
+
+String _bonusBalanceLabel(double value, String lang) {
+  final rounded = value.round().toString();
+  final chars = rounded.split('').reversed.toList();
+  final out = <String>[];
+  for (var i = 0; i < chars.length; i++) {
+    if (i > 0 && i % 3 == 0) out.add(' ');
+    out.add(chars[i]);
+  }
+  return out.reversed.join() + (lang == 'uz' ? ' bonus' : ' бонусов');
 }
 
 class Place {
@@ -4572,6 +4632,7 @@ class _OrderScreenState extends State<OrderScreen> {
   bool cardBindingAvailable = false;
   List<Map<String, dynamic>> cards = <Map<String, dynamic>>[];
   int selectedCardId = 0;
+  double bonusBalance = 0;
   String promoCode = '';
   bool pickupPinnedByUser = false;
   late final ys.SearchManager locationSearchManager;
@@ -4588,6 +4649,7 @@ class _OrderScreenState extends State<OrderScreen> {
     }
     loadPaymentConfig();
     loadCards();
+    loadBonusBalance();
     loadTariffCatalog();
     loadPromoCode();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -4704,6 +4766,16 @@ class _OrderScreenState extends State<OrderScreen> {
           cardBindingAvailable = false;
         });
       }
+    }
+  }
+
+  Future<void> loadBonusBalance() async {
+    try {
+      final data = await widget.api.get('/api/me');
+      if (!mounted) return;
+      setState(() => bonusBalance = _bonusBalanceFromProfile(data));
+    } catch (_) {
+      // Informational only; do not block payment selection.
     }
   }
 
@@ -7517,7 +7589,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> _showPaymentSheet(bool canUseCard) async {
     if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
-    await loadCards();
+    await Future.wait<void>(<Future<void>>[
+      loadCards(),
+      loadBonusBalance(),
+    ]);
     if (!mounted) return;
 
     String draftMethod = paymentMethod;
@@ -7590,6 +7665,34 @@ class _OrderScreenState extends State<OrderScreen> {
                   ),
                 ),
                 const SizedBox(height: 9),
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: yangiLime.withValues(alpha: sheetTheme.brightness == Brightness.dark ? 0.13 : 0.18),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: yangiLime.withValues(alpha: 0.36)),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                    leading: Container(
+                      width: 46,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: yangiLime,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.stars_rounded, color: yangiGraphite, size: 24),
+                    ),
+                    title: Text(
+                      widget.lang == 'uz' ? 'Bonus balansi' : 'Бонусный баланс',
+                      style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      _bonusBalanceLabel(bonusBalance, widget.lang),
+                      style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
                 Container(
                   decoration: BoxDecoration(
                     color: scheme.surfaceContainerHigh,
@@ -10575,6 +10678,7 @@ class _CardsScreenState extends State<CardsScreen> {
   int defaultCardId = 0;
   String selectedMethod = 'cash';
   int selectedPaymentCardId = 0;
+  double bonusBalance = 0;
   bool selectionInitialized = false;
   String? error;
 
@@ -10588,6 +10692,12 @@ class _CardsScreenState extends State<CardsScreen> {
     if (mounted) setState(() { loading = true; error = null; });
     try {
       final data = await widget.api.get('/api/cards');
+      dynamic profile;
+      try {
+        profile = await widget.api.get('/api/me');
+      } catch (_) {
+        profile = null;
+      }
       final map = Map<String, dynamic>.from(data as Map);
       final list = (map['cards'] as List? ?? const <dynamic>[])
           .whereType<Map>()
@@ -10598,6 +10708,7 @@ class _CardsScreenState extends State<CardsScreen> {
           cards = list;
           defaultCardId = (map['defaultCardId'] as num?)?.toInt() ?? 0;
           cardBindingAvailable = map['cardBindingAvailable'] == true;
+          bonusBalance = _bonusBalanceFromProfile(profile);
           if (!selectionInitialized) {
             final initialId = widget.initialCardId ?? 0;
             selectedPaymentCardId = list.any((card) => (card['cardId'] as num?)?.toInt() == initialId)
@@ -10858,6 +10969,34 @@ class _CardsScreenState extends State<CardsScreen> {
                   style: TextStyle(color: scheme.onSurface, fontSize: 22, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 10),
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: yangiLime.withValues(alpha: theme.brightness == Brightness.dark ? 0.13 : 0.18),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: yangiLime.withValues(alpha: 0.36)),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    leading: Container(
+                      width: 46,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: yangiLime,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.stars_rounded, color: yangiGraphite, size: 24),
+                    ),
+                    title: Text(
+                      widget.lang == 'uz' ? 'Bonus balansi' : 'Бонусный баланс',
+                      style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      _bonusBalanceLabel(bonusBalance, widget.lang),
+                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
                 Container(
                   decoration: BoxDecoration(
                     color: scheme.surfaceContainerHigh,
@@ -11826,26 +11965,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '';
   }
 
-  double get bonusBalance {
-    final raw = me?['bonus_balance'] ??
-        me?['bonusBalance'] ??
-        me?['bonus_sum'] ??
-        me?['bonusSum'] ??
-        me?['bonuses'] ??
-        0;
-    return double.tryParse(raw.toString().replaceAll(',', '.')) ?? 0;
-  }
+  double get bonusBalance => _bonusBalanceFromProfile(me);
 
-  String bonusBalanceLabel() {
-    final rounded = bonusBalance.round().toString();
-    final chars = rounded.split('').reversed.toList();
-    final out = <String>[];
-    for (var i = 0; i < chars.length; i++) {
-      if (i > 0 && i % 3 == 0) out.add(' ');
-      out.add(chars[i]);
-    }
-    return out.reversed.join() + (widget.lang == 'uz' ? ' bonus' : ' бонусов');
-  }
+  String bonusBalanceLabel() => _bonusBalanceLabel(bonusBalance, widget.lang);
 
   double? get clientRating {
     final raw = me?['client_rating'] ??
