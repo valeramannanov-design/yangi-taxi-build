@@ -11168,17 +11168,30 @@ class _CardsScreenState extends State<CardsScreen> {
     }
   }
 
-  Future<void> removeCard(int id) async {
+  Future<void> removeCard(int id, {String masked = ''}) async {
+    final cardLabel = masked.trim();
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: Text(widget.lang == 'uz' ? 'Kartani o‘chirish?' : 'Удалить карту?'),
-        content: Text(widget.lang == 'uz'
-            ? 'Bu karta bilan keyingi to‘lovlar amalga oshirilmaydi.'
-            : 'После удаления этой картой нельзя будет оплачивать поездки.'),
+        content: Text(
+          widget.lang == 'uz'
+              ? (cardLabel.isEmpty
+                  ? 'Bu karta bilan keyingi to‘lovlar amalga oshirilmaydi.'
+                  : cardLabel + ' kartasi o‘chiriladi. Keyingi to‘lovlarda undan foydalanib bo‘lmaydi.')
+              : (cardLabel.isEmpty
+                  ? 'После удаления этой картой нельзя будет оплачивать поездки.'
+                  : 'Карта ' + cardLabel + ' будет удалена. Ею нельзя будет оплачивать следующие поездки.'),
+        ),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(widget.lang == 'uz' ? 'Bekor' : 'Отмена')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(widget.lang == 'uz' ? 'O‘chirish' : 'Удалить')),
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(widget.lang == 'uz' ? 'Bekor' : 'Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(widget.lang == 'uz' ? 'O‘chirish' : 'Удалить'),
+          ),
         ],
       ),
     );
@@ -11187,6 +11200,11 @@ class _CardsScreenState extends State<CardsScreen> {
     try {
       await widget.api.post('/api/cards/' + id.toString() + '/remove', const <String, dynamic>{});
       await load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(widget.lang == 'uz' ? 'Karta o‘chirildi' : 'Карта удалена')),
+        );
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
@@ -11271,13 +11289,26 @@ class _CardsScreenState extends State<CardsScreen> {
                                       : (widget.lang == 'uz' ? 'Saqlangan karta' : 'Сохранённая карта'),
                                   style: TextStyle(color: scheme.onSurfaceVariant),
                                 ),
-                                trailing: Icon(
-                                  isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                                  color: isSelected ? yangiLime : scheme.outline,
-                                  size: 30,
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Icon(
+                                      isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                      color: isSelected ? yangiLime : scheme.outline,
+                                      size: 30,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      tooltip: widget.lang == 'uz' ? 'Kartani o‘chirish' : 'Удалить карту',
+                                      onPressed: () => removeCard(id, masked: masked),
+                                      icon: Icon(
+                                        Icons.delete_outline_rounded,
+                                        color: scheme.error,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 onTap: () => makeDefault(id),
-                                onLongPress: () => removeCard(id),
                               ),
                             ),
                             if (entry.key != cards.length - 1)
