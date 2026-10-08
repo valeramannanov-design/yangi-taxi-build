@@ -6165,8 +6165,8 @@ class _OrderScreenState extends State<OrderScreen> {
                             const SizedBox(height: 7),
                             Text(
                               widget.lang == 'uz'
-                                  ? 'Manzilni tanlang — narx va mashina darhol ko‘rinadi'
-                                  : 'Выберите адрес — сразу покажем цену и машину',
+                                  ? 'Tarifni oldindan tanlash mumkin — narx manzildan keyin ko‘rinadi'
+                                  : 'Тариф можно выбрать заранее — цену покажем после адреса',
                               style: TextStyle(
                                 color: scheme.onSurfaceVariant,
                                 fontSize: 12.5,
@@ -6478,6 +6478,7 @@ class _OrderScreenState extends State<OrderScreen> {
                               ),
                             ),
                           ],
+                          ],
                           const SizedBox(height: 14),
 
                           Row(
@@ -6751,9 +6752,12 @@ class _OrderScreenState extends State<OrderScreen> {
                                                               ? 'Mavjud emas'
                                                               : 'Недоступен')
                                                           : price != null
-                                                              ? moneyLabel(
-                                                                  price)
-                                                              : '—',
+                                                              ? moneyLabel(price)
+                                                              : (!destinationReady
+                                                                  ? (widget.lang == 'uz'
+                                                                      ? 'Narx manzildan keyin'
+                                                                      : 'Цена после адреса')
+                                                                  : '—'),
                                                       textAlign:
                                                           TextAlign.right,
                                                       maxLines: 2,
@@ -6830,6 +6834,7 @@ class _OrderScreenState extends State<OrderScreen> {
                               );
                             }),
 
+                          if (destinationReady) ...<Widget>[
                           const SizedBox(height: 10),
                           Row(
                             children: <Widget>[
