@@ -32,12 +32,18 @@ jobs:
           cp -R shell/android flutter/android
       - name: Configure Android app
         run: |
+          mkdir -p flutter/android/app/src/main/res/mipmap-xxxhdpi
+          cp flutter/android_launcher_icon.jpg flutter/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_yangi.jpg
+
           python3 - <<'PY'
           from pathlib import Path
 
           manifest = Path('flutter/android/app/src/main/AndroidManifest.xml')
           text = manifest.read_text()
           text = text.replace('android:label="yangi_taxi"', 'android:label="Yangi Taxi"')
+          text = text.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/ic_launcher_yangi"')
+          if 'android:roundIcon=' not in text:
+              text = text.replace('<application', '<application android:roundIcon="@mipmap/ic_launcher_yangi"', 1)
           if 'android:usesCleartextTraffic=' not in text:
               text = text.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           perms = '    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n'

@@ -1,7 +1,7 @@
 name: yangi_taxi
 description: Yangi Taxi passenger app
 publish_to: none
-version: 1.9.4+56
+version: 1.9.4+57
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
