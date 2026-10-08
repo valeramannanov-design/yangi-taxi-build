@@ -865,6 +865,168 @@ String _bonusBalanceLabel(double value, String lang) {
   return out.reversed.join() + (lang == 'uz' ? ' bonus' : ' бонусов');
 }
 
+
+bool _looksMahallaAddressPart(String value) {
+  final s = value
+      .toLowerCase()
+      .replaceAll('’', "'")
+      .replaceAll('ʻ', "'")
+      .replaceAll('‘', "'")
+      .trim();
+  return s.contains('mahall') ||
+      s.contains('махалл') ||
+      s.contains('мфй') ||
+      RegExp(r'(^|\s)mfy($|\s)').hasMatch(s);
+}
+
+bool _looksStreetAddressPart(String value) {
+  final s = value
+      .toLowerCase()
+      .replaceAll('’', "'")
+      .replaceAll('ʻ', "'")
+      .replaceAll('‘', "'")
+      .trim();
+  return s.contains('улиц') ||
+      s.startsWith('ул. ') ||
+      s.startsWith('ул ') ||
+      s.contains('просп') ||
+      s.contains('шоссе') ||
+      s.contains("ko'cha") ||
+      s.contains('kocha') ||
+      s.contains('кўча') ||
+      s.contains('street') ||
+      s.contains("yo'li") ||
+      s.contains('yoli') ||
+      s.contains('йўли');
+}
+
+bool _looksHouseAddressPart(String value) {
+  final s = value.toLowerCase().trim();
+  return RegExp(r'^(дом|д\.?|uy|house)\s*\S+').hasMatch(s) ||
+      RegExp(r'^\d+[a-zа-яёқғҳў0-9\-\/]*$').hasMatch(s);
+}
+
+String _uniqueAddressJoin(Iterable<String?> values) {
+  final seen = <String>{};
+  final out = <String>[];
+  for (final raw in values) {
+    final value = raw?.trim() ?? '';
+    if (value.isEmpty) continue;
+    final key = value
+        .toLowerCase()
+        .replaceAll('’', "'")
+        .replaceAll('ʻ', "'")
+        .replaceAll('‘', "'")
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (seen.add(key)) out.add(value);
+  }
+  return out.join(', ');
+}
+
+String _taxiMasterDisplayAddress(Map<String, dynamic> json, String full) {
+  final explicit =
+      (json['shortLabel'] ?? json['displayLabel'] ?? '').toString().trim();
+  if (explicit.isNotEmpty) return _compactAddress(explicit);
+
+  final parts = full
+      .replaceAll('\n', ',')
+      .replaceAll(';', ',')
+      .split(',')
+      .map((x) => x.trim())
+      .where((x) => x.isNotEmpty)
+      .toList();
+
+  // Historical LIVE response is built from city, street, house, point.
+  // Passenger UI should show point/mahalla, street, house.
+  if (parts.length >= 4) {
+    final street = parts[1];
+    final house = parts[2];
+    final point = parts.sublist(3).join(', ');
+    final result = _uniqueAddressJoin(<String?>[point, street, house]);
+    if (result.isNotEmpty) return result;
+  }
+
+  if (parts.length == 3) {
+    final a = parts[0];
+    final b = parts[1];
+    final c = parts[2];
+
+    if (_looksStreetAddressPart(a) && _looksHouseAddressPart(b)) {
+      return _uniqueAddressJoin(<String?>[c, a, b]);
+    }
+    if (_looksStreetAddressPart(b) && _looksHouseAddressPart(c)) {
+      return _uniqueAddressJoin(<String?>[
+        _looksMahallaAddressPart(a) ? a : null,
+        b,
+        c,
+      ]);
+    }
+  }
+
+  return _compactAddress(full);
+}
+
+({String full, String display}) _yandexStructuredAddress(
+  dynamic geoObject,
+  String fallback,
+) {
+  try {
+    final toponym = geoObject.metadataContainer
+        .get(ys.SearchToponymObjectMetadata.factory);
+    final business = geoObject.metadataContainer
+        .get(ys.SearchBusinessObjectMetadata.factory);
+    final address = toponym?.address ?? business?.address;
+    if (address == null) {
+      return (full: fallback, display: _compactAddress(fallback));
+    }
+
+    String? component(ys.SearchAddressComponentKind kind) {
+      for (final item in address.components) {
+        if (item.kinds.contains(kind)) {
+          final name = item.name.trim();
+          if (name.isNotEmpty) return name;
+        }
+      }
+      return null;
+    }
+
+    String? mahalla;
+    for (final item in address.components) {
+      final name = item.name.trim();
+      if (name.isEmpty) continue;
+      if (_looksMahallaAddressPart(name)) {
+        mahalla = name;
+        break;
+      }
+    }
+
+    final district = component(ys.SearchAddressComponentKind.District);
+    final districtLower = district?.toLowerCase() ?? '';
+    if (mahalla == null &&
+        district != null &&
+        !districtLower.contains('район') &&
+        !districtLower.contains('tumani') &&
+        !districtLower.endsWith(' tuman')) {
+      mahalla = district;
+    }
+
+    final street = component(ys.SearchAddressComponentKind.Street);
+    final house = component(ys.SearchAddressComponentKind.House);
+    var display = _uniqueAddressJoin(<String?>[mahalla, street, house]);
+
+    if (display.isEmpty) display = _compactAddress(fallback);
+
+    final formatted = address.formattedAddress.trim();
+    return (
+      full: formatted.isEmpty ? fallback : formatted,
+      display: display,
+    );
+  } catch (_) {
+    return (full: fallback, display: _compactAddress(fallback));
+  }
+}
+
 class Place {
   Place(
     this.address,
@@ -895,8 +1057,7 @@ class Place {
 
   factory Place.fromJson(Map<String, dynamic> j) {
     final full = (j['fullLabel'] ?? j['label'] ?? '').toString().trim();
-    final display =
-        (j['shortLabel'] ?? j['displayLabel'] ?? '').toString().trim();
+    final display = _taxiMasterDisplayAddress(j, full);
     return Place(
       full,
       (j['lat'] as num).toDouble(),
@@ -5340,27 +5501,33 @@ class _OrderScreenState extends State<OrderScreen> {
     final listener = ys.SearchSessionSearchListener(
       onSearchResponse: (response) {
         String label = '';
+        String displayLabel = '';
         for (final item in response.collection.children) {
           final object = item.asGeoObject();
           if (object == null) continue;
           final name = object.name?.trim() ?? '';
           final description = object.descriptionText?.trim() ?? '';
-          label = description.isEmpty || description == name
+          final fallback = description.isEmpty || description == name
               ? name
               : (name.isEmpty ? description : '$name, $description');
-          if (label.isNotEmpty) break;
+          if (fallback.isEmpty) continue;
+          final structured = _yandexStructuredAddress(object, fallback);
+          label = structured.full;
+          displayLabel = structured.display;
+          break;
         }
         if (label.isEmpty) {
           label = widget.lang == 'uz' ? 'Joriy joylashuv' : 'Текущее местоположение';
         }
         if (!completer.isCompleted) {
-          final shortLabel = _compactAddress(label);
           completer.complete(
             Place(
               label,
               point.latitude,
               point.longitude,
-              displayLabel: shortLabel,
+              displayLabel: displayLabel.isEmpty
+                  ? _compactAddress(label)
+                  : displayLabel,
             ),
           );
         }
@@ -8520,27 +8687,33 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
     final listener = ys.SearchSessionSearchListener(
       onSearchResponse: (response) {
         String label = '';
+        String displayLabel = '';
         for (final item in response.collection.children) {
           final object = item.asGeoObject();
           if (object == null) continue;
           final name = object.name?.trim() ?? '';
           final description = object.descriptionText?.trim() ?? '';
-          label = description.isEmpty || description == name
+          final fallback = description.isEmpty || description == name
               ? name
               : (name.isEmpty ? description : '$name, $description');
-          if (label.isNotEmpty) break;
+          if (fallback.isEmpty) continue;
+          final structured = _yandexStructuredAddress(object, fallback);
+          label = structured.full;
+          displayLabel = structured.display;
+          break;
         }
         if (label.isEmpty) {
           label = '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
         }
         if (!completer.isCompleted) {
-          final shortLabel = _compactAddress(label);
           completer.complete(
             Place(
               label,
               point.latitude,
               point.longitude,
-              displayLabel: shortLabel,
+              displayLabel: displayLabel.isEmpty
+                  ? _compactAddress(label)
+                  : displayLabel,
             ),
           );
         }
