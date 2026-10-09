@@ -28,7 +28,7 @@ export async function resolveOwnedRideState({
     state = await getState();
   } catch (error) {
     const missing = /order not found|заказ не найден/i.test(String(error?.message || '')) ||
-      error?.statusCode === 404;
+      error?.statusCode === 404 || Number(error?.tmCode) === 100;
     if (!missing) throw error;
     const [current, history] = await Promise.allSettled([getCurrent(), getHistory()]);
     if (current.status === 'fulfilled') {

@@ -3386,6 +3386,16 @@ class _ShellState extends State<Shell> {
     });
   }
 
+  void switchActiveOrder(int id) {
+    if (id <= 0) return;
+    _orderStateRevision += 1;
+    unawaited(_persistActiveOrder(id));
+    if (mounted) setState(() {
+      activeId = id;
+      tab = 1;
+    });
+  }
+
   void orderCreated(int id) {
     _orderStateRevision += 1;
     unawaited(_persistActiveOrder(id));
@@ -3710,6 +3720,7 @@ class _ShellState extends State<Shell> {
         orderId: activeId,
         onMenu: openMenu,
         onNewTrip: startNewTrip,
+        onSwitchOrder: switchActiveOrder,
         isActive: tab == 1,
       ),
       HistoryScreen(api: widget.api, lang: widget.lang, onMenu: goHomeSafely),
@@ -6150,6 +6161,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> createOrder() async {
     if (busy) return;
+    final orderStartedAt = DateTime.now();
     final deliveryWithoutDestination = selectedTariffKey == 'delivery' && to == null;
     if (from == null || (to == null && !deliveryWithoutDestination)) return;
     final orderPayload = <String, dynamic>{
@@ -6206,9 +6218,14 @@ class _OrderScreenState extends State<OrderScreen> {
         throw ApiException('TaxiMaster не вернул номер заказа');
       }
       pendingOrderRequestId = null;
-
       pendingOrderRequestSignature = null;
-      widget.onOrder(orderId);
+      // The user should see the searching/submission stage even if TaxiMaster
+      // instantly assigns a driver before the first status poll.
+      final elapsed = DateTime.now().difference(orderStartedAt).inMilliseconds;
+      if (elapsed < 1800) {
+        await Future<void>.delayed(Duration(milliseconds: 1800 - elapsed));
+      }
+      if (mounted) widget.onOrder(orderId);
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -7433,6 +7450,41 @@ class _OrderScreenState extends State<OrderScreen> {
               );
             },
           ),
+          if (busy && widget.isActive)
+            Positioned.fill(
+              child: ColoredBox(
+                color: const Color(0xEF0C1011),
+                child: SafeArea(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(Icons.local_taxi_rounded, size: 64, color: yangiLime),
+                        const SizedBox(height: 22),
+                        Text(
+                          widget.lang == 'uz' ? 'Mashina qidiryapmiz…' : 'Ищем машину…',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontSize: 27, fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          widget.lang == 'uz'
+                              ? 'Buyurtmani TaxiMasterga yuboryapmiz'
+                              : 'Отправляем заказ в TaxiMaster и ожидаем подтверждения',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Color(0xFFCCD0D0), fontSize: 14),
+                        ),
+                        const SizedBox(height: 28),
+                        const SizedBox(
+                          height: 32, width: 32,
+                          child: CircularProgressIndicator(color: yangiLime, strokeWidth: 3),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -9191,6 +9243,7 @@ class RideScreen extends StatefulWidget {
     required this.orderId,
     required this.onMenu,
     required this.onNewTrip,
+    required this.onSwitchOrder,
     required this.isActive,
   });
   final ApiClient api;
@@ -9198,6 +9251,7 @@ class RideScreen extends StatefulWidget {
   final int? orderId;
   final VoidCallback onMenu;
   final VoidCallback onNewTrip;
+  final ValueChanged<int> onSwitchOrder;
   final bool isActive;
 
   @override
@@ -9372,6 +9426,41 @@ class _RideScreenState extends State<RideScreen> {
       });
     } finally {
       routeRequestInFlight = false;
+    }
+  }
+
+  Future<void> recoverCurrentRide() async {
+    try {
+      final result = await widget.api.get('/api/orders/current');
+      if (result is! List) throw ApiException('Unexpected TaxiMaster current orders response');
+      final ids = <int>{};
+      for (final entry in result) {
+        if (entry is! Map) continue;
+        final raw = entry['order_id'] ?? entry['orderId'] ?? entry['id'];
+        final id = raw is num ? raw.toInt() : int.tryParse(raw?.toString() ?? '');
+        if (id != null && id > 0) ids.add(id);
+      }
+      if (!mounted) return;
+      if (ids.length == 1) {
+        final id = ids.single;
+        if (id == widget.orderId) {
+          await refresh();
+        } else {
+          widget.onSwitchOrder(id);
+        }
+      } else {
+        setState(() {
+          error = ids.isEmpty
+              ? (widget.lang == 'uz'
+                  ? 'TaxiMasterda faol buyurtma topilmadi. Yangi buyurtmadan oldin dispetcher bilan tekshiring.'
+                  : 'TaxiMaster не показывает активных заказов. Перед новым заказом уточните статус у диспетчера.')
+              : (widget.lang == 'uz'
+                  ? 'Bir nechta faol buyurtma topildi. Iltimos, dispetcherga murojaat qiling.'
+                  : 'Найдено несколько активных заказов. Уточните нужный у диспетчера.');
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
     }
   }
 
@@ -9933,6 +10022,12 @@ class _RideScreenState extends State<RideScreen> {
               onPressed: () => refresh(),
               icon: const Icon(Icons.refresh_rounded),
               label: Text(widget.lang == 'uz' ? 'Qayta tekshirish' : 'Проверить снова'),
+            ),
+            const SizedBox(height: 9),
+            OutlinedButton.icon(
+              onPressed: recoverCurrentRide,
+              icon: const Icon(Icons.manage_search_rounded),
+              label: Text(widget.lang == 'uz' ? 'Faol buyurtmani topish' : 'Найти текущий заказ'),
             ),
             const SizedBox(height: 9),
             OutlinedButton.icon(

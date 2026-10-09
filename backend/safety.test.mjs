@@ -221,3 +221,24 @@ test('ride recovery blocks mismatched owners and unrelated TaxiMaster failures',
     getHistory: async () => ({ orders: [] }),
   }), /TaxiMaster timeout/);
 });
+
+test('TaxiMaster code 100 recovers an authenticated current order even with a localized error', async () => {
+  const result = await resolveOwnedRideState({
+    orderId: 810, clientId: 51,
+    getState: async () => { throw Object.assign(new Error('Не найден заказ ИД=810'), { tmCode: 100 }); },
+    getCurrent: async () => ({ orders: [{ id: 810, client_id: 51, state_kind: 'new_order' }] }),
+    getHistory: async () => ({ orders: [] }),
+  });
+  assert.equal(result.state.order_id, 810);
+  assert.equal(result.state.state_kind, 'new_order');
+  assert.equal(result.source, 'current_orders');
+});
+
+test('do not misinterpret unrelated TaxiMaster code 100 as a valid ride state', async () => {
+  await assert.rejects(resolveOwnedRideState({
+    orderId: 811, clientId: 51,
+    getState: async () => { throw Object.assign(new Error('Заказ не найден'), { tmCode: 100 }); },
+    getCurrent: async () => ({ orders: [] }),
+    getHistory: async () => ({ orders: [] }),
+  }), { statusCode: 404 });
+});
