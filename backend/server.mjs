@@ -169,9 +169,13 @@ const runIdempotentOrderRequest = createOrderRequestGuard();
 
 const registrationCodes = new Map();
 const registrationSendLocks = new Set();
+const registrationVerifyLocks = new Set();
+// Count all SMS attempts per phone, even if TaxiMaster times out after accepting one.
+const registrationSendHistory = new Map();
 const REG_CODE_TTL_MS = Math.max(60_000, Number(process.env.REG_CODE_TTL_MS || 5 * 60_000));
 const REG_CODE_RESEND_MS = Math.max(30_000, Number(process.env.REG_CODE_RESEND_MS || 60_000));
 const REG_CODE_MAX_ATTEMPTS = Math.max(1, Number(process.env.REG_CODE_MAX_ATTEMPTS || 5));
+const REG_CODE_MAX_SENDS_PER_HOUR = Math.max(1, Number(process.env.REG_CODE_MAX_SENDS_PER_HOUR || 3));
 
 const pad = (n) => String(n).padStart(2, '0');
 function tmTime(date = new Date()) {
@@ -242,6 +246,18 @@ function normalizePhone(value) {
 
 function tmPhoneDigits(value) {
   return String(value || '').replace(/\D/g, '');
+}
+
+function normalizeRegistrationPhone(value) {
+  const raw = String(value ?? '').trim();
+  const digits = raw.replace(/\D/g, '');
+  const full = digits.length === 9 ? '998' + digits : digits;
+  if (!/^[+\d\s().-]+$/.test(raw) || !/^998\d{9}$/.test(full)) {
+    const error = new Error('Registration requires a valid Uzbekistan phone (+998XXXXXXXXX)');
+    error.statusCode = 400;
+    throw error;
+  }
+  return '+' + full;
 }
 
 function orderPhoneDigits(value) {
@@ -1835,6 +1851,11 @@ function cleanupRegistrationCodes() {
   for (const [phone, entry] of registrationCodes.entries()) {
     if (!entry || now > entry.expiresAt) registrationCodes.delete(phone);
   }
+  for (const [phone, sentAt] of registrationSendHistory.entries()) {
+    const recent = sentAt.filter((at) => now - at < 60 * 60_000);
+    if (recent.length) registrationSendHistory.set(phone, recent);
+    else registrationSendHistory.delete(phone);
+  }
 }
 
 async function sendRegistrationCode(phone) {
@@ -1851,7 +1872,16 @@ async function sendRegistrationCode(phone) {
     e.statusCode = 429;
     throw e;
   }
+  const recent = registrationSendHistory.get(phone) || [];
+  if (recent.length >= REG_CODE_MAX_SENDS_PER_HOUR) {
+    const e = new Error('Hourly SMS limit reached for this phone');
+    e.statusCode = 429;
+    throw e;
+  }
   registrationSendLocks.add(phone);
+  // Reserve the quota before calling TaxiMaster. An upstream timeout may
+  // occur after the operator has already accepted the SMS.
+  registrationSendHistory.set(phone, [...recent, now]);
   try {
     const code = String(crypto.randomInt(100000, 1000000));
     await tmPostForm('send_sms', { phone: tmPhoneDigits(phone), message: 'Yangi Taxi: kod ' + code });
@@ -1875,16 +1905,19 @@ function verifyRegistrationCode(phone, code) {
     throw e;
   }
   entry.attempts += 1;
-  if (entry.attempts > REG_CODE_MAX_ATTEMPTS) {
-    registrationCodes.delete(phone);
-    const e = new Error('Too many SMS code attempts');
-    e.statusCode = 429;
-    throw e;
-  }
-  const actual = registrationCodeHash(phone, String(code || '').trim());
+  const submittedCode = String(code ?? '').trim();
+  const actual = registrationCodeHash(phone, submittedCode);
   const a = Buffer.from(actual);
   const b = Buffer.from(entry.hash);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+  const valid = /^\d{6}$/.test(submittedCode) &&
+    a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (!valid) {
+    if (entry.attempts >= REG_CODE_MAX_ATTEMPTS) {
+      registrationCodes.delete(phone);
+      const e = new Error('Too many SMS code attempts');
+      e.statusCode = 429;
+      throw e;
+    }
     const e = new Error('Invalid SMS code');
     e.statusCode = 400;
     throw e;
@@ -1909,14 +1942,14 @@ async function realRoute(req, res, path, url) {
   }
   if (req.method === 'POST' && path === '/api/auth/register/request-code') {
     const body = await readJson(req);
-    const phone = normalizePhone(body.phone);
+    const phone = normalizeRegistrationPhone(body.phone);
     await sendRegistrationCode(phone);
     return send(res, 200, { ok: true, data: { sent: true, expiresInSeconds: Math.round(REG_CODE_TTL_MS / 1000) } });
   }
 
   if (req.method === 'POST' && path === '/api/auth/register/verify-code') {
     const body = await readJson(req);
-    const phone = normalizePhone(body.phone);
+    const phone = normalizeRegistrationPhone(body.phone);
     const name = String(body.name || '').trim();
     const password = String(body.password || '');
     if (!name) {
@@ -1929,16 +1962,32 @@ async function realRoute(req, res, path, url) {
       e.statusCode = 400;
       throw e;
     }
-    verifyRegistrationCode(phone, body.code);
-    const data = await tmPostJson('register_client2', {
-      name,
-      login: phone,
-      password,
-      phones: [{ phone: tmPhoneDigits(phone), is_default: true }],
-      need_validate: true,
-    });
-    registrationCodes.delete(phone);
-    return send(res, 201, { ok: true, data: { clientId: data.client_id, token: issueSession(data.client_id, phone) } });
+    if (registrationVerifyLocks.has(phone)) {
+      const e = new Error('Registration is already in progress for this phone');
+      e.statusCode = 429;
+      throw e;
+    }
+    registrationVerifyLocks.add(phone);
+    try {
+      verifyRegistrationCode(phone, body.code);
+      const data = await tmPostJson('register_client2', {
+        name,
+        login: phone,
+        password,
+        phones: [{ phone: tmPhoneDigits(phone), is_default: true }],
+        need_validate: true,
+      });
+      const clientId = Number(data.client_id);
+      if (!Number.isSafeInteger(clientId) || clientId <= 0) {
+        const e = new Error('TaxiMaster did not return a valid client ID; contact support before retrying');
+        e.statusCode = 502;
+        throw e;
+      }
+      registrationCodes.delete(phone);
+      return send(res, 201, { ok: true, data: { clientId, token: issueSession(clientId, phone) } });
+    } finally {
+      registrationVerifyLocks.delete(phone);
+    }
   }
 
   if (req.method === 'POST' && path === '/api/auth/register') {
