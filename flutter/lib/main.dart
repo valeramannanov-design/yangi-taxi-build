@@ -9754,6 +9754,28 @@ class _RideScreenState extends State<RideScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
               ),
+              if (widget.orderId != null) ...<Widget>[
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 26),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      FilledButton.icon(
+                        onPressed: refresh,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: Text(widget.lang == 'uz' ? 'Qayta tekshirish' : 'Проверить снова'),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: recoverCurrentRide,
+                        icon: const Icon(Icons.manage_search_rounded),
+                        label: Text(widget.lang == 'uz' ? 'Faol buyurtmani topish' : 'Найти текущий заказ'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const Spacer(),
             ],
           ),
