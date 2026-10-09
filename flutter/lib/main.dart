@@ -4573,76 +4573,106 @@ class _TariffVehicleArt extends StatelessWidget {
 }
 
 
+// Use the exact same brand car artwork as the tariff selection cards.
+// The car is a tariff illustration, not an invented representation of the
+// particular driver's model; the actual model is shown beside it.
 class _DriverAssignedVehicleArt extends StatelessWidget {
   const _DriverAssignedVehicleArt({required this.kind});
   final String kind;
 
   @override
   Widget build(BuildContext context) {
-    // Vector-only branded vehicle artwork; no unrelated stock photos.
-    final accentIcon = switch (kind) {
-      'delivery' => Icons.local_shipping_rounded,
-      'cargo' => Icons.fire_truck_rounded,
-      'xl' || 'minivan' => Icons.airport_shuttle_rounded,
-      _ => Icons.local_taxi_rounded,
-    };
-    return LayoutBuilder(
-      builder: (context, size) => Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: yangiGraphite,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: yangiLime.withValues(alpha: 0.45)),
+    return _TariffVehicleArt(
+      kind: kind,
+      selected: false,
+      available: true,
+    );
+  }
+}
+
+// Shared between "driver assigned" and "on trip" screens, so the visual
+// treatment always matches the tariff list rather than an unrelated tile.
+class _RideAssignedCarCard extends StatelessWidget {
+  const _RideAssignedCarCard({
+    required this.kind,
+    required this.model,
+    required this.number,
+    required this.lang,
+  });
+
+  final String kind;
+  final String model;
+  final String number;
+  final String lang;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final modelLabel = model.isNotEmpty
+        ? model
+        : (lang == 'uz' ? 'Yangi Taxi avtomobili' : 'Автомобиль Yangi Taxi');
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(11, 9, 12, 9),
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF1B1E1E) : const Color(0xFFF3F5F5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: dark ? const Color(0xFF343A3A) : const Color(0xFFE0E4E3),
+          width: 1,
         ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: <Widget>[
-            Positioned(
-              right: -18,
-              top: -34,
-              child: Container(
-                width: 108, height: 108,
-                decoration: BoxDecoration(
-                  color: yangiLime.withValues(alpha: 0.16),
-                  shape: BoxShape.circle,
+      ),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 130,
+            height: 86,
+            child: _DriverAssignedVehicleArt(kind: kind),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  modelLabel,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    height: 1.15,
+                  ),
                 ),
-              ),
+                if (number.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 9),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: dark ? const Color(0xFF303536) : Colors.white,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Text(
+                      number,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
-            Positioned(
-              bottom: 10, left: 12, right: 12,
-              child: Container(
-                height: 2,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: <Color>[
-                    yangiLime.withValues(alpha: 0.05),
-                    yangiLime.withValues(alpha: 0.8),
-                    yangiLime.withValues(alpha: 0.05),
-                  ]),
-                ),
-              ),
-            ),
-            Icon(accentIcon,
-              size: size.maxHeight.isFinite
-                  ? math.min(68.0, size.maxHeight * 0.69)
-                  : 55,
-              color: Colors.white,
-            ),
-            Positioned(
-              top: 7, left: 9,
-              child: Container(
-                width: 22, height: 22,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: yangiLime,
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: const Text('Y',
-                  style: TextStyle(color: yangiGraphite,
-                    fontSize: 14, fontWeight: FontWeight.w900)),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -10266,86 +10296,72 @@ class _RideScreenState extends State<RideScreen> {
     }
 
     Widget driverBlock() {
-      final initial = driverName.isEmpty ? 'Y' : driverName.characters.first.toUpperCase();
+      final initial = driverName.isEmpty
+          ? 'Y'
+          : driverName.characters.first.toUpperCase();
       return Container(
-        padding: const EdgeInsets.all(13),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
         decoration: BoxDecoration(
-          color: dark ? const Color(0xFF171A1B) : const Color(0xFFF5F6F6),
-          borderRadius: BorderRadius.circular(21),
+          color: dark ? const Color(0xFF1B1E1E) : const Color(0xFFF3F5F5),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: dark ? const Color(0xFF343A3A) : const Color(0xFFE0E4E3),
+          ),
         ),
         child: Row(
           children: <Widget>[
             CircleAvatar(
-              radius: 27,
+              radius: 24,
               backgroundColor: yangiLime,
               child: Text(
                 initial,
                 style: const TextStyle(
                   color: yangiGraphite,
-                  fontSize: 20,
+                  fontSize: 19,
                   fontWeight: FontWeight.w900,
                 ),
               ),
             ),
-            const SizedBox(width: 11),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
                     driverName.isEmpty
-                        ? (widget.lang == 'uz' ? 'Yangi Taxi haydovchisi' : 'Водитель Yangi Taxi')
+                        ? (widget.lang == 'uz'
+                            ? 'Yangi Taxi haydovchisi'
+                            : 'Водитель Yangi Taxi')
                         : driverName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900),
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: <Widget>[
-                      if (rating.isNotEmpty) ...<Widget>[
-                        const Icon(Icons.star_rounded, size: 16, color: Color(0xFFFFB300)),
-                        const SizedBox(width: 3),
+                  if (rating.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 5),
+                    Row(
+                      children: <Widget>[
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 16,
+                          color: Color(0xFFFFB300),
+                        ),
+                        const SizedBox(width: 4),
                         Text(
                           rating,
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
-                        ),
-                      ],
-                      if (rating.isNotEmpty && car.isNotEmpty)
-                        Text('  •  ', style: TextStyle(color: scheme.onSurfaceVariant)),
-                      if (car.isNotEmpty)
-                        Flexible(
-                          child: Text(
-                            car,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11.5),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
                           ),
                         ),
-                    ],
-                  ),
-                  if (number.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: dark ? const Color(0xFF242829) : Colors.white,
-                        borderRadius: BorderRadius.circular(7),
-                        border: Border.all(color: scheme.outlineVariant),
-                      ),
-                      child: Text(
-                        number,
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5),
-                      ),
+                      ],
                     ),
                   ],
                 ],
               ),
-            ),
-            SizedBox(
-              width: 112,
-              height: 62,
-              child: _DriverAssignedVehicleArt(kind: tariffKey),
             ),
           ],
         ),
@@ -10792,62 +10808,12 @@ class _RideScreenState extends State<RideScreen> {
             ),
             const SizedBox(height: 12),
             Divider(height: 1, color: scheme.outlineVariant),
-            const SizedBox(height: 10),
-            Row(
-              children: <Widget>[
-                SizedBox(
-                  width: 146,
-                  height: 88,
-                  child: _DriverAssignedVehicleArt(kind: tariffKey),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        car.isEmpty
-                            ? (widget.lang == 'uz'
-                                ? 'Yangi Taxi avtomobili'
-                                : 'Автомобиль Yangi Taxi')
-                            : car,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      if (number.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 7),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 9,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: dark
-                                ? const Color(0xFF222728)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(7),
-                            border: Border.all(
-                              color: scheme.outlineVariant,
-                            ),
-                          ),
-                          child: Text(
-                            number,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
+            const SizedBox(height: 12),
+            _RideAssignedCarCard(
+              kind: tariffKey,
+              model: car,
+              number: number,
+              lang: widget.lang,
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -10928,6 +10894,13 @@ class _RideScreenState extends State<RideScreen> {
             ),
           if (hasAssignedCrew) ...<Widget>[
             driverBlock(),
+            const SizedBox(height: 10),
+            _RideAssignedCarCard(
+              kind: tariffKey,
+              model: car,
+              number: number,
+              lang: widget.lang,
+            ),
             const SizedBox(height: 10),
           ],
           Row(
