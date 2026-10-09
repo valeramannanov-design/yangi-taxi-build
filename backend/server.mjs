@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { createOrderRequestGuard } from './order-idempotency.mjs';
 import { createAtomicJsonWriter } from './atomic-json-store.mjs';
+import { assertOwnedOrder } from './order-ownership.mjs';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -207,7 +208,17 @@ function send(res, status, payload) {
 
 async function readJson(req) {
   const chunks = [];
-  for await (const c of req) chunks.push(c);
+  let length = 0;
+  const maxBytes = 5 * 1024 * 1024; // Includes 3 MB photoBase64 uploads.
+  for await (const c of req) {
+    length += c.length;
+    if (length > maxBytes) {
+      const error = new Error('Request body too large');
+      error.statusCode = 413;
+      throw error;
+    }
+    chunks.push(c);
+  }
   if (!chunks.length) return {};
   try {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -1766,6 +1777,21 @@ async function mockRoute(req, res, path, url) {
     if (s && ['finished', 'aborted'].includes(s.state_kind) && !list.some((x) => x.order_id === s.order_id)) list.unshift(s);
     return send(res, 200, { ok: true, data: list });
   }
+  async function requireOwnedOrder(orderId, state) {
+    return assertOwnedOrder({
+      orderId,
+      clientId: session.clientId,
+      state,
+      loadCurrent: () => tmGet('get_current_orders', { client_id: session.clientId }),
+      loadHistory: () => tmGet('get_finished_orders', {
+        start_time: tmDaysAgo(90),
+        finish_time: tmTime(),
+        client_id: session.clientId,
+        state_type: 'all',
+      }),
+    });
+  }
+
   const driver = /^\/api\/orders\/(\d+)\/driver-location$/.exec(path);
   if (req.method === 'GET' && driver) {
     const s = mockState();
@@ -1905,16 +1931,9 @@ async function realRoute(req, res, path, url) {
   }
 
   if (req.method === 'POST' && path === '/api/auth/register') {
-    const body = await readJson(req);
-    const phone = normalizePhone(body.phone);
-    const data = await tmPostJson('register_client2', {
-      name: String(body.name || '').trim(),
-      login: phone,
-      password: String(body.password || ''),
-      phones: [{ phone: tmPhoneDigits(phone), is_default: true }],
-      need_validate: true,
-    });
-    return send(res, 201, { ok: true, data: { clientId: data.client_id, token: issueSession(data.client_id, phone) } });
+    const error = new Error('Registration requires SMS verification');
+    error.statusCode = 403;
+    throw error;
   }
   if (req.method === 'POST' && path === '/api/auth/login') {
     const body = await readJson(req);
@@ -2482,11 +2501,7 @@ async function realRoute(req, res, path, url) {
   if (req.method === 'GET' && driver) {
     const orderId = Number(driver[1]);
     const state = await tmGet('get_order_state', { order_id: orderId });
-    if (state.client_id && Number(state.client_id) !== Number(session.clientId)) {
-      const e = new Error('Forbidden');
-      e.statusCode = 403;
-      throw e;
-    }
+    await requireOwnedOrder(orderId, state);
     let location = null;
     if (state.crew_id) {
       const coords = await tmGet('get_crews_coords', { crew_id: state.crew_id });
@@ -2499,11 +2514,7 @@ async function realRoute(req, res, path, url) {
   if (req.method === 'POST' && ratingMatch) {
     const orderId = Number(ratingMatch[1]);
     const state = await tmGet('get_order_state', { order_id: orderId });
-    if (state.client_id && Number(state.client_id) !== Number(session.clientId)) {
-      const e = new Error('Forbidden');
-      e.statusCode = 403;
-      throw e;
-    }
+    await requireOwnedOrder(orderId, state);
 
     const body = await readJson(req);
     const rating = Number(body.rating);
@@ -2537,11 +2548,7 @@ async function realRoute(req, res, path, url) {
   if (req.method === 'GET' && penalty) {
     const orderId = Number(penalty[1]);
     const state = await tmGet('get_order_state', { order_id: orderId });
-    if (state.client_id && Number(state.client_id) !== Number(session.clientId)) {
-      const e = new Error('Forbidden');
-      e.statusCode = 403;
-      throw e;
-    }
+    await requireOwnedOrder(orderId, state);
     const stateId = await getCancelStateId();
     const data = await tmGet('check_cancel_order_penalty', { order_id: orderId, cancel_order_state_id: stateId });
     return send(res, 200, { ok: true, data: { stateId, ...data } });
@@ -2551,11 +2558,7 @@ async function realRoute(req, res, path, url) {
   if (req.method === 'POST' && cancel) {
     const orderId = Number(cancel[1]);
     const state = await tmGet('get_order_state', { order_id: orderId });
-    if (state.client_id && Number(state.client_id) !== Number(session.clientId)) {
-      const e = new Error('Forbidden');
-      e.statusCode = 403;
-      throw e;
-    }
+    await requireOwnedOrder(orderId, state);
     const stateId = await getCancelStateId();
     const p = await tmGet('check_cancel_order_penalty', { order_id: orderId, cancel_order_state_id: stateId });
     const data = await tmPostQuery('change_order_state', {

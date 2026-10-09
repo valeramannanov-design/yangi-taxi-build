@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createOrderRequestGuard } from './order-idempotency.mjs';
 import { createAtomicJsonWriter } from './atomic-json-store.mjs';
+import { assertOwnedOrder } from './order-ownership.mjs';
 import { mkdtemp, readFile, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -114,4 +115,33 @@ test('concurrent JSON saves are serialized and leave a valid final snapshot', as
 test('financial JSON readers do not treat non-ENOENT errors as empty stores', () => {
   assert.match(source, /if \(error\?\.code !== 'ENOENT'\) throw error; \/\/ Avoid losing payment tokens/);
   assert.match(source, /if \(error\?\.code !== 'ENOENT'\) throw error; \/\/ Never silently erase payment state/);
+});
+
+test('orders reject a different explicit TaxiMaster owner', async () => {
+  await assert.rejects(assertOwnedOrder({
+    orderId: 42, clientId: 100, state: { client_id: 200 },
+    loadCurrent: () => { throw new Error('should not call'); },
+    loadHistory: () => { throw new Error('should not call'); },
+  }), { statusCode: 403 });
+});
+
+test('orders without owner IDs require a matching authenticated order list', async () => {
+  const base = {
+    orderId: 42, clientId: 100, state: {},
+    loadCurrent: async () => ({ orders: [{ order_id: 41 }] }),
+    loadHistory: async () => ({ orders: [{ order_id: 42 }] }),
+  };
+  await assert.doesNotReject(assertOwnedOrder(base));
+  await assert.rejects(assertOwnedOrder({
+    ...base, loadHistory: async () => ({ orders: [{ order_id: 43 }] }),
+  }), { statusCode: 403 });
+  await assert.rejects(assertOwnedOrder({
+    ...base, loadHistory: async () => { throw new Error('TaxiMaster unavailable'); },
+  }), { statusCode: 503 });
+});
+
+test('unverified legacy registration is closed and request bodies are bounded', () => {
+  assert.match(source, /Registration requires SMS verification/);
+  assert.match(source, /const maxBytes = 5 \* 1024 \* 1024/);
+  assert.match(source, /await requireOwnedOrder\(orderId, state\)/);
 });
