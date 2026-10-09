@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'ride_confirmation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10175,7 +10176,11 @@ class _RideScreenState extends State<RideScreen> {
     final activeRide = state == 'client_inside';
     final finished = state == 'finished';
     final aborted = state == 'aborted';
-    final taxiMasterAssigned = state == 'driver_assigned' && hasAssignedCrew;
+    // TaxiMaster's state_kind=driver_assigned only says that a crew was
+    // assigned. The separate confirmed field is the driver's acceptance.
+    // Operator confirmation, crew_id and car details are not acceptance.
+    final taxiMasterAssigned = state == 'driver_assigned' &&
+        hasAssignedCrew && isDriverAcceptanceConfirmed(o);
     final bookingAgeMs = widget.newlyCreatedOrderAt == null
         ? 999999
         : DateTime.now().difference(widget.newlyCreatedOrderAt!).inMilliseconds;
