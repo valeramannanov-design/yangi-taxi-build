@@ -2586,6 +2586,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           controller: smsCode,
                           autofocus: true,
                           keyboardType: TextInputType.number,
+                          inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
                           maxLength: 6,
                           style: const TextStyle(
                             color: Colors.white,
