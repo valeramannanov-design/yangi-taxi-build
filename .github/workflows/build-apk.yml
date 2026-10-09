@@ -131,9 +131,15 @@ jobs:
           node --check backend/server.mjs
           node --check backend/live-check.mjs
           node --check backend/route-price-check.mjs
+      - name: Run backend safety tests
+        working-directory: backend
+        run: npm test
       - name: Get packages
         working-directory: flutter
         run: flutter pub get
+      - name: Analyze Flutter
+        working-directory: flutter
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Validate LIVE build configuration
         env:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}

@@ -77,6 +77,80 @@ function validateRuntimeConfig() {
 
 validateRuntimeConfig();
 
+const settlementWorkerLockFile = new URL('./data/settlement-worker.lock', import.meta.url);
+let settlementWorkerLockHeld = false;
+
+function processIsAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
+  }
+}
+
+function releaseSettlementWorkerLock() {
+  if (!settlementWorkerLockHeld) return;
+  try {
+    const owner = JSON.parse(fs.readFileSync(settlementWorkerLockFile, 'utf8'));
+    if (Number(owner?.pid || 0) === process.pid) {
+      fs.unlinkSync(settlementWorkerLockFile);
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      console.warn('Could not release settlement worker lock:', error.message || error);
+    }
+  } finally {
+    settlementWorkerLockHeld = false;
+  }
+}
+
+async function acquireSettlementWorkerLock() {
+  const dataDir = new URL('./data/', import.meta.url);
+  await mkdir(dataDir, { recursive: true });
+  const claim = JSON.stringify({
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+  });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await writeFile(settlementWorkerLockFile, claim, {
+        encoding: 'utf8',
+        flag: 'wx',
+      });
+      settlementWorkerLockHeld = true;
+      process.once('exit', releaseSettlementWorkerLock);
+      return true;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+
+      let ownerPid = 0;
+      try {
+        const owner = JSON.parse(await readFile(settlementWorkerLockFile, 'utf8'));
+        ownerPid = Number(owner?.pid || 0);
+      } catch {
+        ownerPid = 0;
+      }
+
+      if (ownerPid > 0 && ownerPid !== process.pid && processIsAlive(ownerPid)) {
+        return false;
+      }
+
+      // The previous worker is gone (or the lock is corrupt): remove the stale
+      // file and retry the atomic create once.
+      try {
+        fs.unlinkSync(settlementWorkerLockFile);
+      } catch (unlinkError) {
+        if (unlinkError?.code !== 'ENOENT') throw unlinkError;
+      }
+    }
+  }
+
+  return false;
+}
+
 const orderRequestCache = new Map();
 const orderRequestLocks = new Map();
 const ORDER_REQUEST_TTL_MS = 15 * 60 * 1000;
@@ -2554,22 +2628,40 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(cfg.port, cfg.host, () => {
+server.listen(cfg.port, cfg.host, async () => {
   console.log('Yangi Taxi backend listening on http://' + cfg.host + ':' + cfg.port + ' mock=' + cfg.mock);
   if (!cfg.mock) {
     if (cfg.paymentSettlementEnabled) {
-      const intervalMs = cfg.tmDriverSettlementIntervalSec * 1000;
-      setTimeout(() => {
-        settleFinishedCardOrders().catch((error) =>
-          console.warn(new Date().toISOString(), 'Initial post-ride settlement check failed:', error.message)
+      let lockAcquired = false;
+      try {
+        lockAcquired = await acquireSettlementWorkerLock();
+      } catch (error) {
+        console.error('Post-ride settlement lock failed:', error.message || error);
+      }
+
+      if (lockAcquired) {
+        const intervalMs = cfg.tmDriverSettlementIntervalSec * 1000;
+        setTimeout(() => {
+          settleFinishedCardOrders().catch((error) =>
+            console.warn(new Date().toISOString(), 'Initial post-ride settlement check failed:', error.message)
+          );
+        }, 5000).unref();
+        setInterval(() => {
+          settleFinishedCardOrders().catch((error) =>
+            console.warn(new Date().toISOString(), 'Post-ride settlement worker failed:', error.message)
+          );
+        }, intervalMs).unref();
+        console.log(
+          'Post-ride ATMOS/driver settlement: every ' +
+          Math.round(intervalMs / 1000) +
+          's; worker lock pid=' +
+          process.pid
         );
-      }, 5000).unref();
-      setInterval(() => {
-        settleFinishedCardOrders().catch((error) =>
-          console.warn(new Date().toISOString(), 'Post-ride settlement worker failed:', error.message)
+      } else {
+        console.warn(
+          'Post-ride ATMOS/driver settlement: disabled in this process because another LIVE worker owns the lock'
         );
-      }, intervalMs).unref();
-      console.log('Post-ride ATMOS/driver settlement: every ' + Math.round(intervalMs / 1000) + 's');
+      }
     } else {
       console.log('Post-ride ATMOS/driver settlement: disabled for this process');
     }
