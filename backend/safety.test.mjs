@@ -155,3 +155,10 @@ test('SMS registration cannot bypass or consume a code before TaxiMaster succeed
 test('driver credit lookup requires an exact marker instead of a prefix match', () => {
   assert.ok(source.includes("String(op.comment || '').split(';').some((part) => part.trim() === marker)"));
 });
+
+test('ATMOS uncertain create cannot automatically start a second transaction', () => {
+  assert.match(source, /ATMOS_CREATE_OUTCOME_UNKNOWN/);
+  assert.match(source, /payment_review_required/);
+  assert.match(source, /manual ATMOS reconciliation before retry/);
+  assert.match(source, /if \(!record\.atmosTransactionId && record\.atmosAccount\)/);
+});

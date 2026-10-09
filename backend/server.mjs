@@ -1287,6 +1287,15 @@ async function chargeAtmosStoredCard(record, card, amount) {
     }
   }
 
+  // If ATMOS created a transaction but the response was lost, re-creating
+  // can leave an untracked charge attempt. Require manual reconciliation.
+  if (!record.atmosTransactionId && record.atmosAccount) {
+    const error = new Error('ATMOS create result is unknown; manual transaction reconciliation required');
+    error.code = 'ATMOS_CREATE_OUTCOME_UNKNOWN';
+    error.statusCode = 409;
+    throw error;
+  }
+
   if (!record.atmosTransactionId) {
     const account = record.atmosAccount || String(BigInt(Date.now()) * 1000n + BigInt(crypto.randomInt(0, 1000)));
     const createBody = {
@@ -1490,6 +1499,7 @@ async function findExistingDriverCredit(record, driverId) {
 async function settleFinishedCardPayment(record, { forcePaymentRetry = false } = {}) {
   if (!record?.orderId || record.paymentMethod !== 'card' || record.refundRequired) return record;
   if (record.status === 'order_aborted_no_charge' || record.status === 'driver_credited') return record;
+  if (record.status === 'payment_review_required') return record;
   if (record.status === 'payment_debt' && !forcePaymentRetry) return record;
 
   const key = String(record.checkoutId);
@@ -1555,7 +1565,10 @@ async function settleFinishedCardPayment(record, { forcePaymentRetry = false } =
         record.lastPaymentError = error.message;
         record.lastPaymentAttemptAt = new Date().toISOString();
         const maxRetries = Math.max(1, Number(cfg.atmosPostRideMaxRetries || 10));
-        if (record.paymentAttempts >= maxRetries) {
+        if (error.code === 'ATMOS_CREATE_OUTCOME_UNKNOWN') {
+          record.status = 'payment_review_required';
+          record.nextPaymentAttemptAt = null;
+        } else if (record.paymentAttempts >= maxRetries) {
           record.status = 'payment_debt';
           record.nextPaymentAttemptAt = null;
         } else {
@@ -2480,6 +2493,11 @@ async function realRoute(req, res, path, url) {
       throw e;
     }
     if (record.paidAt) return send(res, 200, { ok: true, data: { status: record.status, paid: true, orderId: record.orderId } });
+    if (record.status === 'payment_review_required') {
+      const error = new Error('Payment requires manual ATMOS reconciliation before retry');
+      error.statusCode = 409;
+      throw error;
+    }
     record.paymentAttempts = 0;
     record.nextPaymentAttemptAt = null;
     record.status = 'payment_retry';
