@@ -255,8 +255,17 @@ async function tmCall(name, method, query, body, signed, contentType = 'applicat
 
 function point(body, name) {
   const p = body[name];
-  if (!p || !p.address) {
+  if (!p) {
     const e = new Error(name + ' is required');
+    e.statusCode = 400;
+    throw e;
+  }
+  const district = String(p.district || '').trim();
+  const street = String(p.street || '').trim();
+  const house = String(p.house || '').trim();
+  const address = uniqueAddressParts([district, street, house]).join(', ');
+  if (!address) {
+    const e = new Error(name + ' must contain District / Street / House');
     e.statusCode = 400;
     throw e;
   }
@@ -267,7 +276,7 @@ function point(body, name) {
     e.statusCode = 400;
     throw e;
   }
-  return { address: String(p.address), lat, lon };
+  return { address, district, street, house, lat, lon };
 }
 
 function uniqueAddressParts(values) {
@@ -323,8 +332,18 @@ async function liveCatalog() {
   return { groups, tariffs };
 }
 
+function routeAddress(point) {
+  return {
+    address: point.address,
+    lat: point.lat,
+    lon: point.lon,
+  };
+}
+
 function routeAddresses(source, destination) {
-  return destination ? [source, destination] : [source];
+  return destination
+    ? [routeAddress(source), routeAddress(destination)]
+    : [routeAddress(source)];
 }
 
 async function selectTariffId(definition, session, source, destination, sourceTime) {
@@ -344,7 +363,7 @@ async function selectTariffId(definition, session, source, destination, sourceTi
 async function analyzeLiveRoute(source, destination) {
   return tmPostJson('analyze_route2', {
     get_full_route_coords: true,
-    addresses: [source, destination],
+    addresses: routeAddresses(source, destination),
   });
 }
 

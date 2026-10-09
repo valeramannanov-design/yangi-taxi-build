@@ -983,7 +983,14 @@ String _taxiMasterDisplayAddress(Map<String, dynamic> json, String full) {
   return _compactAddress(full);
 }
 
-({String full, String display, String taxiMaster}) _yandexStructuredAddress(
+({
+  String full,
+  String display,
+  String taxiMaster,
+  String district,
+  String street,
+  String house,
+}) _yandexStructuredAddress(
   dynamic geoObject,
   String fallback,
 ) {
@@ -998,6 +1005,9 @@ String _taxiMasterDisplayAddress(Map<String, dynamic> json, String full) {
         full: fallback,
         display: _compactAddress(fallback),
         taxiMaster: '',
+        district: '',
+        street: '',
+        house: '',
       );
     }
 
@@ -1043,12 +1053,18 @@ String _taxiMasterDisplayAddress(Map<String, dynamic> json, String full) {
       full: formatted.isEmpty ? fallback : formatted,
       display: display,
       taxiMaster: taxiMaster,
+      district: district?.trim() ?? '',
+      street: street?.trim() ?? '',
+      house: house?.trim() ?? '',
     );
   } catch (_) {
     return (
       full: fallback,
       display: _compactAddress(fallback),
       taxiMaster: '',
+      district: '',
+      street: '',
+      house: '',
     );
   }
 }
@@ -1061,9 +1077,15 @@ class Place {
     this.isFavorite = false,
     String? displayLabel,
     String? taxiMasterAddress,
+    String? taxiMasterDistrict,
+    String? taxiMasterStreet,
+    String? taxiMasterHouse,
     this.resolveDisplayOnSelect = false,
   })  : _displayLabel = displayLabel?.trim(),
-        _taxiMasterAddress = taxiMasterAddress?.trim();
+        _taxiMasterAddress = taxiMasterAddress?.trim(),
+        taxiMasterDistrict = taxiMasterDistrict?.trim() ?? '',
+        taxiMasterStreet = taxiMasterStreet?.trim() ?? '',
+        taxiMasterHouse = taxiMasterHouse?.trim() ?? '';
 
   final String address;
   final double lat;
@@ -1071,6 +1093,9 @@ class Place {
   final bool isFavorite;
   final String? _displayLabel;
   final String? _taxiMasterAddress;
+  final String taxiMasterDistrict;
+  final String taxiMasterStreet;
+  final String taxiMasterHouse;
   final bool resolveDisplayOnSelect;
 
   ym.Point get point => ym.Point(latitude: lat, longitude: lon);
@@ -1084,15 +1109,24 @@ class Place {
   }
 
   String get taxiMasterAddress {
+    final structured = _uniqueAddressJoin(<String?>[
+      taxiMasterDistrict,
+      taxiMasterStreet,
+      taxiMasterHouse,
+    ]);
+    if (structured.isNotEmpty) return structured;
     final explicit = _taxiMasterAddress;
     if (explicit != null && explicit.isNotEmpty) {
       return explicit.replaceAll(RegExp(r'\s+'), ' ').trim();
     }
-    return displayAddress;
+    return '';
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'address': taxiMasterAddress,
+        'district': taxiMasterDistrict,
+        'street': taxiMasterStreet,
+        'house': taxiMasterHouse,
         'lat': lat,
         'lon': lon,
       };
@@ -1111,6 +1145,9 @@ class Place {
       (j['lon'] as num).toDouble(),
       displayLabel: display.isEmpty ? null : display,
       taxiMasterAddress: taxiMaster.isEmpty ? null : taxiMaster,
+      taxiMasterDistrict: (j['district'] ?? '').toString(),
+      taxiMasterStreet: (j['street'] ?? '').toString(),
+      taxiMasterHouse: (j['house'] ?? '').toString(),
       resolveDisplayOnSelect: true,
     );
   }
@@ -5600,6 +5637,9 @@ class _OrderScreenState extends State<OrderScreen> {
         String label = '';
         String displayLabel = '';
         String taxiMasterAddress = '';
+        String taxiMasterDistrict = '';
+        String taxiMasterStreet = '';
+        String taxiMasterHouse = '';
         for (final item in response.collection.children) {
           final object = item.asGeoObject();
           if (object == null) continue;
@@ -5613,6 +5653,9 @@ class _OrderScreenState extends State<OrderScreen> {
           label = structured.full;
           displayLabel = structured.display;
           taxiMasterAddress = structured.taxiMaster;
+          taxiMasterDistrict = structured.district;
+          taxiMasterStreet = structured.street;
+          taxiMasterHouse = structured.house;
           break;
         }
         if (label.isEmpty) {
@@ -5629,6 +5672,9 @@ class _OrderScreenState extends State<OrderScreen> {
                   : displayLabel,
               taxiMasterAddress:
                   taxiMasterAddress.isEmpty ? null : taxiMasterAddress,
+              taxiMasterDistrict: taxiMasterDistrict,
+              taxiMasterStreet: taxiMasterStreet,
+              taxiMasterHouse: taxiMasterHouse,
             ),
           );
         }
@@ -8505,6 +8551,15 @@ class _AddressSheetState extends State<AddressSheet> {
                 taxiMasterAddress: structured.taxiMaster.isEmpty
                     ? place.taxiMasterAddress
                     : structured.taxiMaster,
+                taxiMasterDistrict: structured.district.isEmpty
+                    ? place.taxiMasterDistrict
+                    : structured.district,
+                taxiMasterStreet: structured.street.isEmpty
+                    ? place.taxiMasterStreet
+                    : structured.street,
+                taxiMasterHouse: structured.house.isEmpty
+                    ? place.taxiMasterHouse
+                    : structured.house,
               ),
             );
           }
@@ -8894,6 +8949,9 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
         String label = '';
         String displayLabel = '';
         String taxiMasterAddress = '';
+        String taxiMasterDistrict = '';
+        String taxiMasterStreet = '';
+        String taxiMasterHouse = '';
         for (final item in response.collection.children) {
           final object = item.asGeoObject();
           if (object == null) continue;
@@ -8907,6 +8965,9 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
           label = structured.full;
           displayLabel = structured.display;
           taxiMasterAddress = structured.taxiMaster;
+          taxiMasterDistrict = structured.district;
+          taxiMasterStreet = structured.street;
+          taxiMasterHouse = structured.house;
           break;
         }
         if (label.isEmpty) {
@@ -8923,6 +8984,9 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
                   : displayLabel,
               taxiMasterAddress:
                   taxiMasterAddress.isEmpty ? null : taxiMasterAddress,
+              taxiMasterDistrict: taxiMasterDistrict,
+              taxiMasterStreet: taxiMasterStreet,
+              taxiMasterHouse: taxiMasterHouse,
             ),
           );
         }
