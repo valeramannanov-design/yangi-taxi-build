@@ -109,12 +109,20 @@ const defaultBackendUrl = String.fromEnvironment(
   defaultValue: 'demo',
 );
 
+// Third-party dispatch details must not leak into passenger-facing errors.
+String _passengerFacingError(String message) {
+  return message.replaceAll(
+    RegExp(r'(?:taxi[ -_]*master|такси[ -_]*мастер)', caseSensitive: false),
+    'Yangi Taxi',
+  );
+}
+
 class ApiException implements Exception {
   ApiException(this.message, {this.statusCode});
   final String message;
   final int? statusCode;
   @override
-  String toString() => message;
+  String toString() => _passengerFacingError(message);
 }
 
 class ApiClient {
@@ -659,6 +667,15 @@ class ApiClient {
                 : seconds < 70
                     ? 'client_inside'
                     : 'finished';
+    if (seconds >= 8) {
+      out['crew_id'] = 71;
+      out['driver_id'] = 801;
+      out['car_id'] = 901;
+      out['confirmed'] = seconds < 12 ? 'not_confirmed' : 'confirmed_by_driver';
+      out['driver_name'] = 'Yangi Taxi';
+    } else {
+      out['confirmed'] = 'not_confirmed';
+    }
     _demoOrder = out;
     return out;
   }
@@ -6074,7 +6091,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
       final mapData = data['route'];
       final taxiMasterPoints = _normalizeRoutePoints(mapData, source, destination);
-      _logLiveRoute(source, destination, taxiMasterPoints, 'TaxiMaster');
+      _logLiveRoute(source, destination, taxiMasterPoints, 'dispatch');
 
       var points = <ym.Point>[];
       final roadPoints = await _buildYandexDrivingRoute(source, destination);
@@ -6084,7 +6101,7 @@ class _OrderScreenState extends State<OrderScreen> {
         _logLiveRoute(source, destination, points, 'YandexDrivingRouter');
       } else if (_routeLooksLikeRoadGeometry(taxiMasterPoints)) {
         points = taxiMasterPoints;
-        _logLiveRoute(source, destination, points, 'TaxiMasterFallback');
+        _logLiveRoute(source, destination, points, 'dispatch_fallback');
       } else {
         _logLiveRoute(source, destination, points, 'unavailable');
       }
@@ -6131,8 +6148,8 @@ class _OrderScreenState extends State<OrderScreen> {
         } else {
           cost = null;
           error = widget.lang == 'uz'
-              ? 'TaxiMasterda ilova uchun mavjud tariflar sozlanmagan'
-              : 'В TaxiMaster не настроены доступные тарифы и группы экипажей';
+              ? 'Yangi Taxi uchun mavjud tariflar vaqtincha sozlanmagan'
+              : 'Тарифы Yangi Taxi временно недоступны';
         }
       });
     } catch (e) {
@@ -6317,7 +6334,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
       final orderId = data is Map ? (data['order_id'] as num?)?.toInt() : null;
       if (orderId == null || orderId <= 0) {
-        throw ApiException('TaxiMaster не вернул номер заказа');
+        throw ApiException('Не удалось получить номер заказа');
       }
       pendingOrderRequestId = null;
       pendingOrderRequestSignature = null;
@@ -6990,8 +7007,8 @@ class _OrderScreenState extends State<OrderScreen> {
                                     const SizedBox(height: 10),
                                     Text(
                                       widget.lang == 'uz'
-                                          ? 'TaxiMaster narxlarni hisoblamoqda'
-                                          : 'TaxiMaster рассчитывает цены',
+                                          ? 'Safar narxi hisoblanmoqda'
+                                          : 'Рассчитываем стоимость поездки',
                                       style: TextStyle(
                                         color: scheme.onSurfaceVariant,
                                         fontWeight: FontWeight.w700,
@@ -7571,8 +7588,8 @@ class _OrderScreenState extends State<OrderScreen> {
                         const SizedBox(height: 12),
                         Text(
                           widget.lang == 'uz'
-                              ? 'Buyurtmani TaxiMasterga yuboryapmiz'
-                              : 'Отправляем заказ в TaxiMaster и ожидаем подтверждения',
+                              ? 'Buyurtmani Yangi Taxi orqali yuboryapmiz'
+                              : 'Отправляем заказ и подбираем водителя',
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: Color(0xFFCCD0D0), fontSize: 14),
                         ),
@@ -9086,7 +9103,7 @@ class _AddressSheetState extends State<AddressSheet> {
                                 style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
                               ),
                               subtitle: Text(
-                                'TaxiMaster / Яндекс',
+                                'Yangi Taxi / Яндекс',
                                 style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10),
                               ),
                               trailing: Icon(Icons.north_west_rounded, size: 17, color: scheme.onSurfaceVariant),
@@ -9644,7 +9661,7 @@ class _RideScreenState extends State<RideScreen> {
     final requestedOrderId = widget.orderId;
     try {
       final result = await widget.api.get('/api/orders/current');
-      if (result is! List) throw ApiException('Unexpected TaxiMaster current orders response');
+      if (result is! List) throw ApiException('Некорректный ответ при проверке заказов');
       final ids = <int>{};
       for (final entry in result) {
         if (entry is! Map) continue;
@@ -9667,8 +9684,8 @@ class _RideScreenState extends State<RideScreen> {
         setState(() {
           missingOrderPollingPaused = true;
           error = widget.lang == 'uz'
-              ? 'TaxiMaster faol buyurtmani ko‘rsatmayapti.'
-              : 'TaxiMaster не показывает активных заказов.';
+              ? 'Faol buyurtma topilmadi.'
+              : 'Не удалось найти активный заказ.';
         });
       } else {
         setState(() {
@@ -9707,7 +9724,7 @@ class _RideScreenState extends State<RideScreen> {
             : null;
         id = rawId is num ? rawId.toInt() : int.tryParse(rawId?.toString() ?? '');
         if (id == null || id <= 0) {
-          throw ApiException('TaxiMaster returned current order without id');
+          throw ApiException('Не удалось определить номер текущего заказа');
         }
       }
       final data = await widget.api.get('/api/orders/' + id.toString() + '/driver-location');
@@ -9744,8 +9761,8 @@ class _RideScreenState extends State<RideScreen> {
           statusNotice = stateSource == 'order_state'
               ? null
               : (widget.lang == 'uz'
-                  ? 'Holat TaxiMaster buyurtmalar ro‘yxatidan olindi. Haydovchi joylashuvi tasdiqlanmagan.'
-                  : 'Статус получен из списка заказов TaxiMaster. Положение водителя не подтверждено.');
+                  ? 'Buyurtma holati yangilandi. Haydovchi joylashuvi tasdiqlanmagan.'
+                  : 'Статус заказа обновлён. Положение водителя не подтверждено.');
         });
         unawaited(_refreshRoadRoute(state, d));
         if (shouldAskRating && widget.isActive) {
@@ -9788,9 +9805,9 @@ class _RideScreenState extends State<RideScreen> {
           confirmedOrderMissing = orderMissing;
           error = orderMissing
               ? (widget.lang == 'uz'
-                  ? 'TaxiMaster buyurtmani topmadi. Buyurtma holatini tekshiring.'
-                  : 'TaxiMaster не находит заказ. Текущий статус не подтверждён.')
-              : message;
+                  ? 'Buyurtma topilmadi. Holatini tekshiring.'
+                  : 'Заказ не найден. Текущий статус не подтверждён.')
+              : _passengerFacingError(message);
         });
       }
     } finally {
@@ -9974,8 +9991,8 @@ class _RideScreenState extends State<RideScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 28),
                 child: Text(
                   widget.lang == 'uz'
-                      ? 'TaxiMaster buyurtma holatini tasdiqlamadi.'
-                      : 'TaxiMaster не подтвердил статус заказа.',
+                      ? 'Buyurtma holatini tasdiqlab bo‘lmadi.'
+                      : 'Не удалось подтвердить статус заказа.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
                 ),
@@ -10037,8 +10054,8 @@ class _RideScreenState extends State<RideScreen> {
                       style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 12),
                     Text(widget.lang == 'uz'
-                        ? 'TaxiMaster orqali yaqin haydovchilarni qidiryapmiz'
-                        : 'Проверяем ближайших водителей через TaxiMaster',
+                        ? 'Yaqin atrofdagi haydovchilarni qidiryapmiz'
+                        : 'Ищем свободные машины поблизости',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Color(0xFFCBD1D1), fontSize: 13)),
                     const SizedBox(height: 25),
@@ -10112,7 +10129,7 @@ class _RideScreenState extends State<RideScreen> {
               const SizedBox(height: 7),
               Text(
                 widget.orderId != null
-                    ? (error ?? (widget.lang == 'uz' ? 'Buyurtma saqlangan, TaxiMaster javobini kutyapmiz' : 'Заказ сохранён, ожидаем ответа TaxiMaster'))
+                    ? (error ?? (widget.lang == 'uz' ? 'Buyurtma saqlangan, yangilanishni kutyapmiz' : 'Заказ сохранён, ожидаем обновления статуса'))
                     : (widget.lang == 'uz' ? 'Yangi safarni asosiy ekrandan buyurtma qiling' : 'Закажите новую поездку на главном экране'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
@@ -10176,11 +10193,10 @@ class _RideScreenState extends State<RideScreen> {
     final activeRide = state == 'client_inside';
     final finished = state == 'finished';
     final aborted = state == 'aborted';
-    // TaxiMaster's state_kind=driver_assigned only says that a crew was
-    // assigned. The separate confirmed field is the driver's acceptance.
-    // Operator confirmation, crew_id and car details are not acceptance.
-    final taxiMasterAssigned = state == 'driver_assigned' &&
-        hasAssignedCrew && isDriverAcceptanceConfirmed(o);
+    final crewHasBeenAssigned = state == 'driver_assigned' && hasAssignedCrew;
+    final taxiMasterAssigned = crewHasBeenAssigned &&
+        canDisplayConfirmedAssignment(o);
+    final waitingOnAssignedDriver = crewHasBeenAssigned && !taxiMasterAssigned;
     final bookingAgeMs = widget.newlyCreatedOrderAt == null
         ? 999999
         : DateTime.now().difference(widget.newlyCreatedOrderAt!).inMilliseconds;
@@ -10248,7 +10264,9 @@ class _RideScreenState extends State<RideScreen> {
     String title() {
       if (searching) return rideStage == _RideBookingStage.searchingNearby
           ? (widget.lang == 'uz' ? 'Yaqindan mashina qidiryapmiz…' : 'Ищем машину рядом…')
-          : (widget.lang == 'uz' ? 'Haydovchi javobini kutyapmiz…' : 'Ждём ответа водителя…');
+          : waitingOnAssignedDriver
+              ? (widget.lang == 'uz' ? 'Mashina tayinlandi' : 'Машина назначена')
+              : (widget.lang == 'uz' ? 'Haydovchi javobini kutyapmiz…' : 'Ждём ответа водителя…');
       if (driverAssigned) return rideStage == _RideBookingStage.driverOnTheWay
           ? (widget.lang == 'uz' ? 'Haydovchi yo‘lda' : 'Водитель в пути')
           : (widget.lang == 'uz' ? 'Mashina topildi' : 'Машина найдена');
@@ -10261,13 +10279,18 @@ class _RideScreenState extends State<RideScreen> {
 
     String subtitle() {
       if (searching) {
-        return rideStage == _RideBookingStage.searchingNearby
+        if (rideStage == _RideBookingStage.searchingNearby) {
+          return widget.lang == 'uz'
+              ? 'Yaqin atrofdagi avtomobillarni tekshiryapmiz'
+              : 'Подбираем ближайшего свободного водителя';
+        }
+        return waitingOnAssignedDriver
             ? (widget.lang == 'uz'
-                ? 'Yaqin atrofdagi avtomobillarni tekshiryapmiz'
-                : 'Подбираем ближайшего свободного водителя')
+                ? 'Haydovchining javobi kutilmoqda'
+                : 'Ожидаем подтверждения назначенного водителя')
             : (widget.lang == 'uz'
-                ? 'Buyurtma TaxiMasterga yuborildi, tasdiqni kutyapmiz'
-                : 'Заказ передан в TaxiMaster, ожидаем назначения');
+                ? 'Buyurtma yuborildi, haydovchi javobini kutyapmiz'
+                : 'Заказ отправлен, ожидаем ответа водителя');
       }
       if (driverAssigned) {
         if (rideStage != _RideBookingStage.driverOnTheWay) {
@@ -12595,8 +12618,8 @@ class _PromoCodesScreenState extends State<PromoCodesScreen> {
                 const SizedBox(height: 8),
                 Text(
                   widget.lang == 'uz'
-                      ? 'Kod saqlanadi, lekin TaxiMaster chegirmasi hozircha qo‘llanmaydi.'
-                      : 'Код сохраняется, но скидка TaxiMaster пока не применяется.',
+                      ? 'Kod saqlanadi, lekin chegirma hozircha qo‘llanmaydi.'
+                      : 'Код сохранится, но скидка пока не применяется.',
                   style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                 ),
               ],
