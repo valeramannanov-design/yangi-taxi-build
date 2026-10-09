@@ -3139,6 +3139,7 @@ class _ShellState extends State<Shell> {
   int tab = 0;
   int? activeId;
   int orderFormGeneration = 0;
+  int _orderStateRevision = 0;
   bool _exitDialogOpen = false;
   Map<String, dynamic>? _drawerMe;
   List<Map<String, dynamic>> _drawerFavorites = <Map<String, dynamic>>[];
@@ -3225,13 +3226,18 @@ class _ShellState extends State<Shell> {
   }
 
   Future<void> restoreActiveOrder() async {
-    final savedRaw =
-        await _clientProfileStorage.read(key: _activeOrderIdStorageKey);
-    final savedId = int.tryParse(savedRaw ?? '');
+    final revision = _orderStateRevision;
+    final savedRaw = await _clientProfileStorage.read(key: _activeOrderIdStorageKey);
+    final savedSession =
+        await _clientProfileStorage.read(key: _activeOrderSessionStorageKey);
+    if (!mounted || revision != _orderStateRevision) return;
+    final currentSession = widget.api.token?.trim() ?? '';
+    // Never display a trip from a different logged-in client.
+    final savedId = currentSession.isNotEmpty && savedSession == currentSession
+        ? int.tryParse(savedRaw ?? '')
+        : null;
 
-    // Show the locally remembered trip immediately. Network verification below
-    // will refresh or discard it only when the backend confirms it is invalid.
-    if (savedId != null && savedId > 0 && mounted) {
+    if (savedId != null && savedId > 0) {
       setState(() {
         activeId = savedId;
         tab = 1;
@@ -3240,13 +3246,13 @@ class _ShellState extends State<Shell> {
 
     try {
       final data = await widget.api.get('/api/orders/current');
-      if (!mounted || data is! List) return;
+      if (!mounted || revision != _orderStateRevision || data is! List) return;
 
       if (data.isNotEmpty) {
         final id = _readOrderId(data.first);
         if (id != null) {
           await _persistActiveOrder(id);
-          if (!mounted) return;
+          if (!mounted || revision != _orderStateRevision) return;
           setState(() {
             activeId = id;
             tab = 1;
@@ -3257,16 +3263,18 @@ class _ShellState extends State<Shell> {
 
       if (savedId == null || savedId <= 0) return;
 
-      // get_current_orders can briefly return an empty list while TaxiMaster
-      // updates state. Validate the exact saved order before dropping it.
+      // TaxiMaster can briefly omit an active order during a state transition.
       try {
         await widget.api.get(
           '/api/orders/' + savedId.toString() + '/driver-location',
         );
       } on ApiException catch (e) {
-        if (e.statusCode == 403 || e.statusCode == 404) {
+        if ((e.statusCode == 403 || e.statusCode == 404) &&
+            mounted &&
+            revision == _orderStateRevision &&
+            activeId == savedId) {
           await _clearPersistedActiveOrder();
-          if (!mounted) return;
+          if (!mounted || revision != _orderStateRevision) return;
           setState(() {
             activeId = null;
             tab = 0;
@@ -3274,7 +3282,7 @@ class _ShellState extends State<Shell> {
         }
       }
     } catch (_) {
-      // Keep the local active order during a temporary network failure.
+      // Preserve the remembered trip during transient network errors.
     }
   }
 
@@ -3351,6 +3359,7 @@ class _ShellState extends State<Shell> {
   }
 
   void startNewTrip() {
+    _orderStateRevision += 1;
     final scaffold = shellKey.currentState;
     if (scaffold?.isDrawerOpen == true) {
       scaffold!.closeDrawer();
@@ -3365,6 +3374,7 @@ class _ShellState extends State<Shell> {
   }
 
   void orderCreated(int id) {
+    _orderStateRevision += 1;
     unawaited(_persistActiveOrder(id));
     setState(() {
       activeId = id;

@@ -168,6 +168,7 @@ function normalizeOrderRequestId(value) {
 const runIdempotentOrderRequest = createOrderRequestGuard();
 
 const registrationCodes = new Map();
+const registrationSendLocks = new Set();
 const REG_CODE_TTL_MS = Math.max(60_000, Number(process.env.REG_CODE_TTL_MS || 5 * 60_000));
 const REG_CODE_RESEND_MS = Math.max(30_000, Number(process.env.REG_CODE_RESEND_MS || 60_000));
 const REG_CODE_MAX_ATTEMPTS = Math.max(1, Number(process.env.REG_CODE_MAX_ATTEMPTS || 5));
@@ -1477,7 +1478,7 @@ async function findExistingDriverCredit(record, driverId) {
       account_kind: 0
     });
     return (data.operations || []).find((op) =>
-      String(op.comment || '').includes(marker)
+      String(op.comment || '').split(';').some((part) => part.trim() === marker)
     ) || null;
   } catch (error) {
     // We deliberately fail closed here: if we cannot verify idempotency,
@@ -1840,6 +1841,11 @@ function cleanupRegistrationCodes() {
 
 async function sendRegistrationCode(phone) {
   cleanupRegistrationCodes();
+  if (registrationSendLocks.has(phone)) {
+    const e = new Error('SMS request already in progress');
+    e.statusCode = 429;
+    throw e;
+  }
   const now = Date.now();
   const previous = registrationCodes.get(phone);
   if (previous && now - previous.sentAt < REG_CODE_RESEND_MS) {
@@ -1847,14 +1853,19 @@ async function sendRegistrationCode(phone) {
     e.statusCode = 429;
     throw e;
   }
-  const code = String(crypto.randomInt(100000, 1000000));
-  await tmPostForm('send_sms', { phone: tmPhoneDigits(phone), message: 'Yangi Taxi: kod ' + code });
-  registrationCodes.set(phone, {
-    hash: registrationCodeHash(phone, code),
-    sentAt: now,
-    expiresAt: now + REG_CODE_TTL_MS,
-    attempts: 0,
-  });
+  registrationSendLocks.add(phone);
+  try {
+    const code = String(crypto.randomInt(100000, 1000000));
+    await tmPostForm('send_sms', { phone: tmPhoneDigits(phone), message: 'Yangi Taxi: kod ' + code });
+    registrationCodes.set(phone, {
+      hash: registrationCodeHash(phone, code),
+      sentAt: now,
+      expiresAt: now + REG_CODE_TTL_MS,
+      attempts: 0,
+    });
+  } finally {
+    registrationSendLocks.delete(phone);
+  }
 }
 
 function verifyRegistrationCode(phone, code) {
@@ -1880,7 +1891,8 @@ function verifyRegistrationCode(phone, code) {
     e.statusCode = 400;
     throw e;
   }
-  registrationCodes.delete(phone);
+  // Keep this verified code available if TaxiMaster registration fails.
+  // The endpoint consumes the code only after registration succeeds.
 }
 
 async function realRoute(req, res, path, url) {
@@ -1927,6 +1939,7 @@ async function realRoute(req, res, path, url) {
       phones: [{ phone: tmPhoneDigits(phone), is_default: true }],
       need_validate: true,
     });
+    registrationCodes.delete(phone);
     return send(res, 201, { ok: true, data: { clientId: data.client_id, token: issueSession(data.client_id, phone) } });
   }
 

@@ -145,3 +145,13 @@ test('unverified legacy registration is closed and request bodies are bounded', 
   assert.match(source, /const maxBytes = 5 \* 1024 \* 1024/);
   assert.match(source, /await requireOwnedOrder\(orderId, state\)/);
 });
+
+test('SMS registration cannot bypass or consume a code before TaxiMaster succeeds', () => {
+  assert.match(source, /registrationSendLocks\.has\(phone\)/);
+  assert.match(source, /registrationCodes\.delete\(phone\);\s+return send\(res, 201/);
+  assert.match(source, /The endpoint consumes the code only after registration succeeds/);
+});
+
+test('driver credit lookup requires an exact marker instead of a prefix match', () => {
+  assert.ok(source.includes("String(op.comment || '').split(';').some((part) => part.trim() === marker)"));
+});
