@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createOrderRequestGuard } from './order-idempotency.mjs';
 import { createAtomicJsonWriter } from './atomic-json-store.mjs';
 import { assertOwnedOrder } from './order-ownership.mjs';
+import { resolveOwnedRideState } from './ride-state.mjs';
 import { mkdtemp, readFile, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -143,7 +144,7 @@ test('orders without owner IDs require a matching authenticated order list', asy
 test('unverified legacy registration is closed and request bodies are bounded', () => {
   assert.match(source, /Registration requires SMS verification/);
   assert.match(source, /const maxBytes = 5 \* 1024 \* 1024/);
-  assert.match(source, /await requireOwnedOrder\(orderId, state\)/);
+  assert.match(source, /await getOwnedRideState\(orderId\)/);
 });
 
 test('SMS registration cannot bypass or consume a code before TaxiMaster succeeds', () => {
@@ -164,15 +165,59 @@ test('ATMOS uncertain create cannot automatically start a second transaction', (
 });
 
 
-test('real LIVE order routes can resolve the ownership helper', () => {
-  const mockStart = source.indexOf('async function mockRoute(');
+test('LIVE ride routes use the scoped state reconciliation helper', () => {
   const realStart = source.indexOf('async function realRoute(');
-  const helperStart = source.indexOf('  async function requireOwnedOrder(');
+  const helperStart = source.indexOf('  async function getOwnedRideState(');
   const mainStart = source.indexOf('const server = http.createServer', realStart);
-  assert.ok(mockStart >= 0 && realStart > mockStart);
-  assert.ok(helperStart > realStart && helperStart < mainStart,
-    'ownership guard must be defined inside realRoute, not mockRoute');
+  assert.ok(realStart > 0 && helperStart > realStart && helperStart < mainStart);
   const liveRoute = source.slice(realStart, mainStart);
-  assert.match(liveRoute, /const session = auth\(req\);[\s\S]*async function requireOwnedOrder\(/);
-  assert.equal((liveRoute.match(/await requireOwnedOrder\(orderId, state\)/g) || []).length, 4);
+  assert.equal((liveRoute.match(/await getOwnedRideState\(orderId\)/g) || []).length, 4);
+});
+
+test('missing detailed ride state recovers from the same client current list', async () => {
+  const r = await resolveOwnedRideState({
+    orderId: 44, clientId: 9,
+    getState: async () => { throw new Error('Order not found'); },
+    getCurrent: async () => ({ orders: [{ order_id: 44, client_id: 9, state_kind: 'driver_assigned' }] }),
+    getHistory: async () => ({ orders: [] }),
+  });
+  assert.equal(r.source, 'current_orders');
+  assert.equal(r.state.state_kind, 'driver_assigned');
+});
+
+test('finished ride recovery uses history and never fabricates cancellation', async () => {
+  const r = await resolveOwnedRideState({
+    orderId: 45, clientId: 9,
+    getState: async () => { throw new Error('Order not found'); },
+    getCurrent: async () => ({ orders: [] }),
+    getHistory: async () => ({ orders: [{ order_id: 45, state_kind: 'finished' }] }),
+  });
+  assert.equal(r.source, 'finished_orders');
+  assert.equal(r.state.state_kind, 'finished');
+  const base = {
+    orderId: 46, clientId: 9,
+    getState: async () => { throw new Error('Order not found'); },
+    getCurrent: async () => ({ orders: [] }),
+    getHistory: async () => ({ orders: [] }),
+  };
+  await assert.rejects(resolveOwnedRideState(base), { statusCode: 404 });
+  await assert.rejects(resolveOwnedRideState({
+    ...base, getHistory: async () => { throw new Error('network unavailable'); },
+  }), { statusCode: 503 });
+});
+
+test('ride recovery blocks mismatched owners and unrelated TaxiMaster failures', async () => {
+  const common = { orderId: 50, clientId: 9 };
+  await assert.rejects(resolveOwnedRideState({
+    ...common,
+    getState: async () => { throw new Error('Order not found'); },
+    getCurrent: async () => ({ orders: [{ order_id: 50, client_id: 7, state_kind: 'new_order' }] }),
+    getHistory: async () => ({ orders: [] }),
+  }), { statusCode: 403 });
+  await assert.rejects(resolveOwnedRideState({
+    ...common,
+    getState: async () => { throw new Error('TaxiMaster timeout'); },
+    getCurrent: async () => ({ orders: [] }),
+    getHistory: async () => ({ orders: [] }),
+  }), /TaxiMaster timeout/);
 });

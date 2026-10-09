@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { createOrderRequestGuard } from './order-idempotency.mjs';
 import { createAtomicJsonWriter } from './atomic-json-store.mjs';
-import { assertOwnedOrder } from './order-ownership.mjs';
+import { resolveOwnedRideState } from './ride-state.mjs';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -1955,13 +1955,13 @@ async function realRoute(req, res, path, url) {
 
   const session = auth(req);
 
-  async function requireOwnedOrder(orderId, state) {
-    return assertOwnedOrder({
+  async function getOwnedRideState(orderId) {
+    return resolveOwnedRideState({
       orderId,
       clientId: session.clientId,
-      state,
-      loadCurrent: () => tmGet('get_current_orders', { client_id: session.clientId }),
-      loadHistory: () => tmGet('get_finished_orders', {
+      getState: () => tmGet('get_order_state', { order_id: orderId }),
+      getCurrent: () => tmGet('get_current_orders', { client_id: session.clientId }),
+      getHistory: () => tmGet('get_finished_orders', {
         start_time: tmDaysAgo(90),
         finish_time: tmTime(),
         client_id: session.clientId,
@@ -1969,7 +1969,6 @@ async function realRoute(req, res, path, url) {
       }),
     });
   }
-
 
   const profileHandled = await handleClientProfileRoute(req, res, path, session);
   if (profileHandled !== false) return profileHandled;
@@ -2532,21 +2531,19 @@ async function realRoute(req, res, path, url) {
   const driver = /^\/api\/orders\/(\d+)\/driver-location$/.exec(path);
   if (req.method === 'GET' && driver) {
     const orderId = Number(driver[1]);
-    const state = await tmGet('get_order_state', { order_id: orderId });
-    await requireOwnedOrder(orderId, state);
+    const { state, source } = await getOwnedRideState(orderId);
     let location = null;
     if (state.crew_id) {
       const coords = await tmGet('get_crews_coords', { crew_id: state.crew_id });
       location = coords.crews_coords?.[0] || null;
     }
-    return send(res, 200, { ok: true, data: { state, location } });
+    return send(res, 200, { ok: true, data: { state, location, stateSource: source } });
   }
 
   const ratingMatch = /^\/api\/orders\/(\d+)\/rating$/.exec(path);
   if (req.method === 'POST' && ratingMatch) {
     const orderId = Number(ratingMatch[1]);
-    const state = await tmGet('get_order_state', { order_id: orderId });
-    await requireOwnedOrder(orderId, state);
+    const { state, source } = await getOwnedRideState(orderId);
 
     const body = await readJson(req);
     const rating = Number(body.rating);
@@ -2579,8 +2576,10 @@ async function realRoute(req, res, path, url) {
   const penalty = /^\/api\/orders\/(\d+)\/cancel-penalty$/.exec(path);
   if (req.method === 'GET' && penalty) {
     const orderId = Number(penalty[1]);
-    const state = await tmGet('get_order_state', { order_id: orderId });
-    await requireOwnedOrder(orderId, state);
+    const { state, source } = await getOwnedRideState(orderId);
+    if (['finished', 'aborted'].includes(String(state.state_kind || '').toLowerCase())) {
+      throw Object.assign(new Error('Order is no longer active'), { statusCode: 409 });
+    }
     const stateId = await getCancelStateId();
     const data = await tmGet('check_cancel_order_penalty', { order_id: orderId, cancel_order_state_id: stateId });
     return send(res, 200, { ok: true, data: { stateId, ...data } });
@@ -2589,8 +2588,10 @@ async function realRoute(req, res, path, url) {
   const cancel = /^\/api\/orders\/(\d+)\/cancel$/.exec(path);
   if (req.method === 'POST' && cancel) {
     const orderId = Number(cancel[1]);
-    const state = await tmGet('get_order_state', { order_id: orderId });
-    await requireOwnedOrder(orderId, state);
+    const { state, source } = await getOwnedRideState(orderId);
+    if (['finished', 'aborted'].includes(String(state.state_kind || '').toLowerCase())) {
+      throw Object.assign(new Error('Order is no longer active'), { statusCode: 409 });
+    }
     const stateId = await getCancelStateId();
     const p = await tmGet('check_cancel_order_penalty', { order_id: orderId, cancel_order_state_id: stateId });
     const data = await tmPostQuery('change_order_state', {
