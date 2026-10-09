@@ -9216,6 +9216,7 @@ class _RideScreenState extends State<RideScreen> {
   yd.DrivingSession? drivingSession;
   bool routeRequestInFlight = false;
   bool refreshInFlight = false;
+  String? statusNotice;
   ym.Point? lastRouteStart;
   ym.Point? lastRouteEnd;
 
@@ -9241,6 +9242,7 @@ class _RideScreenState extends State<RideScreen> {
         order = null;
         driver = null;
         error = null;
+        statusNotice = null;
         roadRoute = <ym.Point>[];
         loading = true;
       });
@@ -9415,6 +9417,12 @@ class _RideScreenState extends State<RideScreen> {
           driver = d;
           loading = false;
           error = null;
+          final stateSource = (data['stateSource'] ?? 'order_state').toString();
+          statusNotice = stateSource == 'order_state'
+              ? null
+              : (widget.lang == 'uz'
+                  ? 'Holat TaxiMaster buyurtmalar ro‘yxatidan olindi. Haydovchi joylashuvi tasdiqlanmagan.'
+                  : 'Статус получен из списка заказов TaxiMaster. Положение водителя не подтверждено.');
         });
         unawaited(_refreshRoadRoute(state, d));
         if (shouldAskRating && widget.isActive) {
@@ -9443,13 +9451,17 @@ class _RideScreenState extends State<RideScreen> {
 
       if (mounted && widget.orderId == requestedOrderId) {
         setState(() {
-          // A TaxiMaster lookup failure is not a confirmed cancellation.
-          // Preserve the last known state; the periodic poll will retry.
+          // Preserve the saved order, but never display an unverified live driver.
           loading = false;
+          driver = null;
+          roadRoute = <ym.Point>[];
+          lastRouteStart = null;
+          lastRouteEnd = null;
+          statusNotice = null;
           error = orderMissing
               ? (widget.lang == 'uz'
-                  ? 'Safar holatini hozircha tasdiqlab bo‘lmadi. Qayta tekshiramiz.'
-                  : 'Статус поездки временно недоступен. Повторяем проверку.')
+                  ? 'TaxiMaster buyurtmani topmadi. Buyurtma holatini tekshiring.'
+                  : 'TaxiMaster не находит заказ. Текущий статус не подтверждён.')
               : message;
         });
       }
@@ -9562,6 +9574,16 @@ class _RideScreenState extends State<RideScreen> {
   Future<void> cancel() async {
     final o = order;
     if (o == null) return;
+    if (error != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(widget.lang == 'uz'
+              ? 'Buyurtma holati tasdiqlanmagan. Avval qayta tekshiring.'
+              : 'Статус заказа не подтверждён. Сначала проверьте его снова.'),
+        ));
+      }
+      return;
+    }
     final id = (o['order_id'] as num).toInt();
     try {
       final p = await widget.api.get('/api/orders/' + id.toString() + '/cancel-penalty');
@@ -9891,6 +9913,36 @@ class _RideScreenState extends State<RideScreen> {
     }
 
     Widget bodyPanel() {
+      if (error != null) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              widget.lang == 'uz' ? 'Buyurtma holati noma’lum' : 'Статус заказа не подтверждён',
+              style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              widget.lang == 'uz'
+                  ? 'Buyurtma №$orderId bo‘yicha avvalgi ma’lumotlar. Haydovchining holatini tasdiqlab bo‘lmadi.'
+                  : 'Заказ №$orderId. Данные о водителе и маршруте могут быть устаревшими. Проверьте заказ у диспетчера перед новым заказом.',
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => refresh(),
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text(widget.lang == 'uz' ? 'Qayta tekshirish' : 'Проверить снова'),
+            ),
+            const SizedBox(height: 9),
+            OutlinedButton.icon(
+              onPressed: widget.onMenu,
+              icon: const Icon(Icons.menu_rounded),
+              label: Text(widget.lang == 'uz' ? 'Menyu' : 'Меню'),
+            ),
+          ],
+        );
+      }
       if (searching) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -10437,7 +10489,7 @@ class _RideScreenState extends State<RideScreen> {
       );
     }
 
-    final showMap = widget.isActive && !finished && !aborted;
+    final showMap = widget.isActive && !finished && !aborted && error == null;
     return Scaffold(
       backgroundColor: dark ? const Color(0xFF0C0E0F) : Colors.white,
       body: Stack(
@@ -10514,6 +10566,17 @@ class _RideScreenState extends State<RideScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
+                      ],
+                      if (statusNotice != null) ...<Widget>[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: scheme.tertiaryContainer,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Text(statusNotice!, style: TextStyle(color: scheme.onTertiaryContainer)),
+                        ),
                       ],
                       if (error != null) ...<Widget>[
                         Container(
