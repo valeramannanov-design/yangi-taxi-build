@@ -9618,7 +9618,7 @@ class _RideScreenState extends State<RideScreen> {
     ym.Point? driverPoint,
   ) async {
     if (routeRequestInFlight || !mounted) return;
-    final stateKind = (state['state_kind'] ?? '').toString();
+    final stateKind = (state['state_kind'] ?? state['state_type'] ?? '').toString().trim().toLowerCase();
     final pickup = point(state['source_lat'], state['source_lon']);
     final destination = point(
       state['destination_lat'],
@@ -9742,7 +9742,7 @@ class _RideScreenState extends State<RideScreen> {
           (latitude != 0 || longitude != 0)) {
         d = ym.Point(latitude: latitude, longitude: longitude);
       }
-      final stateKind = (state['state_kind'] ?? '').toString();
+      final stateKind = (state['state_kind'] ?? state['state_type'] ?? '').toString().trim().toLowerCase();
       final resolvedOrderId = (state['order_id'] as num?)?.toInt() ?? id;
       final shouldAskRating =
           stateKind == 'finished' && feedbackPromptedOrderId != resolvedOrderId;
@@ -10175,7 +10175,7 @@ class _RideScreenState extends State<RideScreen> {
     }
 
     final o = order!;
-    final rawState = (o['state_kind'] ?? '').toString();
+    final rawState = (o['state_kind'] ?? o['state_type'] ?? '').toString().trim().toLowerCase();
     final pickup = point(o['source_lat'], o['source_lon']);
     final destinationPoint = point(o['destination_lat'], o['destination_lon']);
     final center = driver ?? pickup ?? const ym.Point(latitude: defaultLat, longitude: defaultLon);
@@ -10881,6 +10881,13 @@ class _RideScreenState extends State<RideScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (activeRide) ...<Widget>[
+            _RideStageStrip(
+              stage: _RideBookingStage.driverOnTheWay,
+              lang: widget.lang,
+            ),
+            const SizedBox(height: 14),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
