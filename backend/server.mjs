@@ -77,6 +77,56 @@ function validateRuntimeConfig() {
 
 validateRuntimeConfig();
 
+const orderRequestCache = new Map();
+const orderRequestLocks = new Map();
+const ORDER_REQUEST_TTL_MS = 15 * 60 * 1000;
+
+function normalizeOrderRequestId(value) {
+  const requestId = String(value || '').trim();
+  if (!requestId) return '';
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(requestId)) {
+    const e = new Error('Invalid order requestId');
+    e.statusCode = 400;
+    throw e;
+  }
+  return requestId;
+}
+
+function cleanupOrderRequestCache() {
+  const now = Date.now();
+  for (const [key, entry] of orderRequestCache.entries()) {
+    if (!entry || Number(entry.expiresAt || 0) <= now) orderRequestCache.delete(key);
+  }
+}
+
+async function runIdempotentOrderRequest(clientId, requestId, create) {
+  if (!requestId) return create();
+
+  cleanupOrderRequestCache();
+  const key = String(Number(clientId)) + ':' + requestId;
+  const cached = orderRequestCache.get(key);
+  if (cached?.data) return cached.data;
+
+  const existing = orderRequestLocks.get(key);
+  if (existing) return existing;
+
+  const task = (async () => {
+    const data = await create();
+    orderRequestCache.set(key, {
+      data,
+      expiresAt: Date.now() + ORDER_REQUEST_TTL_MS,
+    });
+    return data;
+  })();
+
+  orderRequestLocks.set(key, task);
+  try {
+    return await task;
+  } finally {
+    orderRequestLocks.delete(key);
+  }
+}
+
 const registrationCodes = new Map();
 const REG_CODE_TTL_MS = Math.max(60_000, Number(process.env.REG_CODE_TTL_MS || 5 * 60_000));
 const REG_CODE_RESEND_MS = Math.max(30_000, Number(process.env.REG_CODE_RESEND_MS || 60_000));
@@ -2100,6 +2150,7 @@ async function realRoute(req, res, path, url) {
 
   if (req.method === 'POST' && path === '/api/orders') {
     const body = await readJson(req);
+    const requestId = normalizeOrderRequestId(body.requestId);
     const incomingPromoCode = String(body.promoCode || '').trim();
     if (incomingPromoCode) {
       const code = validatePromoCode(incomingPromoCode);
@@ -2174,29 +2225,44 @@ async function realRoute(req, res, path, url) {
     }
 
     if (paymentMethod === 'cash') {
-      const data = await tmPostJson('create_order2', payload);
-      return send(res, 201, {
-        ok: true,
-        data: { ...data, paymentMethod: 'cash', paymentStatus: 'cash', tariffId, crewGroupId: definition.crewGroupId, tariffKey },
-      });
+      const responseData = await runIdempotentOrderRequest(
+        session.clientId,
+        requestId,
+        async () => {
+          const data = await tmPostJson('create_order2', payload);
+          return {
+            ...data,
+            paymentMethod: 'cash',
+            paymentStatus: 'cash',
+            tariffId,
+            crewGroupId: definition.crewGroupId,
+            tariffKey,
+          };
+        },
+      );
+      return send(res, 201, { ok: true, data: responseData });
     }
 
     if (paymentMethod === 'bonus') {
       payload.use_bonus = true;
       payload.use_cashless = false;
-      const data = await tmPostJson('create_order2', payload);
-      return send(res, 201, {
-        ok: true,
-        data: {
-          ...data,
-          paymentMethod: 'bonus',
-          paymentStatus: 'bonus',
-          bonusMode: 'use_available_balance',
-          tariffId,
-          crewGroupId: definition.crewGroupId,
-          tariffKey,
+      const responseData = await runIdempotentOrderRequest(
+        session.clientId,
+        requestId,
+        async () => {
+          const data = await tmPostJson('create_order2', payload);
+          return {
+            ...data,
+            paymentMethod: 'bonus',
+            paymentStatus: 'bonus',
+            bonusMode: 'use_available_balance',
+            tariffId,
+            crewGroupId: definition.crewGroupId,
+            tariffKey,
+          };
         },
-      });
+      );
+      return send(res, 201, { ok: true, data: responseData });
     }
 
     if (!cardBindingConfigured()) {
@@ -2204,60 +2270,64 @@ async function realRoute(req, res, path, url) {
       e.statusCode = 409;
       throw e;
     }
-    const { card } = await getStoredCard(session.clientId, Number(body.cardId || 0));
-    const checkoutId = crypto.randomUUID();
-    payload.comment = [
-      body.comment ? String(body.comment) : '',
-      `[Yangi Taxi] Класс: ${tariffKey}`,
-      !destination && tariffKey === 'delivery' ? '[Yangi Taxi] Доставка: конечный адрес не указан' : '',
-      `[Yangi Taxi] Оплата: карта ATMOS после поездки; checkout ${checkoutId}`,
-    ].filter(Boolean).join('\n');
+    const responseData = await runIdempotentOrderRequest(
+      session.clientId,
+      requestId,
+      async () => {
+        const { card } = await getStoredCard(session.clientId, Number(body.cardId || 0));
+        const checkoutId = crypto.randomUUID();
+        payload.comment = [
+          body.comment ? String(body.comment) : '',
+          `[Yangi Taxi] Класс: ${tariffKey}`,
+          !destination && tariffKey === 'delivery' ? '[Yangi Taxi] Доставка: конечный адрес не указан' : '',
+          `[Yangi Taxi] Оплата: карта ATMOS после поездки; checkout ${checkoutId}`,
+        ].filter(Boolean).join('\n');
 
-    const data = await tmPostJson('create_order2', payload);
-    const orderId = Number(data.order_id || 0);
-    if (!orderId) {
-      const e = new Error('TaxiMaster did not return order_id');
-      e.statusCode = 502;
-      throw e;
-    }
-    const record = {
-      checkoutId,
-      clientId: Number(session.clientId),
-      phone: String(session.phone || ''),
-      paymentMethod: 'card',
-      paymentKind: 'stored_card_post_ride',
-      tariffId: Number(tariffId),
-      crewGroupId: Number(definition.crewGroupId),
-      tariffKey,
-      addresses: payload.addresses,
-      cardId: Number(card.cardId),
-      maskedPan: String(card.maskedPan || ''),
-      estimatedAmount: Number(payload.total_cost || 0),
-      amount: 0,
-      amountTiyin: 0,
-      orderId,
-      status: 'order_created_waiting_finish',
-      createdAt: new Date().toISOString(),
-      orderCreatedAt: new Date().toISOString(),
-    };
-    await setPayment(checkoutId, record);
-    console.log(new Date().toISOString(), `[CARD] order #${orderId} created; ATMOS charge deferred until finished`);
-    return send(res, 201, {
-      ok: true,
-      data: {
-        ...data,
-        paymentRequired: false,
-        paymentMethod: 'card',
-        provider: 'ATMOS',
-        checkoutId,
-        maskedPan: record.maskedPan,
-        paymentStatus: 'waiting_finish',
-        chargeMoment: 'after_ride',
-        tariffId,
-        crewGroupId: definition.crewGroupId,
-        tariffKey,
+        const data = await tmPostJson('create_order2', payload);
+        const orderId = Number(data.order_id || 0);
+        if (!orderId) {
+          const e = new Error('TaxiMaster did not return order_id');
+          e.statusCode = 502;
+          throw e;
+        }
+        const record = {
+          checkoutId,
+          clientId: Number(session.clientId),
+          phone: String(session.phone || ''),
+          paymentMethod: 'card',
+          paymentKind: 'stored_card_post_ride',
+          tariffId: Number(tariffId),
+          crewGroupId: Number(definition.crewGroupId),
+          tariffKey,
+          addresses: payload.addresses,
+          cardId: Number(card.cardId),
+          maskedPan: String(card.maskedPan || ''),
+          estimatedAmount: Number(payload.total_cost || 0),
+          amount: 0,
+          amountTiyin: 0,
+          orderId,
+          status: 'order_created_waiting_finish',
+          createdAt: new Date().toISOString(),
+          orderCreatedAt: new Date().toISOString(),
+        };
+        await setPayment(checkoutId, record);
+        console.log(new Date().toISOString(), `[CARD] order #${orderId} created; ATMOS charge deferred until finished`);
+        return {
+          ...data,
+          paymentRequired: false,
+          paymentMethod: 'card',
+          provider: 'ATMOS',
+          checkoutId,
+          maskedPan: record.maskedPan,
+          paymentStatus: 'waiting_finish',
+          chargeMoment: 'after_ride',
+          tariffId,
+          crewGroupId: definition.crewGroupId,
+          tariffKey,
+        };
       },
-    });
+    );
+    return send(res, 201, { ok: true, data: responseData });
   }
 
   const paymentStatusMatch = /^\/api\/payments\/([^/]+)\/status$/.exec(path);

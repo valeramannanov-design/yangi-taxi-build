@@ -4929,6 +4929,7 @@ class _OrderScreenState extends State<OrderScreen> {
   int selectedCardId = 0;
   double bonusBalance = 0;
   String promoCode = '';
+  String? pendingOrderRequestId;
   bool pickupPinnedByUser = false;
   late final ys.SearchManager locationSearchManager;
   ys.SearchSession? locationSearchSession;
@@ -6124,8 +6125,13 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> createOrder() async {
+    if (busy) return;
     final deliveryWithoutDestination = selectedTariffKey == 'delivery' && to == null;
     if (from == null || (to == null && !deliveryWithoutDestination)) return;
+    final requestId = pendingOrderRequestId ??=
+        DateTime.now().microsecondsSinceEpoch.toString() +
+        '-' +
+        math.Random.secure().nextInt(0x7fffffff).toString();
     setState(() {
       busy = true;
       error = null;
@@ -6136,6 +6142,7 @@ class _OrderScreenState extends State<OrderScreen> {
         if (to != null) 'destination': to!.toJson(),
         'tariffKey': selectedTariffKey,
         'paymentMethod': paymentMethod,
+        'requestId': requestId,
         if (paymentMethod == 'card' && selectedCardId > 0) 'cardId': selectedCardId,
         if (promoCode.isNotEmpty) 'promoCode': promoCode,
       });
@@ -6155,6 +6162,7 @@ class _OrderScreenState extends State<OrderScreen> {
           amount: amount,
         );
         if (orderId != null && mounted) {
+          pendingOrderRequestId = null;
           widget.onOrder(orderId);
         }
         return;
@@ -6164,6 +6172,7 @@ class _OrderScreenState extends State<OrderScreen> {
       if (orderId == null || orderId <= 0) {
         throw ApiException('TaxiMaster не вернул номер заказа');
       }
+      pendingOrderRequestId = null;
       widget.onOrder(orderId);
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
