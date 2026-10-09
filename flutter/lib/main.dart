@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'ride_confirmation.dart';
+import 'driver_movement.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
@@ -9462,6 +9463,7 @@ class RideScreen extends StatefulWidget {
 class _RideScreenState extends State<RideScreen> {
   Timer? timer;
   Timer? stageTimer;
+  final DriverMovementEvidence movementEvidence = DriverMovementEvidence();
   bool driverMovementConfirmed = false;
   Map<String, dynamic>? order;
   ym.Point? driver;
@@ -9524,6 +9526,7 @@ class _RideScreenState extends State<RideScreen> {
         missingOrderPollingPaused = false;
         confirmedOrderMissing = false;
         driverMovementConfirmed = false;
+        movementEvidence.reset();
         roadRoute = <ym.Point>[];
         loading = true;
       });
@@ -9731,26 +9734,34 @@ class _RideScreenState extends State<RideScreen> {
       final state = Map<String, dynamic>.from(data['state'] as Map);
       ym.Point? d;
       final loc = data['location'];
-      if (loc is Map && loc['lat'] != null && loc['lon'] != null) {
-        d = ym.Point(latitude: (loc['lat'] as num).toDouble(), longitude: (loc['lon'] as num).toDouble());
+      final latitude = loc is Map ? double.tryParse((loc['lat'] ?? '').toString()) : null;
+      final longitude = loc is Map ? double.tryParse((loc['lon'] ?? '').toString()) : null;
+      if (latitude != null && longitude != null &&
+          latitude.isFinite && longitude.isFinite &&
+          latitude.abs() <= 90 && longitude.abs() <= 180 &&
+          (latitude != 0 || longitude != 0)) {
+        d = ym.Point(latitude: latitude, longitude: longitude);
       }
       final stateKind = (state['state_kind'] ?? '').toString();
       final resolvedOrderId = (state['order_id'] as num?)?.toInt() ?? id;
       final shouldAskRating =
           stateKind == 'finished' && feedbackPromptedOrderId != resolvedOrderId;
       if (mounted && widget.orderId == requestedOrderId) {
-        // Movement is an observed GPS change or a reported nonzero speed.
-        // Assignment alone does not prove the car is actually on its way.
         final reportedSpeed = loc is Map
-            ? double.tryParse((loc['speed'] ?? '0').toString()) ?? 0
-            : 0.0;
-        final observedMovement = d != null && driver != null &&
-            _routeDistanceKm(driver!, d) > 0.06;
+            ? double.tryParse((loc['speed'] ?? '').toString())
+            : null;
+        final assignedCrewId = int.tryParse((state['crew_id'] ?? '').toString()) ?? 0;
+        final hasMovementEvidence = movementEvidence.update(
+          orderId: resolvedOrderId,
+          crewId: assignedCrewId,
+          stateKind: stateKind,
+          confirmedAssignment: canDisplayConfirmedAssignment(state),
+          latitude: d?.latitude,
+          longitude: d?.longitude,
+          speed: reportedSpeed,
+        );
         setState(() {
-          if (stateKind == 'driver_assigned' &&
-              (reportedSpeed > 3 || observedMovement)) {
-            driverMovementConfirmed = true;
-          }
+          driverMovementConfirmed = hasMovementEvidence;
           order = state;
           driver = d;
           loading = false;
