@@ -64,14 +64,15 @@ class DriverMovementEvidence {
       _consecutiveSpeedSamples = 0;
     }
 
-    final validPoint = latitude != null &&
-        longitude != null &&
-        latitude.isFinite &&
-        longitude.isFinite &&
-        latitude.abs() <= 90 &&
-        longitude.abs() <= 180 &&
-        (latitude != 0 || longitude != 0);
-    if (!validPoint) return false; // Preserve GPS anchor across missing polls.
+    if (latitude == null ||
+        longitude == null ||
+        !latitude.isFinite ||
+        !longitude.isFinite ||
+        latitude.abs() > 90 ||
+        longitude.abs() > 180 ||
+        (latitude == 0 && longitude == 0)) {
+      return false; // Preserve GPS anchor across missing polls.
+    }
 
     final lat = latitude;
     final lon = longitude;
