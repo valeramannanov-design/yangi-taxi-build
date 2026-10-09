@@ -9428,6 +9428,7 @@ class _RideScreenState extends State<RideScreen> {
   // Stop hammering TaxiMaster with a saved ID after a verified 404.
   // A manual retry or switching to a different order can always resume.
   bool missingOrderPollingPaused = false;
+  bool confirmedOrderMissing = false;
   String? statusNotice;
   ym.Point? lastRouteStart;
   ym.Point? lastRouteEnd;
@@ -9473,6 +9474,7 @@ class _RideScreenState extends State<RideScreen> {
         error = null;
         statusNotice = null;
         missingOrderPollingPaused = false;
+        confirmedOrderMissing = false;
         driverMovementConfirmed = false;
         roadRoute = <ym.Point>[];
         loading = true;
@@ -9628,41 +9630,15 @@ class _RideScreenState extends State<RideScreen> {
           widget.onSwitchOrder(id);
         }
       } else if (ids.isEmpty) {
+        if (!mounted) return;
+        // Do not claim a cancellation based only on an empty current list.
+        // An existing 404 remains a compact unavailable-order screen.
         setState(() {
           missingOrderPollingPaused = true;
           error = widget.lang == 'uz'
-              ? 'TaxiMaster faol buyurtmani ko‘rsatmayapti. Buyurtmani dispetcher bilan tekshiring.'
-              : 'TaxiMaster не показывает активных заказов. Уточните статус у диспетчера.';
+              ? 'TaxiMaster faol buyurtmani ko‘rsatmayapti.'
+              : 'TaxiMaster не показывает активных заказов.';
         });
-        // The current-orders list is empty, but that alone does not prove
-        // a ride has been cancelled or finished. Only the user can unlink
-        // this locally remembered order after checking with dispatch.
-        final unlink = await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(widget.lang == 'uz'
-                ? 'Saqlangan buyurtmani uzishmi?'
-                : 'Убрать сохранённый номер заказа?'),
-            content: Text(widget.lang == 'uz'
-                ? 'TaxiMasterda faol buyurtma topilmadi. Agar dispetcher buyurtma tugaganini yoki mavjud emasligini tasdiqlagan bo‘lsa, faqat telefonda saqlangan raqamni olib tashlashingiz mumkin. TaxiMasterdagi buyurtma bekor qilinmaydi.'
-                : 'TaxiMaster не показывает активных заказов. Если диспетчер подтвердил, что поездка завершена или заказа нет, можно удалить только сохранённый номер из приложения. Это НЕ отменяет заказ в TaxiMaster и не меняет платежи.'),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: Text(widget.lang == 'uz' ? 'Qoldirish' : 'Оставить заказ'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text(widget.lang == 'uz'
-                    ? 'Tekshirdim, raqamni o‘chirish'
-                    : 'Проверил у диспетчера — убрать номер'),
-              ),
-            ],
-          ),
-        );
-        if (unlink == true && mounted && widget.orderId == requestedOrderId) {
-          widget.onNewTrip();
-        }
       } else {
         setState(() {
           missingOrderPollingPaused = true;
@@ -9732,6 +9708,7 @@ class _RideScreenState extends State<RideScreen> {
           loading = false;
           error = null;
           missingOrderPollingPaused = false;
+          confirmedOrderMissing = false;
           final stateSource = (data['stateSource'] ?? 'order_state').toString();
           statusNotice = stateSource == 'order_state'
               ? null
@@ -9777,6 +9754,7 @@ class _RideScreenState extends State<RideScreen> {
           lastRouteEnd = null;
           statusNotice = null;
           if (orderMissing) missingOrderPollingPaused = true;
+          confirmedOrderMissing = orderMissing;
           error = orderMissing
               ? (widget.lang == 'uz'
                   ? 'TaxiMaster buyurtmani topmadi. Buyurtma holatini tekshiring.'
@@ -9920,6 +9898,89 @@ class _RideScreenState extends State<RideScreen> {
     }
   }
 
+
+  Widget _endedRideScreen({required bool cancelled}) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      backgroundColor: dark ? const Color(0xFF0C0E0F) : scheme.surface,
+      body: SafeArea(
+        child: Column(
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+              child: Row(
+                children: <Widget>[
+                  _rideCircleButton(
+                    icon: Icons.menu_rounded,
+                    onTap: widget.onMenu,
+                    tooltip: widget.lang == 'uz' ? 'Menyu' : 'Меню',
+                  ),
+                  const Spacer(),
+                  const YangiWordmark(compact: true),
+                  const Spacer(),
+                  const SizedBox(width: 46),
+                ],
+              ),
+            ),
+            const Spacer(),
+            const Text('😔', style: TextStyle(fontSize: 84, height: 1.15)),
+            const SizedBox(height: 22),
+            Text(
+              cancelled
+                  ? (widget.lang == 'uz' ? 'Buyurtma bekor qilindi' : 'Заказ отменён')
+                  : (widget.lang == 'uz' ? 'Buyurtma topilmadi' : 'Заказ недоступен'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            if (!cancelled) ...<Widget>[
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Text(
+                  widget.lang == 'uz'
+                      ? 'TaxiMaster buyurtma holatini tasdiqlamadi.'
+                      : 'TaxiMaster не подтвердил статус заказа.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+                ),
+              ),
+            ],
+            const SizedBox(height: 29),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: FilledButton(
+                  onPressed: widget.onNewTrip,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: yangiLime,
+                    foregroundColor: yangiGraphite,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(19),
+                    ),
+                  ),
+                  child: Text(
+                    widget.lang == 'uz' ? 'Bosh sahifaga' : 'На главную',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900, fontSize: 17,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const Spacer(),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -9966,6 +10027,16 @@ class _RideScreenState extends State<RideScreen> {
           ),
         ),
       );
+    }
+
+    // A 404 is not proof of cancellation. Show a minimal unavailable screen
+    // rather than the old retry dialog; the button only clears local storage.
+    if (order == null && confirmedOrderMissing) {
+      return _endedRideScreen(cancelled: false);
+    }
+    if (order != null &&
+        (order!['state_kind'] ?? '').toString().toLowerCase() == 'aborted') {
+      return _endedRideScreen(cancelled: true);
     }
 
     if (order == null) {
