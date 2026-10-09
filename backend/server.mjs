@@ -2534,8 +2534,14 @@ async function realRoute(req, res, path, url) {
     const { state, source } = await getOwnedRideState(orderId);
     let location = null;
     if (state.crew_id) {
-      const coords = await tmGet('get_crews_coords', { crew_id: state.crew_id });
-      location = coords.crews_coords?.[0] || null;
+      try {
+        const coords = await tmGet('get_crews_coords', { crew_id: state.crew_id });
+        location = coords.crews_coords?.[0] || null;
+      } catch (error) {
+        // A missing/offline driver location must not invalidate the confirmed
+        // order state. The client can continue polling for coordinates.
+        console.warn('[ride] optional crew coordinates unavailable:', error.message);
+      }
     }
     return send(res, 200, { ok: true, data: { state, location, stateSource: source } });
   }

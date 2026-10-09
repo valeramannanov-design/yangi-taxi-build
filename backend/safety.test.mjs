@@ -242,3 +242,8 @@ test('do not misinterpret unrelated TaxiMaster code 100 as a valid ride state', 
     getHistory: async () => ({ orders: [] }),
   }), { statusCode: 404 });
 });
+
+test('unavailable crew coordinates do not mask a confirmed order state', () => {
+  assert.match(source, /optional crew coordinates unavailable/);
+  assert.match(source, /location = coords\.crews_coords\?\.\[0\] \|\| null/);
+});
