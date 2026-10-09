@@ -1866,6 +1866,12 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> requestSms() async {
+    if (!RegExp(r'^\+998\d{9}$').hasMatch(_authPhone())) {
+      setState(() => error = widget.lang == 'uz'
+          ? 'Telefon raqamini +998 formatida kiriting'
+          : 'Введите номер телефона Узбекистана (+998)');
+      return;
+    }
     if (phone.text.trim().isEmpty || name.text.trim().isEmpty || pass.text.length < 6) {
       setState(() => error = widget.lang == 'uz'
           ? 'Ism, telefon va kamida 6 belgili parolni kiriting'
@@ -1901,7 +1907,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> verifySmsAndRegister() async {
-    if (smsCode.text.trim().length < 4) {
+    if (!RegExp(r'^\d{6}$').hasMatch(smsCode.text.trim())) {
       setState(() => error = widget.lang == 'uz' ? 'SMS-kodni kiriting' : 'Введите код из SMS');
       return;
     }
@@ -2586,6 +2592,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           controller: smsCode,
                           autofocus: true,
                           keyboardType: TextInputType.number,
+                          inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
                           maxLength: 6,
                           style: const TextStyle(
                             color: Colors.white,
