@@ -3252,8 +3252,9 @@ class _ShellState extends State<Shell> {
       scaffold!.closeDrawer();
       return;
     }
-    if (tab != 0) {
-      selectTab(0);
+    final safeHomeTab = activeId != null ? 1 : 0;
+    if (tab != safeHomeTab) {
+      selectTab(safeHomeTab);
       return;
     }
     if (_exitDialogOpen || !mounted) return;
@@ -3302,6 +3303,16 @@ class _ShellState extends State<Shell> {
     }
   }
 
+  void goHomeSafely() {
+    final scaffold = shellKey.currentState;
+    if (scaffold?.isDrawerOpen == true) {
+      scaffold!.closeDrawer();
+    }
+    if (!mounted) return;
+    final target = activeId != null ? 1 : 0;
+    if (tab != target) setState(() => tab = target);
+  }
+
   void startNewTrip() {
     final scaffold = shellKey.currentState;
     if (scaffold?.isDrawerOpen == true) {
@@ -3332,7 +3343,7 @@ class _ShellState extends State<Shell> {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => page),
     );
-    if (mounted) selectTab(0);
+    if (mounted) goHomeSafely();
   }
 
   void openDrawerSettings() {
@@ -3401,7 +3412,7 @@ class _ShellState extends State<Shell> {
         borderRadius: BorderRadius.circular(14),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => index == 0 ? startNewTrip() : selectTab(index),
+          onTap: () => index == 0 ? goHomeSafely() : selectTab(index),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 50),
             child: Padding(
@@ -3641,12 +3652,12 @@ class _ShellState extends State<Shell> {
         onNewTrip: startNewTrip,
         isActive: tab == 1,
       ),
-      HistoryScreen(api: widget.api, lang: widget.lang, onMenu: startNewTrip),
+      HistoryScreen(api: widget.api, lang: widget.lang, onMenu: goHomeSafely),
       CardsScreen(
         api: widget.api,
         lang: widget.lang,
         onMenu: openMenu,
-        onDone: () => selectTab(0),
+        onDone: goHomeSafely,
         isActive: tab == 3,
       ),
       SettingsScreen(
@@ -3666,7 +3677,7 @@ class _ShellState extends State<Shell> {
         onTheme: widget.onTheme,
         onBackend: widget.onBackend,
         onLogout: widget.onLogout,
-        onMenu: () => selectTab(0),
+        onMenu: goHomeSafely,
         isActive: tab == 5,
       ),
     ];
