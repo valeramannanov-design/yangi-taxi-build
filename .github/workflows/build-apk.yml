@@ -140,6 +140,9 @@ jobs:
       - name: Analyze Flutter
         working-directory: flutter
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Test driver acceptance handling
+        working-directory: flutter
+        run: flutter test test/ride_confirmation_test.dart
       - name: Validate LIVE build configuration
         env:
           MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
