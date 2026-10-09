@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { createOrderRequestGuard } from './order-idempotency.mjs';
+import { createAtomicJsonWriter } from './atomic-json-store.mjs';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -647,8 +648,9 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 
 const clientProfilesFile = new URL('./data/client-profiles.json', import.meta.url);
 let clientProfilesLoaded = false;
+let clientProfilesLoadPromise = null;
 let clientProfileStore = new Map();
-let clientProfileWriteChain = Promise.resolve();
+const writeClientProfiles = createAtomicJsonWriter(clientProfilesFile);
 
 function emptyClientProfile() {
   return {
@@ -709,41 +711,35 @@ function normalizeClientProfile(value) {
 
 async function loadClientProfiles() {
   if (clientProfilesLoaded) return;
-  clientProfilesLoaded = true;
-  try {
-    const raw = await readFile(clientProfilesFile, 'utf8');
-    const parsed = JSON.parse(raw);
-    const clients = parsed?.clients && typeof parsed.clients === 'object'
-      ? parsed.clients
-      : parsed;
-    clientProfileStore = new Map(
-      Object.entries(clients || {}).map(([clientId, profile]) => [
-        String(Number(clientId)),
-        normalizeClientProfile(profile),
-      ])
-    );
-  } catch (error) {
-    if (error?.code !== 'ENOENT') {
-      console.warn('Could not load client profile store:', error.message);
-    }
-    clientProfileStore = new Map();
+  if (!clientProfilesLoadPromise) {
+    clientProfilesLoadPromise = (async () => {
+      try {
+        const raw = await readFile(clientProfilesFile, 'utf8');
+        const parsed = JSON.parse(raw);
+        const clients = parsed?.clients && typeof parsed.clients === 'object'
+          ? parsed.clients : parsed;
+        clientProfileStore = new Map(
+          Object.entries(clients || {}).map(([clientId, profile]) => [
+            String(Number(clientId)),
+            normalizeClientProfile(profile),
+          ])
+        );
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error; // Never overwrite damaged data.
+        clientProfileStore = new Map();
+      }
+      clientProfilesLoaded = true;
+    })().finally(() => { clientProfilesLoadPromise = null; });
   }
+  return clientProfilesLoadPromise;
 }
 
 async function saveClientProfiles() {
-  clientProfileWriteChain = clientProfileWriteChain
-    .catch(() => {})
-    .then(async () => {
-      const dir = new URL('./data/', import.meta.url);
-      await mkdir(dir, { recursive: true });
-      const tmp = new URL('./data/client-profiles.tmp.json', import.meta.url);
-      await writeFile(tmp, JSON.stringify({
-        version: 1,
-        clients: Object.fromEntries(clientProfileStore.entries()),
-      }, null, 2), 'utf8');
-      await rename(tmp, clientProfilesFile);
-    });
-  return clientProfileWriteChain;
+  await loadClientProfiles();
+  return writeClientProfiles({
+    version: 1,
+    clients: Object.fromEntries(clientProfileStore.entries()),
+  });
 }
 
 async function profileForClient(clientId) {
@@ -948,8 +944,10 @@ async function handleClientProfileRoute(req, res, path, session) {
 
 const cardsFile = new URL('./data/cards.json', import.meta.url);
 let cardsLoaded = false;
+let cardsLoadPromise = null;
 let cardStore = new Map();
 let pendingCardBinds = new Map();
+const writeCards = createAtomicJsonWriter(cardsFile);
 
 function paymentCryptoKey() {
   const value = String(cfg.paymentDataKey || '').trim();
@@ -1005,28 +1003,30 @@ function decryptCardToken(value) {
 
 async function loadCards() {
   if (cardsLoaded) return;
-  cardsLoaded = true;
-  try {
-    const raw = await readFile(cardsFile, 'utf8');
-    const parsed = JSON.parse(raw);
-    cardStore = new Map(Object.entries(parsed?.clients || {}));
-    pendingCardBinds = new Map(Object.entries(parsed?.pending || {}));
-  } catch (error) {
-    if (error?.code !== 'ENOENT') console.warn('Could not load card store:', error.message);
-    cardStore = new Map();
-    pendingCardBinds = new Map();
+  if (!cardsLoadPromise) {
+    cardsLoadPromise = (async () => {
+      try {
+        const raw = await readFile(cardsFile, 'utf8');
+        const parsed = JSON.parse(raw);
+        cardStore = new Map(Object.entries(parsed?.clients || {}));
+        pendingCardBinds = new Map(Object.entries(parsed?.pending || {}));
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error; // Avoid losing payment tokens.
+        cardStore = new Map();
+        pendingCardBinds = new Map();
+      }
+      cardsLoaded = true;
+    })().finally(() => { cardsLoadPromise = null; });
   }
+  return cardsLoadPromise;
 }
 
 async function saveCards() {
-  const dir = new URL('./data/', import.meta.url);
-  await mkdir(dir, { recursive: true });
-  const tmp = new URL('./data/cards.tmp.json', import.meta.url);
-  await writeFile(tmp, JSON.stringify({
+  await loadCards();
+  return writeCards({
     clients: Object.fromEntries(cardStore.entries()),
-    pending: Object.fromEntries(pendingCardBinds.entries())
-  }, null, 2), 'utf8');
-  await rename(tmp, cardsFile);
+    pending: Object.fromEntries(pendingCardBinds.entries()),
+  });
 }
 
 function publicCard(card, defaultCardId = 0) {
@@ -1352,7 +1352,9 @@ async function chargeAtmosStoredCard(record, card, amount) {
 
 const paymentFile = new URL('./data/payments.json', import.meta.url);
 let paymentsLoaded = false;
+let paymentsLoadPromise = null;
 let paymentStore = new Map();
+const writePayments = createAtomicJsonWriter(paymentFile);
 let atmosTokenCache = { token: '', expiresAt: 0 };
 
 function atmosConfigured() {
@@ -1366,24 +1368,25 @@ function atmosConfigured() {
 
 async function loadPayments() {
   if (paymentsLoaded) return;
-  paymentsLoaded = true;
-  try {
-    const raw = await readFile(paymentFile, 'utf8');
-    const parsed = JSON.parse(raw);
-    paymentStore = new Map(Object.entries(parsed || {}));
-  } catch (error) {
-    if (error?.code !== 'ENOENT') console.warn('Could not load payment store:', error.message);
-    paymentStore = new Map();
+  if (!paymentsLoadPromise) {
+    paymentsLoadPromise = (async () => {
+      try {
+        const raw = await readFile(paymentFile, 'utf8');
+        const parsed = JSON.parse(raw);
+        paymentStore = new Map(Object.entries(parsed || {}));
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error; // Never silently erase payment state.
+        paymentStore = new Map();
+      }
+      paymentsLoaded = true;
+    })().finally(() => { paymentsLoadPromise = null; });
   }
+  return paymentsLoadPromise;
 }
 
 async function savePayments() {
-  const dir = new URL('./data/', import.meta.url);
-  await mkdir(dir, { recursive: true });
-  const tmp = new URL('./data/payments.tmp.json', import.meta.url);
-  const obj = Object.fromEntries(paymentStore.entries());
-  await writeFile(tmp, JSON.stringify(obj, null, 2), 'utf8');
-  await rename(tmp, paymentFile);
+  await loadPayments();
+  return writePayments(Object.fromEntries(paymentStore.entries()));
 }
 
 async function setPayment(id, record) {
