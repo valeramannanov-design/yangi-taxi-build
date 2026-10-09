@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { createOrderRequestGuard } from './order-idempotency.mjs';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -151,10 +152,6 @@ async function acquireSettlementWorkerLock() {
   return false;
 }
 
-const orderRequestCache = new Map();
-const orderRequestLocks = new Map();
-const ORDER_REQUEST_TTL_MS = 15 * 60 * 1000;
-
 function normalizeOrderRequestId(value) {
   const requestId = String(value || '').trim();
   if (!requestId) return '';
@@ -166,40 +163,7 @@ function normalizeOrderRequestId(value) {
   return requestId;
 }
 
-function cleanupOrderRequestCache() {
-  const now = Date.now();
-  for (const [key, entry] of orderRequestCache.entries()) {
-    if (!entry || Number(entry.expiresAt || 0) <= now) orderRequestCache.delete(key);
-  }
-}
-
-async function runIdempotentOrderRequest(clientId, requestId, create) {
-  if (!requestId) return create();
-
-  cleanupOrderRequestCache();
-  const key = String(Number(clientId)) + ':' + requestId;
-  const cached = orderRequestCache.get(key);
-  if (cached?.data) return cached.data;
-
-  const existing = orderRequestLocks.get(key);
-  if (existing) return existing;
-
-  const task = (async () => {
-    const data = await create();
-    orderRequestCache.set(key, {
-      data,
-      expiresAt: Date.now() + ORDER_REQUEST_TTL_MS,
-    });
-    return data;
-  })();
-
-  orderRequestLocks.set(key, task);
-  try {
-    return await task;
-  } finally {
-    orderRequestLocks.delete(key);
-  }
-}
+const runIdempotentOrderRequest = createOrderRequestGuard();
 
 const registrationCodes = new Map();
 const REG_CODE_TTL_MS = Math.max(60_000, Number(process.env.REG_CODE_TTL_MS || 5 * 60_000));
@@ -2298,10 +2262,24 @@ async function realRoute(req, res, path, url) {
       payload.cost_freeze = true;
     }
 
+    // A requestId is valid only for exactly one set of order details.
+    // Ignore generated source_time, which legitimately changes between retries.
+    const requestFingerprint = JSON.stringify({
+      source: routeAddress(source),
+      destination: destination ? routeAddress(destination) : null,
+      tariffKey,
+      paymentMethod,
+      cardId: paymentMethod === 'card' ? Number(body.cardId || 0) : null,
+      promoCode: incomingPromoCode,
+      comment: String(body.comment || ''),
+    });
+
     if (paymentMethod === 'cash') {
       const responseData = await runIdempotentOrderRequest(
         session.clientId,
         requestId,
+
+        requestFingerprint,
         async () => {
           const data = await tmPostJson('create_order2', payload);
           return {
@@ -2323,6 +2301,8 @@ async function realRoute(req, res, path, url) {
       const responseData = await runIdempotentOrderRequest(
         session.clientId,
         requestId,
+
+        requestFingerprint,
         async () => {
           const data = await tmPostJson('create_order2', payload);
           return {
@@ -2347,6 +2327,8 @@ async function realRoute(req, res, path, url) {
     const responseData = await runIdempotentOrderRequest(
       session.clientId,
       requestId,
+
+      requestFingerprint,
       async () => {
         const { card } = await getStoredCard(session.clientId, Number(body.cardId || 0));
         const checkoutId = crypto.randomUUID();

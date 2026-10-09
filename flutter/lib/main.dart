@@ -4930,6 +4930,7 @@ class _OrderScreenState extends State<OrderScreen> {
   double bonusBalance = 0;
   String promoCode = '';
   String? pendingOrderRequestId;
+  String? pendingOrderRequestSignature;
   bool pickupPinnedByUser = false;
   late final ys.SearchManager locationSearchManager;
   ys.SearchSession? locationSearchSession;
@@ -6128,23 +6129,30 @@ class _OrderScreenState extends State<OrderScreen> {
     if (busy) return;
     final deliveryWithoutDestination = selectedTariffKey == 'delivery' && to == null;
     if (from == null || (to == null && !deliveryWithoutDestination)) return;
-    final requestId = pendingOrderRequestId ??=
-        DateTime.now().microsecondsSinceEpoch.toString() +
-        '-' +
-        math.Random.secure().nextInt(0x7fffffff).toString();
+    final orderPayload = <String, dynamic>{
+      'source': from!.toJson(),
+      if (to != null) 'destination': to!.toJson(),
+      'tariffKey': selectedTariffKey,
+      'paymentMethod': paymentMethod,
+      if (paymentMethod == 'card' && selectedCardId > 0) 'cardId': selectedCardId,
+      if (promoCode.isNotEmpty) 'promoCode': promoCode,
+    };
+    final signature = jsonEncode(orderPayload);
+    if (pendingOrderRequestSignature != signature) {
+      // Retry an identical attempt with the same ID; changed details get a new ID.
+      pendingOrderRequestSignature = signature;
+      pendingOrderRequestId = DateTime.now().microsecondsSinceEpoch.toString() +
+          '-' + math.Random.secure().nextInt(0x7fffffff).toString();
+    }
+    final requestId = pendingOrderRequestId!;
     setState(() {
       busy = true;
       error = null;
     });
     try {
       final data = await widget.api.post('/api/orders', <String, dynamic>{
-        'source': from!.toJson(),
-        if (to != null) 'destination': to!.toJson(),
-        'tariffKey': selectedTariffKey,
-        'paymentMethod': paymentMethod,
+        ...orderPayload,
         'requestId': requestId,
-        if (paymentMethod == 'card' && selectedCardId > 0) 'cardId': selectedCardId,
-        if (promoCode.isNotEmpty) 'promoCode': promoCode,
       });
 
       if (data is Map && data['paymentRequired'] == true) {
@@ -6163,6 +6171,8 @@ class _OrderScreenState extends State<OrderScreen> {
         );
         if (orderId != null && mounted) {
           pendingOrderRequestId = null;
+
+          pendingOrderRequestSignature = null;
           widget.onOrder(orderId);
         }
         return;
@@ -6173,6 +6183,8 @@ class _OrderScreenState extends State<OrderScreen> {
         throw ApiException('TaxiMaster не вернул номер заказа');
       }
       pendingOrderRequestId = null;
+
+      pendingOrderRequestSignature = null;
       widget.onOrder(orderId);
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
