@@ -1791,21 +1791,6 @@ async function mockRoute(req, res, path, url) {
     if (s && ['finished', 'aborted'].includes(s.state_kind) && !list.some((x) => x.order_id === s.order_id)) list.unshift(s);
     return send(res, 200, { ok: true, data: list });
   }
-  async function requireOwnedOrder(orderId, state) {
-    return assertOwnedOrder({
-      orderId,
-      clientId: session.clientId,
-      state,
-      loadCurrent: () => tmGet('get_current_orders', { client_id: session.clientId }),
-      loadHistory: () => tmGet('get_finished_orders', {
-        start_time: tmDaysAgo(90),
-        finish_time: tmTime(),
-        client_id: session.clientId,
-        state_type: 'all',
-      }),
-    });
-  }
-
   const driver = /^\/api\/orders\/(\d+)\/driver-location$/.exec(path);
   if (req.method === 'GET' && driver) {
     const s = mockState();
@@ -1969,6 +1954,22 @@ async function realRoute(req, res, path, url) {
   }
 
   const session = auth(req);
+
+  async function requireOwnedOrder(orderId, state) {
+    return assertOwnedOrder({
+      orderId,
+      clientId: session.clientId,
+      state,
+      loadCurrent: () => tmGet('get_current_orders', { client_id: session.clientId }),
+      loadHistory: () => tmGet('get_finished_orders', {
+        start_time: tmDaysAgo(90),
+        finish_time: tmTime(),
+        client_id: session.clientId,
+        state_type: 'all',
+      }),
+    });
+  }
+
 
   const profileHandled = await handleClientProfileRoute(req, res, path, session);
   if (profileHandled !== false) return profileHandled;

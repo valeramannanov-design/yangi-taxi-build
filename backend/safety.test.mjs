@@ -162,3 +162,17 @@ test('ATMOS uncertain create cannot automatically start a second transaction', (
   assert.match(source, /manual ATMOS reconciliation before retry/);
   assert.match(source, /if \(!record\.atmosTransactionId && record\.atmosAccount\)/);
 });
+
+
+test('real LIVE order routes can resolve the ownership helper', () => {
+  const mockStart = source.indexOf('async function mockRoute(');
+  const realStart = source.indexOf('async function realRoute(');
+  const helperStart = source.indexOf('  async function requireOwnedOrder(');
+  const mainStart = source.indexOf('const server = http.createServer', realStart);
+  assert.ok(mockStart >= 0 && realStart > mockStart);
+  assert.ok(helperStart > realStart && helperStart < mainStart,
+    'ownership guard must be defined inside realRoute, not mockRoute');
+  const liveRoute = source.slice(realStart, mainStart);
+  assert.match(liveRoute, /const session = auth\(req\);[\s\S]*async function requireOwnedOrder\(/);
+  assert.equal((liveRoute.match(/await requireOwnedOrder\(orderId, state\)/g) || []).length, 4);
+});
