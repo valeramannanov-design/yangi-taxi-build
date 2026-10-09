@@ -3282,7 +3282,7 @@ class _ShellState extends State<Shell> {
           '/api/orders/' + savedId.toString() + '/driver-location',
         );
       } on ApiException catch (e) {
-        if ((e.statusCode == 403 || e.statusCode == 404) &&
+        if (e.statusCode == 403 &&
             mounted &&
             revision == _orderStateRevision &&
             activeId == savedId) {
@@ -9270,6 +9270,9 @@ class _RideScreenState extends State<RideScreen> {
   yd.DrivingSession? drivingSession;
   bool routeRequestInFlight = false;
   bool refreshInFlight = false;
+  // Stop hammering TaxiMaster with a saved ID after a verified 404.
+  // A manual retry or switching to a different order can always resume.
+  bool missingOrderPollingPaused = false;
   String? statusNotice;
   ym.Point? lastRouteStart;
   ym.Point? lastRouteEnd;
@@ -9284,7 +9287,7 @@ class _RideScreenState extends State<RideScreen> {
     }
     if (widget.isActive) refresh();
     timer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (widget.isActive) refresh();
+      if (widget.isActive && !missingOrderPollingPaused) refresh();
     });
   }
 
@@ -9297,6 +9300,7 @@ class _RideScreenState extends State<RideScreen> {
         driver = null;
         error = null;
         statusNotice = null;
+        missingOrderPollingPaused = false;
         roadRoute = <ym.Point>[];
         loading = true;
       });
@@ -9430,6 +9434,7 @@ class _RideScreenState extends State<RideScreen> {
   }
 
   Future<void> recoverCurrentRide() async {
+    final requestedOrderId = widget.orderId;
     try {
       final result = await widget.api.get('/api/orders/current');
       if (result is! List) throw ApiException('Unexpected TaxiMaster current orders response');
@@ -9440,7 +9445,7 @@ class _RideScreenState extends State<RideScreen> {
         final id = raw is num ? raw.toInt() : int.tryParse(raw?.toString() ?? '');
         if (id != null && id > 0) ids.add(id);
       }
-      if (!mounted) return;
+      if (!mounted || widget.orderId != requestedOrderId) return;
       if (ids.length == 1) {
         final id = ids.single;
         if (id == widget.orderId) {
@@ -9448,19 +9453,54 @@ class _RideScreenState extends State<RideScreen> {
         } else {
           widget.onSwitchOrder(id);
         }
+      } else if (ids.isEmpty) {
+        setState(() {
+          missingOrderPollingPaused = true;
+          error = widget.lang == 'uz'
+              ? 'TaxiMaster faol buyurtmani ko‘rsatmayapti. Buyurtmani dispetcher bilan tekshiring.'
+              : 'TaxiMaster не показывает активных заказов. Уточните статус у диспетчера.';
+        });
+        // The current-orders list is empty, but that alone does not prove
+        // a ride has been cancelled or finished. Only the user can unlink
+        // this locally remembered order after checking with dispatch.
+        final unlink = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(widget.lang == 'uz'
+                ? 'Saqlangan buyurtmani uzishmi?'
+                : 'Убрать сохранённый номер заказа?'),
+            content: Text(widget.lang == 'uz'
+                ? 'TaxiMasterda faol buyurtma topilmadi. Agar dispetcher buyurtma tugaganini yoki mavjud emasligini tasdiqlagan bo‘lsa, faqat telefonda saqlangan raqamni olib tashlashingiz mumkin. TaxiMasterdagi buyurtma bekor qilinmaydi.'
+                : 'TaxiMaster не показывает активных заказов. Если диспетчер подтвердил, что поездка завершена или заказа нет, можно удалить только сохранённый номер из приложения. Это НЕ отменяет заказ в TaxiMaster и не меняет платежи.'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(widget.lang == 'uz' ? 'Qoldirish' : 'Оставить заказ'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(widget.lang == 'uz'
+                    ? 'Tekshirdim, raqamni o‘chirish'
+                    : 'Проверил у диспетчера — убрать номер'),
+              ),
+            ],
+          ),
+        );
+        if (unlink == true && mounted && widget.orderId == requestedOrderId) {
+          widget.onNewTrip();
+        }
       } else {
         setState(() {
-          error = ids.isEmpty
-              ? (widget.lang == 'uz'
-                  ? 'TaxiMasterda faol buyurtma topilmadi. Yangi buyurtmadan oldin dispetcher bilan tekshiring.'
-                  : 'TaxiMaster не показывает активных заказов. Перед новым заказом уточните статус у диспетчера.')
-              : (widget.lang == 'uz'
-                  ? 'Bir nechta faol buyurtma topildi. Iltimos, dispetcherga murojaat qiling.'
-                  : 'Найдено несколько активных заказов. Уточните нужный у диспетчера.');
+          missingOrderPollingPaused = true;
+          error = widget.lang == 'uz'
+              ? 'Bir nechta faol buyurtma topildi. Iltimos, dispetcherga murojaat qiling.'
+              : 'Найдено несколько активных заказов. Уточните нужный у диспетчера.';
         });
       }
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted && widget.orderId == requestedOrderId) {
+        setState(() => error = e.toString());
+      }
     }
   }
 
@@ -9506,6 +9546,7 @@ class _RideScreenState extends State<RideScreen> {
           driver = d;
           loading = false;
           error = null;
+          missingOrderPollingPaused = false;
           final stateSource = (data['stateSource'] ?? 'order_state').toString();
           statusNotice = stateSource == 'order_state'
               ? null
@@ -9534,9 +9575,11 @@ class _RideScreenState extends State<RideScreen> {
     } catch (e) {
       final message = e.toString().trim();
       final normalized = message.toLowerCase();
-      final orderMissing = normalized.contains('order not found') ||
-          normalized.contains('заказ не найден') ||
-          normalized == 'not found';
+      final orderMissing = requestedOrderId != null &&
+          ((e is ApiException && e.statusCode == 404) ||
+              normalized.contains('order not found') ||
+              normalized.contains('заказ не найден') ||
+              normalized == 'not found');
 
       if (mounted && widget.orderId == requestedOrderId) {
         setState(() {
@@ -9547,6 +9590,7 @@ class _RideScreenState extends State<RideScreen> {
           lastRouteStart = null;
           lastRouteEnd = null;
           statusNotice = null;
+          if (orderMissing) missingOrderPollingPaused = true;
           error = orderMissing
               ? (widget.lang == 'uz'
                   ? 'TaxiMaster buyurtmani topmadi. Buyurtma holatini tekshiring.'
