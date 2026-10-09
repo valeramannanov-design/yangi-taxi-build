@@ -9376,12 +9376,13 @@ class _RideScreenState extends State<RideScreen> {
   Future<void> refresh() async {
     if (!widget.isActive || refreshInFlight) return;
     refreshInFlight = true;
+    final requestedOrderId = widget.orderId;
     try {
       var id = widget.orderId;
       if (id == null) {
         final current = await widget.api.get('/api/orders/current') as List;
         if (current.isEmpty) {
-          if (mounted) setState(() {
+          if (mounted && widget.orderId == requestedOrderId) setState(() {
             order = null;
             driver = null;
             loading = false;
@@ -9408,7 +9409,7 @@ class _RideScreenState extends State<RideScreen> {
       final resolvedOrderId = (state['order_id'] as num?)?.toInt() ?? id;
       final shouldAskRating =
           stateKind == 'finished' && feedbackPromptedOrderId != resolvedOrderId;
-      if (mounted) {
+      if (mounted && widget.orderId == requestedOrderId) {
         setState(() {
           order = state;
           driver = d;
@@ -9440,27 +9441,17 @@ class _RideScreenState extends State<RideScreen> {
           normalized.contains('заказ не найден') ||
           normalized == 'not found';
 
-      if (mounted) {
-        if (orderMissing) {
-          setState(() {
-            order = <String, dynamic>{
-              ...?order,
-              'order_id': widget.orderId ?? order?['order_id'] ?? 0,
-              'state_kind': 'aborted',
-            };
-            driver = null;
-            roadRoute = <ym.Point>[];
-            lastRouteStart = null;
-            lastRouteEnd = null;
-            loading = false;
-            error = null;
-          });
-        } else {
-          setState(() {
-            loading = false;
-            error = message;
-          });
-        }
+      if (mounted && widget.orderId == requestedOrderId) {
+        setState(() {
+          // A TaxiMaster lookup failure is not a confirmed cancellation.
+          // Preserve the last known state; the periodic poll will retry.
+          loading = false;
+          error = orderMissing
+              ? (widget.lang == 'uz'
+                  ? 'Safar holatini hozircha tasdiqlab bo‘lmadi. Qayta tekshiramiz.'
+                  : 'Статус поездки временно недоступен. Повторяем проверку.')
+              : message;
+        });
       }
     } finally {
       refreshInFlight = false;
@@ -9639,12 +9630,16 @@ class _RideScreenState extends State<RideScreen> {
               ),
               const SizedBox(height: 18),
               Text(
-                widget.lang == 'uz' ? 'Faol safar yo‘q' : 'Нет активной поездки',
+                widget.orderId != null
+                     ? (widget.lang == 'uz' ? 'Safar holati tekshirilmoqda' : 'Проверяем статус поездки')
+                     : (widget.lang == 'uz' ? 'Faol safar yo‘q' : 'Нет активной поездки'),
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5),
               ),
               const SizedBox(height: 7),
               Text(
-                widget.lang == 'uz' ? 'Yangi safarni asosiy ekrandan buyurtma qiling' : 'Закажите новую поездку на главном экране',
+                widget.orderId != null
+                    ? (error ?? (widget.lang == 'uz' ? 'Buyurtma saqlangan, TaxiMaster javobini kutyapmiz' : 'Заказ сохранён, ожидаем ответа TaxiMaster'))
+                    : (widget.lang == 'uz' ? 'Yangi safarni asosiy ekrandan buyurtma qiling' : 'Закажите новую поездку на главном экране'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5),
               ),
