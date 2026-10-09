@@ -3138,6 +3138,7 @@ class _ShellState extends State<Shell> {
   final GlobalKey<ScaffoldState> shellKey = GlobalKey<ScaffoldState>();
   int tab = 0;
   int? activeId;
+  DateTime? newlyCreatedOrderAt;
   int orderFormGeneration = 0;
   int _orderStateRevision = 0;
   Future<void> _orderStorageWrites = Future<void>.value();
@@ -3381,6 +3382,7 @@ class _ShellState extends State<Shell> {
     if (!mounted) return;
     setState(() {
       activeId = null;
+      newlyCreatedOrderAt = null;
       orderFormGeneration += 1;
       tab = 0;
     });
@@ -3392,6 +3394,7 @@ class _ShellState extends State<Shell> {
     unawaited(_persistActiveOrder(id));
     if (mounted) setState(() {
       activeId = id;
+      newlyCreatedOrderAt = null;
       tab = 1;
     });
   }
@@ -3401,6 +3404,7 @@ class _ShellState extends State<Shell> {
     unawaited(_persistActiveOrder(id));
     setState(() {
       activeId = id;
+      newlyCreatedOrderAt = DateTime.now();
       tab = 1;
     });
   }
@@ -3718,6 +3722,7 @@ class _ShellState extends State<Shell> {
         api: widget.api,
         lang: widget.lang,
         orderId: activeId,
+        newlyCreatedOrderAt: newlyCreatedOrderAt,
         onMenu: openMenu,
         onNewTrip: startNewTrip,
         onSwitchOrder: switchActiveOrder,
@@ -4567,13 +4572,79 @@ class _TariffVehicleArt extends StatelessWidget {
   }
 }
 
+
 class _DriverAssignedVehicleArt extends StatelessWidget {
   const _DriverAssignedVehicleArt({required this.kind});
   final String kind;
 
   @override
   Widget build(BuildContext context) {
-    return _VehicleSprite(kind: kind);
+    // Vector-only branded vehicle artwork; no unrelated stock photos.
+    final accentIcon = switch (kind) {
+      'delivery' => Icons.local_shipping_rounded,
+      'cargo' => Icons.fire_truck_rounded,
+      'xl' || 'minivan' => Icons.airport_shuttle_rounded,
+      _ => Icons.local_taxi_rounded,
+    };
+    return LayoutBuilder(
+      builder: (context, size) => Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: yangiGraphite,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: yangiLime.withValues(alpha: 0.45)),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            Positioned(
+              right: -18,
+              top: -34,
+              child: Container(
+                width: 108, height: 108,
+                decoration: BoxDecoration(
+                  color: yangiLime.withValues(alpha: 0.16),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 10, left: 12, right: 12,
+              child: Container(
+                height: 2,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: <Color>[
+                    yangiLime.withValues(alpha: 0.05),
+                    yangiLime.withValues(alpha: 0.8),
+                    yangiLime.withValues(alpha: 0.05),
+                  ]),
+                ),
+              ),
+            ),
+            Icon(accentIcon,
+              size: size.maxHeight.isFinite
+                  ? math.min(68.0, size.maxHeight * 0.69)
+                  : 55,
+              color: Colors.white,
+            ),
+            Positioned(
+              top: 7, left: 9,
+              child: Container(
+                width: 22, height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: yangiLime,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: const Text('Y',
+                  style: TextStyle(color: yangiGraphite,
+                    fontSize: 14, fontWeight: FontWeight.w900)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -9235,12 +9306,93 @@ class _MapPointPickerScreenState extends State<MapPointPickerScreen> {
   }
 }
 
+
+enum _RideBookingStage {
+  searchingNearby,
+  waitingForDriver,
+  carFound,
+  driverOnTheWay,
+}
+
+class _RideStageStrip extends StatelessWidget {
+  const _RideStageStrip({required this.stage, required this.lang});
+
+  final _RideBookingStage stage;
+  final String lang;
+
+  @override
+  Widget build(BuildContext context) {
+    const icons = <IconData>[
+      Icons.radar_rounded,
+      Icons.hourglass_top_rounded,
+      Icons.local_taxi_rounded,
+      Icons.route_rounded,
+    ];
+    final labels = lang == 'uz'
+        ? <String>['Yaqinda qidiruv', 'Javob kutish', 'Mashina topildi', 'Yo‘lda']
+        : <String>['Ищем рядом', 'Ждём ответ', 'Машина найдена', 'В пути'];
+    final activeIndex = stage.index;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 13, 8, 10),
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF1A1E1F) : const Color(0xFFF3F5F4),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: List<Widget>.generate(4, (i) {
+          final done = i < activeIndex;
+          final current = i == activeIndex;
+          return Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: done || current
+                        ? yangiLime : (dark ? const Color(0xFF303637) : Colors.white),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(
+                      color: current ? yangiGreen : Colors.transparent,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Icon(done ? Icons.check_rounded : icons[i],
+                    size: 18,
+                    color: done || current
+                        ? yangiGraphite : Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 5),
+                Text(labels[i],
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 9.0,
+                    height: 1.15,
+                    fontWeight: current ? FontWeight.w900 : FontWeight.w600,
+                    color: current
+                        ? Theme.of(context).colorScheme.onSurface
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
 class RideScreen extends StatefulWidget {
   const RideScreen({
     super.key,
     required this.api,
     required this.lang,
     required this.orderId,
+    required this.newlyCreatedOrderAt,
     required this.onMenu,
     required this.onNewTrip,
     required this.onSwitchOrder,
@@ -9249,6 +9401,7 @@ class RideScreen extends StatefulWidget {
   final ApiClient api;
   final String lang;
   final int? orderId;
+  final DateTime? newlyCreatedOrderAt;
   final VoidCallback onMenu;
   final VoidCallback onNewTrip;
   final ValueChanged<int> onSwitchOrder;
@@ -9260,6 +9413,8 @@ class RideScreen extends StatefulWidget {
 
 class _RideScreenState extends State<RideScreen> {
   Timer? timer;
+  Timer? stageTimer;
+  bool driverMovementConfirmed = false;
   Map<String, dynamic>? order;
   ym.Point? driver;
   bool loading = true;
@@ -9286,14 +9441,31 @@ class _RideScreenState extends State<RideScreen> {
       );
     }
     if (widget.isActive) refresh();
+    _startStageTimer();
     timer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (widget.isActive && !missingOrderPollingPaused) refresh();
+    });
+  }
+
+  void _startStageTimer() {
+    stageTimer?.cancel();
+    if (widget.newlyCreatedOrderAt == null) return;
+    stageTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (!mounted || widget.newlyCreatedOrderAt == null ||
+          DateTime.now().difference(widget.newlyCreatedOrderAt!).inSeconds > 8) {
+        timer.cancel();
+        return;
+      }
+      if (widget.isActive) setState(() {}); // UI stages, no extra API calls.
     });
   }
 
   @override
   void didUpdateWidget(covariant RideScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.newlyCreatedOrderAt != widget.newlyCreatedOrderAt) {
+      _startStageTimer();
+    }
     if (oldWidget.orderId != widget.orderId) {
       setState(() {
         order = null;
@@ -9301,6 +9473,7 @@ class _RideScreenState extends State<RideScreen> {
         error = null;
         statusNotice = null;
         missingOrderPollingPaused = false;
+        driverMovementConfirmed = false;
         roadRoute = <ym.Point>[];
         loading = true;
       });
@@ -9313,6 +9486,7 @@ class _RideScreenState extends State<RideScreen> {
   @override
   void dispose() {
     timer?.cancel();
+    stageTimer?.cancel();
     drivingSession?.cancel();
     super.dispose();
   }
@@ -9541,7 +9715,18 @@ class _RideScreenState extends State<RideScreen> {
       final shouldAskRating =
           stateKind == 'finished' && feedbackPromptedOrderId != resolvedOrderId;
       if (mounted && widget.orderId == requestedOrderId) {
+        // Movement is an observed GPS change or a reported nonzero speed.
+        // Assignment alone does not prove the car is actually on its way.
+        final reportedSpeed = loc is Map
+            ? double.tryParse((loc['speed'] ?? '0').toString()) ?? 0
+            : 0.0;
+        final observedMovement = d != null && driver != null &&
+            _routeDistanceKm(driver!, d) > 0.06;
         setState(() {
+          if (stateKind == 'driver_assigned' &&
+              (reportedSpeed > 3 || observedMovement)) {
+            driverMovementConfirmed = true;
+          }
           order = state;
           driver = d;
           loading = false;
@@ -9583,8 +9768,9 @@ class _RideScreenState extends State<RideScreen> {
 
       if (mounted && widget.orderId == requestedOrderId) {
         setState(() {
-          // Preserve the saved order, but never display an unverified live driver.
+          // Never display the previous car/driver after a failed status check.
           loading = false;
+          order = null;
           driver = null;
           roadRoute = <ym.Point>[];
           lastRouteStart = null;
@@ -9741,6 +9927,37 @@ class _RideScreenState extends State<RideScreen> {
     final dark = theme.brightness == Brightness.dark;
 
     if (loading) {
+      if (widget.orderId != null && widget.newlyCreatedOrderAt != null) {
+        return Scaffold(
+          backgroundColor: yangiGraphite,
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const SizedBox(width: 214, height: 128,
+                      child: _DriverAssignedVehicleArt(kind: 'start')),
+                    const SizedBox(height: 26),
+                    Text(widget.lang == 'uz' ? 'Yaqindan mashina qidiryapmiz…' : 'Ищем машину рядом…',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 12),
+                    Text(widget.lang == 'uz'
+                        ? 'TaxiMaster orqali yaqin haydovchilarni qidiryapmiz'
+                        : 'Проверяем ближайших водителей через TaxiMaster',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xFFCBD1D1), fontSize: 13)),
+                    const SizedBox(height: 25),
+                    const CircularProgressIndicator(color: yangiLime),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
       return const Scaffold(
         body: Center(
           child: SizedBox.square(
@@ -9853,12 +10070,30 @@ class _RideScreenState extends State<RideScreen> {
     final cost = o['total_cost'];
     final orderId = (o['order_id'] as num?)?.toInt() ?? widget.orderId ?? 0;
 
-    final searching = state == 'new_order';
-    final driverAssigned = state == 'driver_assigned';
     final atPlace = state == 'car_at_place';
     final activeRide = state == 'client_inside';
     final finished = state == 'finished';
     final aborted = state == 'aborted';
+    final taxiMasterAssigned = state == 'driver_assigned' && hasAssignedCrew;
+    final bookingAgeMs = widget.newlyCreatedOrderAt == null
+        ? 999999
+        : DateTime.now().difference(widget.newlyCreatedOrderAt!).inMilliseconds;
+    // Initial UX phases apply only to an order created in this app session.
+    // Restored trips resume at their verified TaxiMaster state.
+    final rideStage = bookingAgeMs < 1800 && !atPlace && !activeRide && !finished && !aborted
+        ? _RideBookingStage.searchingNearby
+        : bookingAgeMs < 3800 && !atPlace && !activeRide && !finished && !aborted
+            ? _RideBookingStage.waitingForDriver
+            : taxiMasterAssigned
+                ? (driverMovementConfirmed && bookingAgeMs >= 5500
+                    ? _RideBookingStage.driverOnTheWay
+                    : _RideBookingStage.carFound)
+                : _RideBookingStage.waitingForDriver;
+    final searching = !atPlace && !activeRide && !finished && !aborted &&
+        (state == 'new_order' || state == 'driver_assigned') &&
+        (rideStage == _RideBookingStage.searchingNearby ||
+         rideStage == _RideBookingStage.waitingForDriver);
+    final driverAssigned = taxiMasterAssigned && !searching;
 
     final etaRaw = o['eta_minutes'] ?? o['driver_eta_min'] ?? o['arrival_minutes'];
     final eta = etaRaw == null ? '' : etaRaw.toString();
@@ -9905,8 +10140,12 @@ class _RideScreenState extends State<RideScreen> {
     }
 
     String title() {
-      if (searching) return widget.lang == 'uz' ? 'Mashina qidiryapmiz…' : 'Ищем машину…';
-      if (driverAssigned) return widget.lang == 'uz' ? 'Haydovchi tayinlandi' : 'Водитель назначен';
+      if (searching) return rideStage == _RideBookingStage.searchingNearby
+          ? (widget.lang == 'uz' ? 'Yaqindan mashina qidiryapmiz…' : 'Ищем машину рядом…')
+          : (widget.lang == 'uz' ? 'Haydovchi javobini kutyapmiz…' : 'Ждём ответа водителя…');
+      if (driverAssigned) return rideStage == _RideBookingStage.driverOnTheWay
+          ? (widget.lang == 'uz' ? 'Haydovchi yo‘lda' : 'Водитель в пути')
+          : (widget.lang == 'uz' ? 'Mashina topildi' : 'Машина найдена');
       if (atPlace) return widget.lang == 'uz' ? 'Mashina yetib keldi' : 'Машина подъехала';
       if (activeRide) return widget.lang == 'uz' ? 'Yo‘lda' : 'В пути';
       if (finished) return widget.lang == 'uz' ? 'Safar tugadi' : 'Поездка завершена';
@@ -9916,14 +10155,23 @@ class _RideScreenState extends State<RideScreen> {
 
     String subtitle() {
       if (searching) {
-        return widget.lang == 'uz'
-            ? 'Odatda yaqin haydovchini topish bir daqiqagacha vaqt oladi'
-            : 'Обычно это занимает до 1 минуты';
+        return rideStage == _RideBookingStage.searchingNearby
+            ? (widget.lang == 'uz'
+                ? 'Yaqin atrofdagi avtomobillarni tekshiryapmiz'
+                : 'Подбираем ближайшего свободного водителя')
+            : (widget.lang == 'uz'
+                ? 'Buyurtma TaxiMasterga yuborildi, tasdiqni kutyapmiz'
+                : 'Заказ передан в TaxiMaster, ожидаем назначения');
       }
       if (driverAssigned) {
+        if (rideStage != _RideBookingStage.driverOnTheWay) {
+          return widget.lang == 'uz'
+              ? 'Haydovchi tayinlandi. Harakat holatini tekshiryapmiz'
+              : 'Водитель назначен. Проверяем, начал ли он движение';
+        }
         return eta.isEmpty
-            ? (widget.lang == 'uz' ? 'Mashina siz tomon yo‘lda' : 'Машина уже едет к вам')
-            : (widget.lang == 'uz' ? 'Mashina taxminan $eta daqiqada' : 'Машина будет примерно через $eta мин');
+            ? (widget.lang == 'uz' ? 'Haydovchi siz tomon kelmoqda' : 'Водитель едет к вам')
+            : (widget.lang == 'uz' ? 'Mashina taxminan $eta daqiqada' : 'Примерно через $eta мин');
       }
       if (atPlace) {
         return widget.lang == 'uz' ? 'Haydovchi sizni kutmoqda' : 'Водитель ожидает вас';
@@ -10111,27 +10359,23 @@ class _RideScreenState extends State<RideScreen> {
             Text(title(), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.7)),
             const SizedBox(height: 6),
             Text(subtitle(), style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5)),
-            const SizedBox(height: 16),
+            const SizedBox(height: 15),
+            const Center(
+              child: SizedBox(
+                width: 136, height: 82,
+                child: _DriverAssignedVehicleArt(kind: 'start'),
+              ),
+            ),
+            const SizedBox(height: 14),
+            _RideStageStrip(stage: rideStage, lang: widget.lang),
+            const SizedBox(height: 15),
             ClipRRect(
               borderRadius: BorderRadius.circular(20),
               child: const LinearProgressIndicator(
-                minHeight: 7,
+                minHeight: 6,
                 backgroundColor: Color(0xFFE9ECEC),
                 color: yangiLime,
               ),
-            ),
-            const SizedBox(height: 17),
-            _rideProgressRow(
-              active: true,
-              label: widget.lang == 'uz' ? 'Eng yaqin haydovchilarni qidiryapmiz' : 'Ищем ближайших водителей',
-            ),
-            _rideProgressRow(
-              active: false,
-              label: widget.lang == 'uz' ? 'So‘rov yuborilmoqda' : 'Отправляем запросы',
-            ),
-            _rideProgressRow(
-              active: false,
-              label: widget.lang == 'uz' ? 'Javobni kutyapmiz' : 'Ждём ответ',
             ),
             const SizedBox(height: 10),
             OutlinedButton(
@@ -10268,20 +10512,8 @@ class _RideScreenState extends State<RideScreen> {
       }
 
       if (driverAssigned || atPlace) {
-        final foundTitle = atPlace
-            ? (widget.lang == 'uz'
-                ? 'Mashina yetib keldi'
-                : 'Машина подъехала')
-            : (widget.lang == 'uz'
-                ? 'Haydovchi topildi'
-                : 'Водитель найден');
-        final foundSubtitle = atPlace
-            ? (widget.lang == 'uz'
-                ? 'Haydovchi sizni kutmoqda'
-                : 'Водитель ожидает вас')
-            : (widget.lang == 'uz'
-                ? 'Haydovchi siz tomon yo‘l olmoqda'
-                : 'Водитель уже едет к вам');
+        final foundTitle = title();
+        final foundSubtitle = subtitle();
 
         Widget contactButton(
           IconData icon,
@@ -10321,6 +10553,11 @@ class _RideScreenState extends State<RideScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
+            _RideStageStrip(
+              stage: atPlace ? _RideBookingStage.driverOnTheWay : rideStage,
+              lang: widget.lang,
+            ),
+            const SizedBox(height: 17),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -10659,15 +10896,15 @@ class _RideScreenState extends State<RideScreen> {
             Positioned.fill(
               bottom: 300,
               child: TaxiYandexMap(
-                center: center,
-                route: roadRoute,
+                center: searching ? (pickup ?? center) : center,
+                route: searching ? <ym.Point>[] : roadRoute,
                 from: pickup,
                 to: destinationPoint,
                 fromLabel: source,
                 toLabel: destination,
                 fromCaption: widget.lang == 'uz' ? 'Qayerdan' : 'Откуда',
                 toCaption: widget.lang == 'uz' ? 'Qayerga' : 'Куда',
-                driver: driver,
+                driver: searching ? null : driver,
                 vehicleKind: tariffKey,
                 zoom: activeRide ? 13.5 : 14.2,
               ),
