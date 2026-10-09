@@ -64,6 +64,19 @@ const cfg = {
   },
 };
 
+function validateRuntimeConfig() {
+  if (!cfg.mock) {
+    const sessionSecret = String(cfg.sessionSecret || '').trim();
+    if (!sessionSecret || sessionSecret === 'change-me-in-production') {
+      throw new Error(
+        'SESSION_SECRET must be configured to a private non-default value before starting the LIVE backend'
+      );
+    }
+  }
+}
+
+validateRuntimeConfig();
+
 const registrationCodes = new Map();
 const REG_CODE_TTL_MS = Math.max(60_000, Number(process.env.REG_CODE_TTL_MS || 5 * 60_000));
 const REG_CODE_RESEND_MS = Math.max(30_000, Number(process.env.REG_CODE_RESEND_MS || 60_000));
