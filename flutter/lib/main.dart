@@ -3140,6 +3140,7 @@ class _ShellState extends State<Shell> {
   int? activeId;
   int orderFormGeneration = 0;
   int _orderStateRevision = 0;
+  Future<void> _orderStorageWrites = Future<void>.value();
   bool _exitDialogOpen = false;
   Map<String, dynamic>? _drawerMe;
   List<Map<String, dynamic>> _drawerFavorites = <Map<String, dynamic>>[];
@@ -3206,23 +3207,35 @@ class _ShellState extends State<Shell> {
     return id != null && id > 0 ? id : null;
   }
 
-  Future<void> _persistActiveOrder(int id) async {
-    await _clientProfileStorage.write(
-      key: _activeOrderIdStorageKey,
-      value: id.toString(),
-    );
-    final token = widget.api.token?.trim() ?? '';
-    if (token.isNotEmpty) {
-      await _clientProfileStorage.write(
-        key: _activeOrderSessionStorageKey,
-        value: token,
-      );
-    }
+  // Order state writes must not overtake each other. Otherwise a slow
+  // persist after cancellation could resurrect a stale active order.
+  Future<void> _enqueueOrderStorageWrite(Future<void> Function() write) {
+    final next = _orderStorageWrites.catchError((Object _) {}).then((_) => write());
+    _orderStorageWrites = next;
+    return next;
   }
 
-  Future<void> _clearPersistedActiveOrder() async {
-    await _clientProfileStorage.delete(key: _activeOrderIdStorageKey);
-    await _clientProfileStorage.delete(key: _activeOrderSessionStorageKey);
+  Future<void> _persistActiveOrder(int id) {
+    return _enqueueOrderStorageWrite(() async {
+      await _clientProfileStorage.write(
+        key: _activeOrderIdStorageKey,
+        value: id.toString(),
+      );
+      final token = widget.api.token?.trim() ?? '';
+      if (token.isNotEmpty) {
+        await _clientProfileStorage.write(
+          key: _activeOrderSessionStorageKey,
+          value: token,
+        );
+      }
+    });
+  }
+
+  Future<void> _clearPersistedActiveOrder() {
+    return _enqueueOrderStorageWrite(() async {
+      await _clientProfileStorage.delete(key: _activeOrderIdStorageKey);
+      await _clientProfileStorage.delete(key: _activeOrderSessionStorageKey);
+    });
   }
 
   Future<void> restoreActiveOrder() async {
