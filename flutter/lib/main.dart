@@ -4334,7 +4334,32 @@ class _ShellState extends State<Shell> {
           ),
         ),
       ),
-        body: IndexedStack(index: tab, children: pages),
+        body: Stack(
+          children: <Widget>[
+            Positioned.fill(child: IndexedStack(index: tab, children: pages)),
+            if (tab == 1 && activeId != null)
+              Positioned(
+                right: 14,
+                top: 10,
+                child: SafeArea(
+                  child: FilledButton.icon(
+                    onPressed: bookAnotherTrip,
+                    icon: const Icon(Icons.add_rounded),
+                    label: Text(widget.lang == 'uz' ? 'Yana buyurtma' : 'Заказать ещё'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: yangiLime,
+                      foregroundColor: yangiGraphite,
+                      minimumSize: const Size(0, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
         bottomNavigationBar: null,
       ),
     );
