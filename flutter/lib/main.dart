@@ -10679,7 +10679,7 @@ class _RideScreenState extends State<RideScreen> {
             OutlinedButton.icon(
               onPressed: widget.onNewTrip,
               icon: const Icon(Icons.arrow_back_rounded),
-              label: Text(widget.lang == 'uz' ? 'Yangi safarga qaytish' : 'Назад'),
+              label: Text(widget.lang == 'uz' ? 'Yana taksi buyurtma qilish' : 'Заказать ещё'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
@@ -10731,7 +10731,7 @@ class _RideScreenState extends State<RideScreen> {
             FilledButton.icon(
               onPressed: widget.onNewTrip,
               icon: const Icon(Icons.arrow_back_rounded),
-              label: Text(widget.lang == 'uz' ? 'Yangi safarga qaytish' : 'Назад к новой поездке'),
+              label: Text(widget.lang == 'uz' ? 'Yana taksi buyurtma qilish' : 'Заказать ещё'),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF101719),
                 foregroundColor: Colors.white,
