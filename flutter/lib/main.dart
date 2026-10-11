@@ -3409,6 +3409,8 @@ class _ShellState extends State<Shell> {
 
   // Open a fresh booking form without cancelling or forgetting the earlier ride.
   void bookAnotherTrip() {
+    // A late restore must not navigate away from the fresh booking form.
+    _orderStateRevision += 1;
     final scaffold = shellKey.currentState;
     if (scaffold?.isDrawerOpen == true) scaffold!.closeDrawer();
     if (!mounted) return;

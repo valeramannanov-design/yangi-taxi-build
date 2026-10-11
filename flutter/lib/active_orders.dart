@@ -8,7 +8,7 @@ List<Map<String, dynamic>> currentPassengerOrders(dynamic response) {
     if (item is! Map) continue;
     final rawId = item['order_id'] ?? item['orderId'] ?? item['id'];
     final id = rawId is num ? rawId.toInt() : int.tryParse(rawId?.toString() ?? '');
-    if (id == null || id <= 0 || !seenIds.add(id)) continue;
+    if (id == null || id <= 0) continue;
     final state = (item['state_kind'] ?? item['state_type'] ?? '')
         .toString()
         .trim()
@@ -16,7 +16,11 @@ List<Map<String, dynamic>> currentPassengerOrders(dynamic response) {
     if (state == 'finished' || state == 'aborted' || state == 'cancelled') {
       continue;
     }
-    orders.add(<String, dynamic>{...item, 'order_id': id});
+    if (!seenIds.add(id)) continue;
+    orders.add(<String, dynamic>{
+      ...Map<String, dynamic>.from(item),
+      'order_id': id,
+    });
   }
   return orders;
 }

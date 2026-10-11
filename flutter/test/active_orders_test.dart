@@ -14,6 +14,14 @@ void main() {
       expect(orders.map((e) => e['order_id']).toList(), <int>[104, 105]);
     });
 
+    test('live entry wins over an earlier stale terminal entry for the same ID', () {
+      final orders = currentPassengerOrders(<dynamic>[
+        <String, dynamic>{'order_id': 22, 'state_kind': 'finished'},
+        <String, dynamic>{'order_id': 22, 'state_kind': 'driver_assigned'},
+      ]);
+      expect(orders.single['order_id'], 22);
+    });
+
     test('filters finished and cancelled rides from the active picker', () {
       final orders = currentPassengerOrders(<dynamic>[
         <String, dynamic>{'order_id': 11, 'state_kind': 'finished'},
