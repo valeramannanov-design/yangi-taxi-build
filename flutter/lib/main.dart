@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'ride_confirmation.dart';
+import 'active_orders.dart';
 import 'driver_movement.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -3281,17 +3282,16 @@ class _ShellState extends State<Shell> {
       final data = await widget.api.get('/api/orders/current');
       if (!mounted || revision != _orderStateRevision || data is! List) return;
 
-      if (data.isNotEmpty) {
-        final id = _readOrderId(data.first);
-        if (id != null) {
-          await _persistActiveOrder(id);
-          if (!mounted || revision != _orderStateRevision) return;
-          setState(() {
-            activeId = id;
-            tab = 1;
-          });
-          return;
-        }
+      final liveOrders = currentPassengerOrders(data);
+      final id = preferredPassengerOrderId(liveOrders, savedId);
+      if (id != null) {
+        await _persistActiveOrder(id);
+        if (!mounted || revision != _orderStateRevision) return;
+        setState(() {
+          activeId = id;
+          tab = 1;
+        });
+        return;
       }
 
       if (savedId == null || savedId <= 0) return;
@@ -3407,6 +3407,94 @@ class _ShellState extends State<Shell> {
     });
   }
 
+  // Open a fresh booking form without cancelling or forgetting the earlier ride.
+  void bookAnotherTrip() {
+    final scaffold = shellKey.currentState;
+    if (scaffold?.isDrawerOpen == true) scaffold!.closeDrawer();
+    if (!mounted) return;
+    setState(() {
+      orderFormGeneration += 1;
+      tab = 0;
+    });
+  }
+
+  Future<void> showCurrentOrders() async {
+    final scaffold = shellKey.currentState;
+    if (scaffold?.isDrawerOpen == true) scaffold!.closeDrawer();
+    try {
+      final response = await widget.api.get('/api/orders/current');
+      if (!mounted) return;
+      final orders = currentPassengerOrders(response);
+      if (orders.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(widget.lang == 'uz'
+              ? 'Hozircha faol buyurtmalar topilmadi'
+              : 'Активные заказы пока не найдены'),
+        ));
+        return;
+      }
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(
+                  widget.lang == 'uz' ? 'Faol buyurtmalarim' : 'Мои активные заказы',
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 10),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: orders.length,
+                    itemBuilder: (itemContext, index) {
+                      final id = orders[index]['order_id'] as int;
+                      final selected = id == activeId;
+                      return Card(
+                        child: ListTile(
+                          leading: Icon(Icons.local_taxi_rounded,
+                              color: selected ? yangiGreen : null),
+                          title: Text(widget.lang == 'uz'
+                              ? 'Buyurtma №$id'
+                              : 'Заказ №$id'),
+                          subtitle: Text(selected
+                              ? (widget.lang == 'uz' ? 'Hozir ochilgan' : 'Сейчас открыт')
+                              : (widget.lang == 'uz' ? 'Buyurtmani ko‘rish' : 'Открыть заказ')),
+                          trailing: Icon(selected
+                              ? Icons.check_circle_rounded
+                              : Icons.chevron_right_rounded),
+                          onTap: () {
+                            Navigator.of(sheetContext).pop();
+                            switchActiveOrder(id);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(widget.lang == 'uz'
+            ? 'Buyurtmalarni yuklab bo‘lmadi: $error'
+            : 'Не удалось загрузить заказы: $error'),
+      ));
+    }
+  }
+
   void switchActiveOrder(int id) {
     if (id <= 0) return;
     _orderStateRevision += 1;
@@ -3505,7 +3593,7 @@ class _ShellState extends State<Shell> {
         borderRadius: BorderRadius.circular(14),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => index == 0 ? goHomeSafely() : selectTab(index),
+          onTap: () => selectTab(index),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 50),
             child: Padding(
@@ -3744,6 +3832,8 @@ class _ShellState extends State<Shell> {
         newlyCreatedOrderAt: newlyCreatedOrderAt,
         onMenu: openMenu,
         onNewTrip: startNewTrip,
+        onBookAnother: bookAnotherTrip,
+        onViewOrders: showCurrentOrders,
         onSwitchOrder: switchActiveOrder,
         isActive: tab == 1,
       ),
@@ -4114,6 +4204,16 @@ class _ShellState extends State<Shell> {
                   icon: Icons.local_taxi_outlined,
                   title: widget.lang == 'uz' ? 'Joriy safar' : 'Текущая поездка',
                 ),
+              menuActionItem(
+                icon: Icons.add_circle_outline_rounded,
+                title: widget.lang == 'uz' ? 'Yana taksi buyurtma qilish' : 'Заказать ещё',
+                onTap: bookAnotherTrip,
+              ),
+              menuActionItem(
+                icon: Icons.list_alt_rounded,
+                title: widget.lang == 'uz' ? 'Faol buyurtmalarim' : 'Мои заказы',
+                onTap: showCurrentOrders,
+              ),
               menuItem(
                 index: 2,
                 icon: Icons.history_rounded,
@@ -9444,6 +9544,8 @@ class RideScreen extends StatefulWidget {
     required this.newlyCreatedOrderAt,
     required this.onMenu,
     required this.onNewTrip,
+    required this.onBookAnother,
+    required this.onViewOrders,
     required this.onSwitchOrder,
     required this.isActive,
   });
@@ -9453,6 +9555,8 @@ class RideScreen extends StatefulWidget {
   final DateTime? newlyCreatedOrderAt;
   final VoidCallback onMenu;
   final VoidCallback onNewTrip;
+  final VoidCallback onBookAnother;
+  final VoidCallback onViewOrders;
   final ValueChanged<int> onSwitchOrder;
   final bool isActive;
 
@@ -11078,6 +11182,38 @@ class _RideScreenState extends State<RideScreen> {
                         ),
                       ],
                       bodyPanel(),
+                      if (order != null && !finished && !aborted && error == null) ...<Widget>[
+                        const SizedBox(height: 14),
+                        FilledButton.icon(
+                          onPressed: widget.onBookAnother,
+                          icon: const Icon(Icons.add_circle_outline_rounded),
+                          label: Text(widget.lang == 'uz'
+                              ? 'Yana taksi buyurtma qilish'
+                              : 'Заказать ещё'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: yangiLime,
+                            foregroundColor: yangiGraphite,
+                            minimumSize: const Size.fromHeight(52),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(17),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: widget.onViewOrders,
+                          icon: const Icon(Icons.list_alt_rounded),
+                          label: Text(widget.lang == 'uz'
+                              ? 'Faol buyurtmalarim'
+                              : 'Мои заказы'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(17),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
