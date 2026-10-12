@@ -7,6 +7,7 @@ import { createOrderRequestGuard } from './order-idempotency.mjs';
 import { createAtomicJsonWriter } from './atomic-json-store.mjs';
 import { assertOwnedOrder } from './order-ownership.mjs';
 import { resolveOwnedRideState } from './ride-state.mjs';
+import { shouldCheckDuplicateForNewOrder } from './additional-order.mjs';
 import { mkdtemp, readFile, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -37,10 +38,56 @@ test('LIVE backend rejects the default session secret', () => {
 });
 
 test('critical order safety invariants are present', () => {
-  assert.match(source, /check_duplicate:\s*true/);
+  assert.match(source, /check_duplicate:\s*checkDuplicate/);
+  assert.match(source, /shouldCheckDuplicateForNewOrder/);
   assert.match(source, /runIdempotentOrderRequest/);
   assert.match(source, /normalizeOrderRequestId/);
   assert.match(source, /uniqueAddressParts\(\[district, street, house\]\)/);
+});
+
+
+test('ordinary orders retain TaxiMaster duplicate protection', () => {
+  assert.equal(shouldCheckDuplicateForNewOrder({ additionalOrder: false }), true);
+  assert.equal(shouldCheckDuplicateForNewOrder({
+    additionalOrder: false,
+    currentOrders: [{ order_id: 11, state_kind: 'new_order' }],
+    clientId: 5,
+  }), true);
+});
+
+test('intentional second booking skips duplicate check only for the same client with an active order', () => {
+  assert.equal(shouldCheckDuplicateForNewOrder({
+    additionalOrder: true,
+    currentOrders: [{ order_id: 11, client_id: 5, state_kind: 'driver_assigned' }],
+    clientId: 5,
+  }), false);
+});
+
+test('missing or finished first order preserves duplicate protection', () => {
+  for (const orders of [
+    [],
+    [{ order_id: 13, state_kind: 'finished' }],
+    [{ order_id: 13, state_kind: 'aborted' }],
+    [{ order_id: -1, state_kind: 'driver_assigned' }],
+    [{ order_id: 13, client_id: 20, state_kind: 'new_order' }],
+  ]) {
+    assert.equal(shouldCheckDuplicateForNewOrder({
+      additionalOrder: true,
+      currentOrders: orders,
+      clientId: 5,
+    }), true);
+  }
+});
+
+test('additional bookings fail closed if active orders cannot be verified', () => {
+  assert.throws(
+    () => shouldCheckDuplicateForNewOrder({
+      additionalOrder: true,
+      currentOrders: null,
+      clientId: 5,
+    }),
+    (err) => err.statusCode === 503,
+  );
 });
 
 test('only one LIVE settlement worker can own the process lock', () => {

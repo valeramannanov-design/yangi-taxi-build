@@ -3826,6 +3826,7 @@ class _ShellState extends State<Shell> {
         onOrder: orderCreated,
         onMenu: openMenu,
         isActive: tab == 0,
+        additionalOrder: activeId != null,
       ),
       RideScreen(
         api: widget.api,
@@ -5171,12 +5172,14 @@ class OrderScreen extends StatefulWidget {
     required this.onOrder,
     required this.onMenu,
     required this.isActive,
+    required this.additionalOrder,
   });
   final ApiClient api;
   final String lang;
   final ValueChanged<int> onOrder;
   final VoidCallback onMenu;
   final bool isActive;
+  final bool additionalOrder;
 
   @override
   State<OrderScreen> createState() => _OrderScreenState();
@@ -6416,6 +6419,7 @@ class _OrderScreenState extends State<OrderScreen> {
       if (to != null) 'destination': to!.toJson(),
       'tariffKey': selectedTariffKey,
       'paymentMethod': paymentMethod,
+      if (widget.additionalOrder) 'additionalOrder': true,
       if (paymentMethod == 'card' && selectedCardId > 0) 'cardId': selectedCardId,
       if (promoCode.isNotEmpty) 'promoCode': promoCode,
     };
@@ -6553,6 +6557,11 @@ class _OrderScreenState extends State<OrderScreen> {
       }
       if (destinationReady && cost == null) {
         return widget.lang == 'uz' ? 'Narxni hisoblash' : 'Рассчитать стоимость';
+      }
+      if (widget.additionalOrder) {
+        return widget.lang == 'uz'
+            ? 'Ikkinchi taksiga buyurtma'
+            : 'Заказать вторую машину';
       }
       return widget.lang == 'uz' ? 'Yangi Taxi buyurtma qilish' : 'Заказать Yangi Taxi';
     }
@@ -6773,6 +6782,35 @@ class _OrderScreenState extends State<OrderScreen> {
                         controller: scrollController,
                         padding: const EdgeInsets.fromLTRB(16, 5, 16, 12),
                         children: <Widget>[
+                          if (widget.additionalOrder) ...<Widget>[
+                            Container(
+                              padding: const EdgeInsets.all(13),
+                              decoration: BoxDecoration(
+                                color: yangiLime.withValues(alpha: 0.24),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  const Icon(Icons.add_circle_rounded, color: yangiGraphite),
+                                  const SizedBox(width: 9),
+                                  Expanded(
+                                    child: Text(
+                                      widget.lang == 'uz'
+                                          ? 'Ikkinchi buyurtma hali yaratilmagan. Manzillarni tanlang va pastdagi buyurtma tugmasini bosing. Birinchi safaringiz davom etadi.'
+                                          : 'Второй заказ ещё не создан. Выберите адреса и нажмите кнопку заказа внизу. Первая поездка продолжается.',
+                                      style: TextStyle(
+                                        color: scheme.onSurface,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           if (!destinationReady) ...<Widget>[
                             const SizedBox(height: 2),
                             Text(

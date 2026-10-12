@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { createOrderRequestGuard } from './order-idempotency.mjs';
 import { createAtomicJsonWriter } from './atomic-json-store.mjs';
 import { resolveOwnedRideState } from './ride-state.mjs';
+import { shouldCheckDuplicateForNewOrder } from './additional-order.mjs';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -2280,12 +2281,27 @@ async function realRoute(req, res, path, url) {
     const tariff = catalog.tariffs.get(tariffId);
     if (!tariff || tariff.is_active === false) throw new Error('TaxiMaster tariff is unavailable for ' + tariffKey);
 
+    // A deliberate second booking is not an accidental repeated submission.
+    // The authenticated client must already own an active order before the
+    // TaxiMaster duplicate check can be relaxed. All other requests keep it.
+    let checkDuplicate = true;
+    if (body.additionalOrder === true) {
+      const activeResponse = await tmGet('get_current_orders', {
+        client_id: session.clientId,
+      });
+      checkDuplicate = shouldCheckDuplicateForNewOrder({
+        additionalOrder: true,
+        currentOrders: activeResponse.orders,
+        clientId: session.clientId,
+      });
+    }
+
     const payload = {
       phone: orderPhoneDigits(session.phone),
       client_id: session.clientId,
       source_time: sourceTime,
       is_prior: false,
-      check_duplicate: true,
+      check_duplicate: checkDuplicate,
       crew_group_id: definition.crewGroupId,
       tariff_id: tariffId,
       addresses: routeAddresses(source, destination),
@@ -2317,6 +2333,7 @@ async function realRoute(req, res, path, url) {
       destination: destination ? routeAddress(destination) : null,
       tariffKey,
       paymentMethod,
+      additionalOrder: body.additionalOrder === true,
       cardId: paymentMethod === 'card' ? Number(body.cardId || 0) : null,
       promoCode: incomingPromoCode,
       comment: String(body.comment || ''),
