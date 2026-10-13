@@ -1139,7 +1139,13 @@ class Place {
     if (explicit != null && explicit.isNotEmpty) {
       return explicit.replaceAll(RegExp(r'\s+'), ' ').trim();
     }
-    return '';
+    final geocoded = address.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final unavailable = <String>{
+      'текущее местоположение',
+      'joriy joylashuv',
+      'current location',
+    };
+    return unavailable.contains(geocoded.toLowerCase()) ? '' : geocoded;
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{

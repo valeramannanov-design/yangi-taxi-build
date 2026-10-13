@@ -3,6 +3,7 @@ import { createOrderRequestGuard } from './order-idempotency.mjs';
 import { createAtomicJsonWriter } from './atomic-json-store.mjs';
 import { resolveOwnedRideState } from './ride-state.mjs';
 import { shouldCheckDuplicateForNewOrder } from './additional-order.mjs';
+import { fallbackOrderAddress } from './order-address.mjs';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -378,19 +379,20 @@ function point(body, name) {
   const district = String(p.district || '').trim();
   const street = String(p.street || '').trim();
   const house = String(p.house || '').trim();
-  const address = uniqueAddressParts([district, street, house]).join(', ');
-  if (!address) {
-    const e = new Error(name + ' must contain District / Street / House');
-    e.statusCode = 400;
-    throw e;
-  }
   const lat = Number(p.lat);
   const lon = Number(p.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) ||
+      Math.abs(lat) > 90 || Math.abs(lon) > 180 ||
+      (lat === 0 && lon === 0)) {
     const e = new Error(name + ' coordinates are invalid');
     e.statusCode = 400;
     throw e;
   }
+  // Reverse-geocoded map pins and POIs can have no district/street/house.
+  // Preserve known structured parts, otherwise use the real formatted label,
+  // or real coordinates. Never fabricate a district, street or house.
+  const address = uniqueAddressParts([district, street, house]).join(', ') ||
+    fallbackOrderAddress(p.address, lat, lon);
   return { address, district, street, house, lat, lon };
 }
 

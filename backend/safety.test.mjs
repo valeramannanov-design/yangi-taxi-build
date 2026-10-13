@@ -8,6 +8,7 @@ import { createAtomicJsonWriter } from './atomic-json-store.mjs';
 import { assertOwnedOrder } from './order-ownership.mjs';
 import { resolveOwnedRideState } from './ride-state.mjs';
 import { shouldCheckDuplicateForNewOrder } from './additional-order.mjs';
+import { fallbackOrderAddress } from './order-address.mjs';
 import { mkdtemp, readFile, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,6 +46,26 @@ test('critical order safety invariants are present', () => {
   assert.match(source, /uniqueAddressParts\(\[district, street, house\]\)/);
 });
 
+
+test('map pin with no district, street or house keeps exact GPS coordinates', () => {
+  assert.equal(fallbackOrderAddress('', 41.311111, 69.279722), 'GPS 41.311111, 69.279722');
+  assert.equal(fallbackOrderAddress('Текущее местоположение', 41.301, 69.22),
+    'GPS 41.301000, 69.220000');
+  assert.equal(fallbackOrderAddress('Joriy joylashuv', 41.300, 69.210),
+    'GPS 41.300000, 69.210000');
+});
+
+test('resolved Yandex or TaxiMaster destination is used as an address', () => {
+  assert.equal(fallbackOrderAddress('Toshkent, Amir Temur xiyoboni', 41.31, 69.28),
+    'Toshkent, Amir Temur xiyoboni');
+  assert.equal(fallbackOrderAddress('  Chilonzor   tumani  ', 41.31, 69.28),
+    'Chilonzor tumani');
+});
+
+test('order endpoint accepts map pins with coordinate fallback', () => {
+  assert.match(source, /fallbackOrderAddress\(p\.address, lat, lon\)/);
+  assert.match(source, /uniqueAddressParts\(\[district, street, house\]\)/);
+});
 
 test('ordinary orders retain TaxiMaster duplicate protection', () => {
   assert.equal(shouldCheckDuplicateForNewOrder({ additionalOrder: false }), true);
