@@ -30,11 +30,13 @@ export class DeliveryTransport {
     if (this.running) return;
     this.running = true;
     try {
-      for (const job of this.store.all("SELECT * FROM delivery_transport_jobs WHERE phase IN ('queued','creating','uncertain') ORDER BY created_at LIMIT 20")) {
+      for (const job of this.store.all("SELECT * FROM delivery_transport_jobs WHERE phase IN ('queued','creating','uncertain') ORDER BY updated_at,created_at LIMIT 20")) {
+        this.store.run('UPDATE delivery_transport_jobs SET updated_at=? WHERE order_id=?', this.store.now(), job.order_id);
         try { if (job.phase === 'queued') await this.create(job); else await this.reconcile(job); }
         catch { /* Keep durable intent and reconcile on the next pass. Never log PII. */ }
       }
       for (const job of this.store.all("SELECT j.* FROM delivery_transport_jobs j JOIN delivery_orders o ON o.id=j.order_id WHERE j.phase='bound' AND o.status NOT IN ('completed','cancelled','rejected') ORDER BY j.updated_at LIMIT 20")) {
+        this.store.run('UPDATE delivery_transport_jobs SET updated_at=? WHERE order_id=?', this.store.now(), job.order_id);
         try { await this.synchronize(job); } catch { /* A failed read cannot change the last confirmed state. */ }
       }
     } finally { this.running = false; }
@@ -137,5 +139,22 @@ export class DeliveryTransport {
       s.event(order.id, 'driver:' + identity.driver_id, 'cash_confirmed');
     });
     return { order_id: order.id, cash_confirmed: true, amount_uzs: amount };
+  }
+  async info(transportOrderId, identity) {
+    const found = await this.adapter.read(positive(transportOrderId));
+    if (found.driver_id !== identity.driver_id || found.crew_id !== identity.crew_id) fail(403, 'Courier does not own order');
+    const s = this.store, job = s.one('SELECT * FROM delivery_transport_jobs WHERE transport_order_id=?', transportOrderId);
+    if (!job) {
+      if (String(found.customer || '').startsWith('YANGI_DELIVERY/')) fail(409, 'Delivery mapping is unresolved');
+      return { delivery:null };
+    }
+    if (job.phase !== 'bound') fail(409, 'Delivery requires dispatcher review');
+    const order = s.one('SELECT * FROM delivery_orders WHERE id=?', job.order_id), snapshot = this.verify(job, order, found);
+    const receipt = s.one('SELECT 1 FROM delivery_cash_receipts WHERE order_id=?', order.id);
+    return { delivery:{ order_id:order.id, transport_order_id:transportOrderId, status:order.status,
+      shop_name:snapshot.shop_name, pickup:snapshot.pickup, destination:snapshot.destination,
+      items:snapshot.items.map(i => ({ name:i.name, quantity:i.quantity })),
+      subtotal_uzs:snapshot.subtotal_uzs, delivery_uzs:snapshot.delivery_uzs, total_uzs:snapshot.total_uzs,
+      payment_method:'cash', ready:order.ready_at !== null, cash_confirmed:!!receipt } };
   }
 }

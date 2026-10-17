@@ -211,6 +211,9 @@ test('TaxiMaster lifecycle restores delivery state; only exact cash plus finishe
   const transport = new DeliveryTransport(f.store, adapter);
   transport.dispatch(f.admin, o.id, { crew_id: 4, tariff_id: 3, version: o.version }, key('lifecycle'));
   await transport.tick(); assert.equal(f.store.orderForCustomer(customer, o.id).status, 'assigned');
+  const details = (await transport.info(8001, { driver_id:5, crew_id:4 })).delivery;
+  assert.equal(details.total_uzs,o.total_uzs);assert.equal(details.commission_uzs,undefined);
+  await assert.rejects(transport.info(8001, { driver_id:6, crew_id:4 }),e=>e.statusCode===403);
   remote.confirmed = 'confirmed_by_oper'; await transport.tick();
   assert.equal(f.store.orderForCustomer(customer, o.id).status, 'assigned');
   remote.confirmed = 'confirmed_by_driver'; await transport.tick();
@@ -229,6 +232,19 @@ test('TaxiMaster lifecycle restores delivery state; only exact cash plus finishe
   assert.equal(f.store.one('SELECT count(*) AS n FROM delivery_cash_receipts').n, 1);
   assert.equal(f.store.finance(f.admin).length, 4);
   assert.equal(f.store.finance(f.admin).reduce((sum, r) => sum + r.amount_uzs, 0), 0);
+});
+
+test('unresolved transport jobs cannot starve dispatches beyond the worker batch limit', async t => {
+  const f=fixture(t);f.store.saveProduct(f.p1,{...f.productInput,stock:1000},f.product.id);
+  let posts=0;
+  const adapter={prepare:async()=>({driver_id:5,body:{}}),create:async()=>{posts++;throw new Error('Lost response');},find:async()=>[]};
+  const transport=new DeliveryTransport(f.store,adapter);
+  for(let i=0;i<22;i++){
+    const o=confirmed(f,'batch-'+i);
+    transport.dispatch(f.admin,o.id,{crew_id:i+1,tariff_id:3,version:o.version},key('batch-'+i));
+  }
+  f.clock(1001000);await transport.tick();assert.equal(posts,20);
+  f.clock(1002000);await transport.tick();assert.equal(posts,22);
 });
 test('authentication expires and is revoked; password hashes and throttle persist', t => {
   const f = fixture(t), session = f.store.login('partner1', password, 'fresh-peer');

@@ -2623,6 +2623,7 @@ async function realRoute(req, res, path, url) {
 // Opt-in Delivery uses its own database. Existing taxi sessions remain the authority
 // for passenger identity; delivery staff tokens cannot authenticate taxi requests.
 let deliveryHandler = null;
+let deliveryBridge = null;
 if (process.env.DELIVERY_ENABLED === 'true') {
   if (Number(process.versions.node.split('.')[0]) < 24) throw new Error('Delivery requires Node.js 24 or newer');
   if (cfg.sessionSecret.length < 32 || !process.env.DELIVERY_DB_PATH || !isAbsolute(process.env.DELIVERY_DB_PATH)) {
@@ -2637,6 +2638,10 @@ if (process.env.DELIVERY_ENABLED === 'true') {
     const { DeliveryTransport } = await import('./delivery/transport.mjs');
     const { createTaxiMasterDeliveryAdapter } = await import('./delivery/tm-adapter.mjs');
     transport = new DeliveryTransport(store, createTaxiMasterDeliveryAdapter({ get: tmGet, post: tmPostJson, catalog: liveCatalog, time: tmTime, phone: orderPhoneDigits }));
+    if (process.env.DELIVERY_BRIDGE_TOKEN) {
+      const { createDeliveryBridge } = await import('./delivery/bridge.mjs');
+      deliveryBridge = createDeliveryBridge({ transport, token:process.env.DELIVERY_BRIDGE_TOKEN });
+    }
     const timer = setInterval(() => transport.tick().catch(() => console.warn('Delivery transport reconciliation deferred')), 5000);
     timer.unref();
   }
@@ -2650,6 +2655,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://local');
   const path = url.pathname;
   try {
+    if (deliveryBridge && await deliveryBridge(req, res)) return;
     if (deliveryHandler && await deliveryHandler(req, res)) return;
     if (req.method === 'OPTIONS') return send(res, 204, {});
     if (req.method === 'GET' && path === '/health') {
