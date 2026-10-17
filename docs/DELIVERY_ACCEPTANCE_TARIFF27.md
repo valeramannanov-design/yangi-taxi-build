@@ -7,7 +7,7 @@ Date: 2026-10-17. The user confirmed that their production passenger order is a 
 - User created order `a4bfb6f42cb48dc6eb37824a287cacf34f51` for shop1: one Шашлык25000 + delivery9800 =34800 UZS. Independently read snapshot proves `taximaster_road`, distance2160m, tariff27/group3. The agent did not submit this checkout.
 - Before any merchant confirmation or transport assignment, used the existing authenticated admin management cancellation with version1 and a durable idempotency key. It completed as `cancelled`, `stock_restored=1`, transportID null. Stock independently verified back at85, zero cash receipts and ledger rows.
 - Cancellation intent and original snapshot are private under `C:\Yangi-Taxi-client\delivery-private\launch-catalog-20261017`. **Do not replay the cancellation or reuse this terminal order.**
-- Passenger UI cancellation visibility and restart/network restoration still require user confirmation. User was asked to inspect history, then open Driver+ as test driver5.
+- User confirmed “Отменен”: passenger UI cancellation visibility is passed. Restart/network restoration is still unverified. Read-only TM check after this confirmation proves driver5/crew4 connected, on line, state1, zero current orders. The user has not yet confirmed opening Driver+ for manual test actions; do not infer that from the cancellation-only reply.
 
 ## Isolated continuation
 
