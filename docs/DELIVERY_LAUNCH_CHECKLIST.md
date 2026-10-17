@@ -27,7 +27,7 @@ The pilot is prepared; full production acceptance is still pending. Continue fro
 
 ## Remaining acceptance / rollout
 
-- [ ] Passenger opens the newly installed app, signs in normally, and verifies real restaurant/product. A user question is pending; password/SMS must remain on the device.
+- [x] User confirmed on 2026-10-17 that the installed passenger app shows “Париж Ресторан” and “Шашлык”25,000 UZS after the requested normal sign-in check. This is user-reported catalog acceptance; address picker/quote/checkout are not yet confirmed.
 - [ ] Actual Yandex map/address selection on the phone, road quote for this restaurant using tariff27, checkout and restoration after restart/network interruption. Do not claim the earlier isolated road-pricing probe is this phone acceptance.
 - [ ] Merchant/admin form interaction and screenshots. Native browser control is disabled by Work settings; do not bypass it with another automation mechanism. HTTP authorization/ownership/version tests are passed, visual acceptance is not.
 - [ ] New end-to-end restaurant delivery with tariff27, test driver5/crew4, full cash receipt and TM transport amount independently reconciled. Earlier completed TM11708 is historical proof with another frozen tariff; never reuse/reopen it.
