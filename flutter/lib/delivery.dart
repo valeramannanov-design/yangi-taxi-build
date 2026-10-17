@@ -39,6 +39,9 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   int? _category;
   String? _owner, _error;
   Place? _destination;
+  Map<String, dynamic> _addressDetails = {};
+  List<Map<String, dynamic>> _favoriteAddresses = [];
+  String? _addressNotice;
   bool _busy = false, _loaded = false, _history = false, _cartOpen = false;
   bool _catalogReload = false;
   Map<String, dynamic>? _checkoutCapability;
@@ -136,6 +139,15 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     }
     await _catalog();
     _loaded = true;
+    try {
+      await _loadOrders();
+    } catch (_) {/* No history: require map confirmation. */}
+    try {
+      _favoriteAddresses = await _loadFavoriteAddresses(widget.api);
+    } catch (_) {
+      _addressNotice = _t('Сохранённые адреса временно недоступны',
+          'Saqlangan manzillar vaqtincha mavjud emas');
+    }
   }
 
   Future<void> _catalog() async {
@@ -224,11 +236,13 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     });
   }
 
-  Future<void> _pickAddress() async {
+  Future<void> _pickAddress(
+      {Place? initialPoint, Map<String, dynamic>? details}) async {
     if (yandexMapKitApiKey.isEmpty && widget.addressPicker == null)
       throw ApiException(_t('Выбор адреса на карте недоступен в этой сборке.',
           'Bu versiyada xaritadan manzil tanlash mavjud emas.'));
-    final initial = _destination ??
+    final initial = initialPoint ??
+        _destination ??
         Place(
             (_cartShop?['address'] ?? '').toString(),
             (_cartShop!['lat'] as num).toDouble(),
@@ -242,8 +256,74 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                 initial: initial)));
     if (place != null && mounted)
       setState(() {
+        final previous = initialPoint ?? _destination;
+        _addressDetails = previous != null &&
+                previous.lat == place.lat &&
+                previous.lon == place.lon
+            ? goAddressDetails(details ?? _addressDetails)
+            : {};
         _destination = place;
+        _addressNotice = null;
         _quote = null;
+      });
+  }
+
+  Future<void> _useSavedAddress(Map<String, dynamic> saved) async {
+    final place = Place(
+        saved['address'].toString(),
+        double.parse(saved['lat'].toString()),
+        double.parse(saved['lon'].toString()));
+    if (_orders.isEmpty) {
+      await _pickAddress(initialPoint: place, details: saved);
+      return;
+    }
+    setState(() {
+      _destination = place;
+      _addressDetails = goAddressDetails(saved);
+      _addressNotice = null;
+      _quote = null;
+    });
+  }
+
+  Future<void> _editDeliveryDetails() async {
+    final value =
+        await editGoAddressDetails(context, widget.lang, _addressDetails);
+    if (value != null && mounted)
+      setState(() {
+        _addressDetails = value;
+        _addressNotice = null;
+        _quote = null;
+      });
+  }
+
+  Future<void> _saveDeliveryAddress() async {
+    final place = _destination;
+    if (place == null) return;
+    final body = <String, dynamic>{
+      'name': _t('Доставка', 'Yetkazish'),
+      'address': place.address,
+      'lat': place.lat,
+      'lon': place.lon,
+      ...goAddressDetails(_addressDetails)
+    };
+    final existing = _favoriteAddresses
+        .where((a) =>
+            a['address'] == place.address &&
+            a['lat'] == place.lat &&
+            a['lon'] == place.lon)
+        .firstOrNull;
+    final path = existing == null
+        ? '/api/profile/favorites'
+        : '/api/profile/favorites/${Uri.encodeComponent(existing['id'].toString())}';
+    if (existing != null) body['name'] = existing['name'];
+    final response = await widget.api.post(path, body);
+    requireGoAddressDetailsEcho(body, response);
+    final fresh = await _loadFavoriteAddresses(widget.api);
+    if (mounted)
+      setState(() {
+        _favoriteAddresses = fresh;
+        _addressNotice = _t(
+            'Адрес сохранён в вашем профиле', 'Manzil profilingizda saqlandi');
       });
   }
 
@@ -258,12 +338,15 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       'destination': {
         'address': _destination!.address,
         'lat': _destination!.lat,
-        'lon': _destination!.lon
+        'lon': _destination!.lon,
+        ...goAddressDetails(_addressDetails)
       }
     });
+    requireGoAddressDetailsEcho(
+        _addressDetails, {'favorite': (quote as Map)['destination']});
     if (mounted)
       setState(() {
-        _quote = Map<String, dynamic>.from(quote as Map);
+        _quote = Map<String, dynamic>.from(quote);
       });
   }
 
@@ -308,6 +391,9 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       _cartOpen = false;
       _history = true;
       _orders = [order];
+      _destination = null;
+      _addressDetails = {};
+      _addressNotice = null;
     });
     await _loadOrders();
   }
@@ -580,6 +666,37 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
             icon: const Icon(Icons.location_on_outlined),
             label: Text(_destination?.address ??
                 _t('Выбрать адрес на карте', 'Manzilni xaritada tanlash'))),
+        if (_orders.isEmpty)
+          Text(_t('При первом заказе подтвердите точку доставки на карте.',
+              'Birinchi buyurtmada yetkazish nuqtasini xaritada tasdiqlang.')),
+        if (_favoriteAddresses.isNotEmpty)
+          Wrap(spacing: 8, children: [
+            for (final saved in _favoriteAddresses)
+              ActionChip(
+                  label: Text('${saved['name']} · ${saved['address']}'),
+                  onPressed:
+                      _busy ? null : () => _run(() => _useSavedAddress(saved))),
+          ]),
+        if (_orders.isNotEmpty && _orders.first['destination'] is Map)
+          TextButton(
+              onPressed: _busy
+                  ? null
+                  : () => _run(() => _useSavedAddress(Map<String, dynamic>.from(
+                      _orders.first['destination'] as Map))),
+              child: Text(_t('Повторить последний адрес доставки',
+                  'Oxirgi yetkazish manzilini takrorlash'))),
+        if (_destination != null) ...[
+          Text(goAddressDetailsText(_addressDetails, widget.lang)),
+          TextButton(
+              onPressed: _busy ? null : _editDeliveryDetails,
+              child: Text(_t('Подъезд, этаж, квартира, ориентир',
+                  'Kirish, qavat, xonadon, mo‘ljal'))),
+          TextButton(
+              onPressed: _busy ? null : () => _run(_saveDeliveryAddress),
+              child: Text(_t(
+                  'Сохранить адрес в профиле', 'Manzilni profilda saqlash'))),
+        ],
+        if (_addressNotice != null) Text(_addressNotice!),
         const SizedBox(height: 12),
         Text(
             _t('Оплата наличными при получении', 'Qabul qilishda naqd to‘lov')),
@@ -642,6 +759,8 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                               style:
                                   const TextStyle(fontWeight: FontWeight.bold)),
                           Text('${(o['destination'] as Map)['address']}'),
+                          Text(goAddressDetailsText(
+                              o['destination'] as Map, widget.lang)),
                           ..._rows(o['items']).map(
                               (i) => Text('${i['name']} × ${i['quantity']}')),
                           const SizedBox(height: 8),
@@ -752,5 +871,94 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                           '${_t('Корзина', 'Savat')} · ${_cart.values.fold<int>(0, (s, i) => s + (i['quantity'] as int))}'))))
           : null,
     );
+  }
+}
+
+const goAddressDetailLimits = <String, int>{
+  'entrance': 32,
+  'floor': 16,
+  'apartment': 32,
+  'landmark': 300
+};
+Map<String, dynamic> goAddressDetails(Map source) => {
+      for (final key in goAddressDetailLimits.keys)
+        key: (source[key] ?? '').toString().trim()
+    };
+String goAddressDetailsText(Map source, String lang) {
+  final labels = lang == 'uz'
+      ? ['Kirish', 'Qavat', 'Xonadon', 'Mo‘ljal']
+      : ['Подъезд', 'Этаж', 'Квартира', 'Ориентир'];
+  return goAddressDetailLimits.keys.indexed
+      .where((entry) => (source[entry.$2] ?? '').toString().trim().isNotEmpty)
+      .map((entry) => '${labels[entry.$1]}: ${source[entry.$2]}')
+      .join(' · ');
+}
+
+void requireGoAddressDetailsEcho(Map expected, dynamic response) {
+  final actual = response is Map ? response['favorite'] : null;
+  for (final key in goAddressDetailLimits.keys) {
+    final value = (expected[key] ?? '').toString().trim();
+    if (expected.containsKey(key) &&
+        (value.isNotEmpty || actual is Map && actual.containsKey(key)) &&
+        (actual is! Map || (actual[key] ?? '').toString() != value))
+      throw ApiException(
+          'Сервер не сохранил детали адреса. Требуется обновление сервера.');
+  }
+}
+
+Future<Map<String, dynamic>?> editGoAddressDetails(
+        BuildContext context, String lang, Map initial) =>
+    showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (_) => _GoAddressDetailsDialog(lang: lang, initial: initial));
+
+class _GoAddressDetailsDialog extends StatefulWidget {
+  const _GoAddressDetailsDialog({required this.lang, required this.initial});
+  final String lang;
+  final Map initial;
+  @override
+  State<_GoAddressDetailsDialog> createState() =>
+      _GoAddressDetailsDialogState();
+}
+
+class _GoAddressDetailsDialogState extends State<_GoAddressDetailsDialog> {
+  late final controllers = {
+    for (final key in goAddressDetailLimits.keys)
+      key: TextEditingController(text: (widget.initial[key] ?? '').toString())
+  };
+  @override
+  void dispose() {
+    for (final controller in controllers.values) controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = widget.lang == 'uz'
+        ? ['Kirish', 'Qavat', 'Xonadon', 'Mo‘ljal']
+        : ['Подъезд', 'Этаж', 'Квартира', 'Ориентир'];
+    return AlertDialog(
+        title:
+            Text(widget.lang == 'uz' ? 'Manzil tafsilotlari' : 'Детали адреса'),
+        content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final entry in goAddressDetailLimits.keys.indexed)
+            TextField(
+                key: ValueKey('go-address-${entry.$2}'),
+                controller: controllers[entry.$2],
+                maxLength: goAddressDetailLimits[entry.$2],
+                decoration: InputDecoration(labelText: labels[entry.$1])),
+        ])),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(widget.lang == 'uz' ? 'Bekor' : 'Отмена')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, {
+                    for (final entry in controllers.entries)
+                      entry.key: entry.value.text.trim()
+                  }),
+              child: Text(widget.lang == 'uz' ? 'Saqlash' : 'Сохранить'))
+        ]);
   }
 }

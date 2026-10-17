@@ -38,3 +38,14 @@ Two discovered corrections are now active: fleet gateway resolves the private br
 - HTTPS gateway health, portal HTTP200 and catalog verified via the LAN with the real hostname/certificate. The outside web-fetch connector could not access this hostname; mobile-network access is not independently confirmed.
 - Final Driver+ 48 APK installed with original signing key, retaining data. The phone uses the HTTPS driver endpoint; driver 5 is connected/on line with zero current orders.
 - Full live delivery, actual cash/ledger settlement, passenger APK installation and real address-picker restrictions remain unverified. No delivery order or delivery financial record was created in this deployment stage.
+
+
+## GO schema8 / address pilot preparation — not executed
+
+- Obtain production migration permission; first prove actual TM approach/commission and agree the controlled end-to-end test. Never resume acceptance5.
+- Before cutover, stop new GO checkout and quiesce relevant outbox writes without interrupting uncertain financial commands. Inventory active transport mappings and cash evidence.
+- Make a consistent SQLite backup using SQLite backup API (including committed WAL), plus existing shared client-profile JSON and matching deployed code/config backups stored privately. Do not copy a live SQLite main file alone or commit private data.
+- Rehearse upgrade on a separate copy. Automated schema4/5/6/7→8 tests now preserve snapshot bytes, receipts, ledger sums and FK integrity. Verify real backup counts/hashes separately before any authorized cutover.
+- Deploy compatible server plus backend/address-details.mjs/delivery modules, bridge/Driver+ and passenger client together. Test shared profile metadata echo; old servers must not silently drop delivery details. No new address-specific DB migration is required.
+- Before new writes, rollback can restore the matching old code+DB+profile snapshot. After any new cash event/order, DO NOT restore a stale DB or delete evidence: freeze new checkout, retain schema8/journal/receipts, reconcile and recover forward. Older code must not open schema8. Keep a complete post-cutover snapshot for investigation.
+- Device/native map/location, active taxi restore and new courier cash actions remain pending acceptance. ADB online is not a completed GUI test. No production changes were made by this stage.

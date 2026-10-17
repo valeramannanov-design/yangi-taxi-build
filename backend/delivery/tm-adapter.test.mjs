@@ -95,3 +95,10 @@ test('driver operations are real read evidence, empty results do not manufacture
  f.records.get_driver_operations={};await assert.rejects(f.adapter.driverOperations(5,'20261017000000','20261018000000'));
  await assert.rejects(f.adapter.driverOperations(5,'bad','20261018000000'));
 });
+
+test('own delivery entrance details never become invented TaxiMaster address fields',async()=>{
+ const f=fixture();f.snapshot.destination={...f.snapshot.destination,entrance:'2',floor:'3',apartment:'4',landmark:'Near park'};
+ const prepared=await f.adapter.prepare(f.job,f.order,f.snapshot);
+ assert.deepEqual(Object.keys(prepared.body.addresses[1]).sort(),['address','lat','lon']);
+ assert.equal(f.snapshot.destination.apartment,'4');
+});

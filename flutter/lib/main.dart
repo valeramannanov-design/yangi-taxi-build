@@ -1251,6 +1251,7 @@ Future<List<Map<String, dynamic>>> _loadFavoriteAddresses(ApiClient api) async {
           'address': (item['address'] ?? '').toString().trim(),
           'lat': double.parse(item['lat'].toString()),
           'lon': double.parse(item['lon'].toString()),
+          ...goAddressDetails(item),
         });
       }
       remote = _favoritesFromPayload(await api.get('/api/profile/favorites'));
@@ -1300,6 +1301,7 @@ Future<List<Map<String, dynamic>>> _saveFavoriteAddresses(
         'address': (item['address'] ?? '').toString().trim(),
         'lat': double.parse(item['lat'].toString()),
         'lon': double.parse(item['lon'].toString()),
+        ...goAddressDetails(item),
       };
       if (id.isNotEmpty && existingById.containsKey(id)) {
         await api.post(
@@ -11961,6 +11963,17 @@ class _FavoriteAddressesScreenState extends State<FavoriteAddressesScreen> {
     }
   }
 
+  Future<void> editDetails(int index) async {
+    final item=values[index];
+    final details=await editGoAddressDetails(context,widget.lang,item);
+    if(details==null||!mounted)return;
+    try {
+      final response=await widget.api.post('/api/profile/favorites/${Uri.encodeComponent(item['id'].toString())}',{...item,...details});
+      requireGoAddressDetailsEcho(details,response);
+      await load();
+    } catch(error){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(error.toString())));}
+  }
+
   Future<void> removeFavorite(int index) async {
     final next = <Map<String, dynamic>>[...values]..removeAt(index);
     try {
@@ -12039,15 +12052,16 @@ class _FavoriteAddressesScreenState extends State<FavoriteAddressesScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                         subtitle: Text(
-                          _compactAddress((item['address'] ?? '').toString()),
+                          [_compactAddress((item['address'] ?? '').toString()),goAddressDetailsText(item,widget.lang)].where((s)=>s.isNotEmpty).join('\n'),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        trailing: IconButton(
+                        onTap:()=>editDetails(index),
+                        trailing: Row(mainAxisSize:MainAxisSize.min,children:[IconButton(tooltip:widget.lang=='uz'?'Tafsilotlar':'Детали адреса',onPressed:()=>editDetails(index),icon:const Icon(Icons.edit_location_alt_outlined)),IconButton(
                           tooltip: widget.lang == 'uz' ? 'O‘chirish' : 'Удалить',
                           onPressed: () => removeFavorite(index),
                           icon: const Icon(Icons.delete_outline_rounded),
-                        ),
+                        )]),
                       ),
                     );
                   },

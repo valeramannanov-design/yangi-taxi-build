@@ -39,4 +39,12 @@ test('actual passenger server loads optional delivery with existing authenticati
   const signature = createHmac('sha256', secret).update(body).digest('base64url');
   const result = await fetch(base + '/api/delivery/customer/orders', { headers: { Authorization: 'Bearer ' + body + '.' + signature } });
   assert.equal(result.status, 200); assert.deepEqual((await result.json()).data, []);
+  const headers={Authorization:'Bearer '+body+'.'+signature,'content-type':'application/json'};
+  const saved=await fetch(base+'/api/profile/favorites',{method:'POST',headers,body:JSON.stringify({name:'Home',address:'TEST address',lat:40,lon:65,entrance:' 2 ',floor:'3',apartment:'12A',landmark:'Near park'})});
+  assert.equal(saved.status,201);const favorite=(await saved.json()).data.favorite;assert.equal(favorite.entrance,'2');
+  const edited=await fetch(base+'/api/profile/favorites/'+favorite.id,{method:'POST',headers,body:JSON.stringify({floor:'4'})});
+  assert.equal(edited.status,200);const updated=(await edited.json()).data.favorite;assert.equal(updated.floor,'4');assert.equal(updated.apartment,'12A');
+  const invalid=await fetch(base+'/api/profile/favorites/'+favorite.id,{method:'POST',headers,body:JSON.stringify({landmark:'x'.repeat(301)})});assert.equal(invalid.status,400);
+  const list=await (await fetch(base+'/api/profile/favorites',{headers})).json();assert.equal(list.data.favorites[0].landmark,'Near park');
+
 });

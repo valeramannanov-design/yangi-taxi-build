@@ -11,8 +11,9 @@ test('isolated HTTP customer → merchant → driver → dual cash receipt → c
  }
  async function post(path,token,body,key){const r=await request(path,token,body,key);assert.equal(r.status,200,JSON.stringify(r.value));return r.value.data||r.value;}
  const catalog=await request('/api/delivery/catalog?service=food',h.passengerToken);assert.equal(catalog.value.data.go_checkout.environment,'TEST');
- const q=await post('/api/delivery/customer/quotes',h.passengerToken,{shop_id:h.shop_id,items:[{product_id:h.product_id,quantity:1}],destination:{address:'TEST recipient',lat:40.01,lon:65}});
- assert.equal(q.pricing_basis,'TEST');
+ const invalid=await request('/api/delivery/customer/quotes',h.passengerToken,{shop_id:h.shop_id,items:[{product_id:h.product_id,quantity:1}],destination:{address:'TEST',lat:40.01,lon:65,landmark:{}}});assert.equal(invalid.status,422);assert.equal(h.store.all('SELECT * FROM delivery_quotes').length,0);
+ const q=await post('/api/delivery/customer/quotes',h.passengerToken,{shop_id:h.shop_id,items:[{product_id:h.product_id,quantity:1}],destination:{address:'TEST recipient',lat:40.01,lon:65,entrance:'2',floor:'3',apartment:'4',landmark:'Near park'}});
+ assert.equal(q.pricing_basis,'TEST');assert.equal(q.destination.apartment,'4');
  const checkoutKey=randomUUID(),o=await post('/api/delivery/customer/orders',h.passengerToken,{quote_id:q.id},checkoutKey);
  assert.equal((await post('/api/delivery/customer/orders',h.passengerToken,{quote_id:q.id},checkoutKey)).id,o.id);
  let current=o;
@@ -30,6 +31,6 @@ test('isolated HTTP customer → merchant → driver → dual cash receipt → c
  await post('/internal/delivery/client-arrival',h.bridgeToken,driver);await post('/internal/delivery/cash',h.bridgeToken,{...driver,amount_uzs:31000});
  await post('/test/taximaster',h.adminToken,{order_id:tmId,state_kind:'finished'});
  const final=(await request('/api/delivery/customer/orders/'+o.id,h.passengerToken)).value.data;
- assert.equal(final.status,'completed');assert.equal(final.cash.events.length,5);assert.equal(final.total_uzs,31000);
+ assert.equal(final.destination.landmark,'Near park');assert.equal(final.status,'completed');assert.equal(final.cash.events.length,5);assert.equal(final.total_uzs,31000);
  assert.equal(h.store.all('SELECT * FROM delivery_ledger').length,5);
 });

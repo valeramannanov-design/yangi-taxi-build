@@ -8,6 +8,7 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { isTestIsolation } from './runtime-mode.mjs';
 import { CashJournal } from './cash-journal.mjs';
+import { addressDetails } from '../address-details.mjs';
 
 export class DeliveryError extends Error {
   constructor(status, message) { super(message); this.statusCode = status; }
@@ -39,6 +40,7 @@ const passwordMatches = (value, encoded) => {
   const [salt, hash] = encoded.split(':');
   return timingSafeEqual(scryptSync(value, salt, 32), Buffer.from(hash, 'hex'));
 };
+const deliveryAddressDetails = value => {try{return addressDetails(value);}catch{fail(422,'Invalid delivery address details');}};
 const contains = (z, p) => p.lat >= z.south && p.lat <= z.north && p.lon >= z.west && p.lon <= z.east;
 export function distanceMeters(a, b) {
   point(a); point(b); const rad = v => v * Math.PI / 180;
@@ -277,7 +279,7 @@ export class DeliveryStore {
       const go = shop.service_kind !== null;
       if (go && (!road || road.source !== 'TEST' || !this.testIsolation)) fail(503, 'GO requires a verified pricing adapter');
       const commission_uzs = go ? null : Math.floor((subtotal_uzs * shop.commission_bps + 5000) / 10000);
-      const snapshot = { shop_name: shop.name, service_kind:shop.service_kind, pickup: { address: shop.address, lat: shop.lat, lon: shop.lon }, destination: { ...location, address }, phone: customer.phone,
+      const snapshot = { shop_name: shop.name, service_kind:shop.service_kind, pickup: { address: shop.address, lat: shop.lat, lon: shop.lon }, destination: { ...location, address, ...deliveryAddressDetails(input.destination) }, phone: customer.phone,
         items, subtotal_uzs, delivery_uzs, total_uzs: subtotal_uzs + delivery_uzs, commission_bps: go ? null : shop.commission_bps, commission_uzs, ...(go?{cash_model:'courier_buyout_v1',environment:'TEST',commission_source:'TaxiMaster',commission_status:'not_verified'}:{}), distance_m, pricing_basis: go ? 'TEST' : road ? 'taximaster_road' : 'straight_line_zone', ...(road?{delivery_tariff_id:road.context.pricing.tariff_id,delivery_crew_group_id:road.context.pricing.crew_group_id,pricing_version:road.context.pricing.version}:{}), payment_method: 'cash' };
       const quoteId = id(), expires_at = this.now() + 300_000;
       this.run('INSERT INTO delivery_quotes VALUES(?,?,?,?,?)', quoteId, customer.id, shop.id, JSON.stringify(snapshot), expires_at);
@@ -292,7 +294,7 @@ export class DeliveryStore {
     return this.pricing();
   }
   roadQuoteContext(identity,input) {
-    const customer=this.customer(identity),shop=this.availableShop(input.shop_id),destination={...point(input.destination),address:text(input.destination.address)},pricing=this.pricing();
+    const customer=this.customer(identity),shop=this.availableShop(input.shop_id),destination={...point(input.destination),address:text(input.destination.address),...deliveryAddressDetails(input.destination)},pricing=this.pricing();
     this.assertCashShop(shop);
     if(!pricing.enabled)fail(503,'Configure the delivery tariff in administration first');
     if(!Array.isArray(input.items)||input.items.length<1||input.items.length>50)fail(422,'Cart must have 1–50 items');

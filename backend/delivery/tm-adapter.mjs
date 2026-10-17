@@ -29,7 +29,7 @@ export function createTaxiMasterDeliveryAdapter({ get, post, postQuery, catalog,
       const client = Number(order.customer_id);
       if (!Number.isSafeInteger(client) || client < 1) throw new Error('Invalid TaxiMaster client');
       return { driver_id: crew.driver_id, body: { client_id: client, phone: phone(snapshot.phone), customer: job.marker,
-        comment: 'Yangi Delivery', addresses: [snapshot.pickup, snapshot.destination],
+        comment: 'Yangi Delivery', addresses: [snapshot.pickup, snapshot.destination].map(({address,lat,lon})=>({address,lat,lon})),
         source_time: time(), is_prior: false, check_duplicate: true, need_custom_validate: true,
         crew_id: crew.crew_id, crew_group_id: crew.crew_group_id, tariff_id: job.tariff_id,
         total_cost: snapshot.delivery_uzs, cost_freeze: true,

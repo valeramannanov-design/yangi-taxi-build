@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { addressDetails } from './address-details.mjs';
 import { createOrderRequestGuard } from './order-idempotency.mjs';
 import { createAtomicJsonWriter } from './atomic-json-store.mjs';
 import { assertOwnedOrder } from './order-ownership.mjs';
@@ -686,6 +687,7 @@ function normalizeClientProfile(value) {
             address: String(item.address || '').trim().slice(0, 300),
             lat: Number(item.lat),
             lon: Number(item.lon),
+            ...addressDetails(item,{strict:false}),
             createdAt: String(item.createdAt || new Date().toISOString()),
             updatedAt: String(item.updatedAt || item.createdAt || new Date().toISOString()),
           }))
@@ -788,7 +790,7 @@ function validateFavoritePayload(body, current = null) {
       !Number.isFinite(lon) || lon < -180 || lon > 180) {
     throw Object.assign(new Error('Favorite address coordinates are invalid'), { statusCode: 400 });
   }
-  return { name, address, lat, lon };
+  return { name, address, lat, lon, ...addressDetails(body,{current:current||{}}) };
 }
 
 function validatePromoCode(value) {

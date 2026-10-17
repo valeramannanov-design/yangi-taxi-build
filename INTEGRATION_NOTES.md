@@ -27,3 +27,10 @@ Public reference inspected: [official TM API documentation](https://help.taximas
 ## Cash implementation update2026-10-17
 
 Dual shop cash evidence, buyout cancellation guard, reimbursement journal and capability-driven isolated TEST checkout now work. Original items3/4 are no longer missing cash core. See `docs/GO_CASH_CHECKOUT.md` for implemented own contracts. Cash requires no new bank gateway. Production remains gated specifically on unverified courier approach and per-order TM commission/debit. Fresh get_driver_operations reads succeeded but returned no operations for driver5; no commission is inferred. No live deployment/order/financial mutations in this stage.
+
+
+## Installed TM contract delta / address stage2026-10-17
+
+Read-only installed API check: tariff27 is present among14 tariffs, row keys=id/is_active/name; group3 among6 groups, keys=id/name. These catalog responses expose no monetary approach/commission rules. Diagnostic GET calc_order_cost(tariff27,distance_city2,distance_country0,is_country=false) returned sum9200 both with source_distance_country0 and2. These synthetic calculation inputs are not a customer quote; unchanged output does NOT establish free approach, out-of-city behavior, assigned-courier repricing or commission. No request with guessed city-approach/commission fields was added. Actual rule/debit/reversal/order-link evidence remains required; no live test orders or account operations were created.
+
+Shared profile address extension is our API: entrance<=32,floor<=16,apartment<=32,landmark<=300; optional strings, controls/type/length validated, partial updates preserve omitted fields and explicit null/empty clears. Existing profile JSON and frozen delivery snapshot carry them. TM create addresses stay exactly address/lat/lon. Backend deploy must include new backend/address-details.mjs together with server/delivery modules and compatible clients. No production migration/deployment authorized/performed. New native device acceptance remains pending even though ADB is online.

@@ -447,6 +447,8 @@ class _GoPurchaseDetailsState extends State<GoPurchaseDetails> {
             Text('${o['status']}'),
             GoCashHistory(order: o, lang: widget.lang),
             Text('${(o['destination'] as Map?)?['address'] ?? ''}'),
+            Text(goAddressDetailsText(
+                (o['destination'] as Map?) ?? {}, widget.lang)),
             for (final item in (o['items'] as List))
               ListTile(
                   title: Text('${item['name']} × ${item['quantity']}'),

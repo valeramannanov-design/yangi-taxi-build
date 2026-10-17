@@ -337,9 +337,19 @@ void main() {
     await tester.tap(find.text('Выбрать адрес на карте'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Рассчитать стоимость'));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Рассчитать стоимость'))
+            .onPressed,
+        isNotNull);
     await tester.tap(find.text('Рассчитать стоимость'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Оформить заказ'), 150);
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Оформить заказ'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Оформить заказ'));
     await tester.pumpAndSettle();
     expect(api.checkoutKeys.length, 1);
