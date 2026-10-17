@@ -12,10 +12,10 @@ Authoritative new scope: `docs/YANGI_TAXI_GO_SPEC.md`. Supersedes the previous D
 | Profile, settings, languages/themes, photo, addresses, cards, promo UI | ТРЕБУЕТ ИНТЕГРАЦИИ | Existing ProfileScreen/SettingsScreen/CardsScreen/FavoriteAddressesScreen/PromoCodesScreen; one GO shell, no new account/card wallet |
 | Unified GO home/navigation | ЧАСТИЧНО ГОТОВ | `flutter/lib/go.dart`, same Shell; local widget proof, no GO device/release acceptance |
 | Food/market catalog, shop/product/cart/quote/checkouts | ЧАСТИЧНО ГОТОВ | `flutter/lib/delivery.dart`, `backend/delivery`; typed catalogs, richer products/recommendations/pickup/ETA remain |
-| Merchant/admin portal, tenancy and stock CAS | ЧАСТИЧНО ГОТОВ | `backend/delivery/portal`, http/store; preserve role and ownership checks; receipt-from-courier absent |
+| Merchant/admin portal, tenancy and stock CAS | ЧАСТИЧНО ГОТОВ | Receipt-from-courier action/timeline now implemented in source; role/ownership preserved. GO release/device acceptance pending |
 | Tariff27 road quote | ЧАСТИЧНО ГОТОВ | Existing analyze_route2/calc_order_cost2; 2160m/9800 verified; courier-to-store approach price inclusion not proved |
-| GO cash/commission model | ТРЕБУЕТ ИЗМЕНЕНИЯ | Existing merchant-payable ledger is historical, not the new courier-pays-shop contract. No new GO financial completion until integration is confirmed |
-| Driver+ lifecycle and isolated sessions | ЧАСТИЧНО ГОТОВ | Existing Android Driver+50 / gateway; missing shop-payment and client-arrival proofs, appropriate refusal/dispute flow |
+| GO cash/commission model | ЧАСТИЧНО ГОТОВ | New buyout journal/reimbursement and isolated TEST completion verified. Historical ledger retained. Actual TM approach/commission/debit contract still blocks production; see docs/GO_CASH_CHECKOUT.md |
+| Driver+ lifecycle and isolated sessions | ЧАСТИЧНО ГОТОВ | Driver+50 baseline extended with shop-payment and recipient-arrival controls/private proofs; compiled/tested locally. Phone acceptance and post-buyout dispute resolution pending |
 | Parcel delivery | ЧАСТИЧНО ГОТОВ | Existing taxi delivery tariff and route can be reused; sender/recipient contacts, handover and allowed parcel rules not complete |
 | Unified history/active service orders | ТРЕБУЕТ ИНТЕГРАЦИИ | Existing taxi history/current API plus owned Delivery orders; classify legacy purchases explicitly rather than calling them parcels |
 | GO shared profile/history and manual recommendations | ЧАСТИЧНО ГОТОВ | Local source/tests connected; see `docs/GO_FOUNDATION.md`; visual/device/final metadata remain |
