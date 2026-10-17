@@ -30,7 +30,7 @@ function send(res, status, data) {
 /** Reuses the host's authenticated passenger session, never trusts identity headers.
  * It returns false for all non-delivery routes so taxi behavior stays with the host.
  */
-export function createDeliveryHandler({ store, passengerIdentity }) {
+export function createDeliveryHandler({ store, passengerIdentity, transport = null }) {
   if (typeof passengerIdentity !== 'function') throw new TypeError('Passenger authentication adapter required');
   return async function handle(req, res) {
     const url = new URL(req.url, 'http://local'), path = url.pathname, method = req.method;
@@ -78,6 +78,15 @@ export function createDeliveryHandler({ store, passengerIdentity }) {
           else if (method === 'POST' && route === '/admin/shops') result = store.createShop(user, await json(req));
           else if (method === 'PUT' && /^\/admin\/shops\/[1-9][0-9]*$/.test(route)) result = store.updateShop(user, Number(route.split('/')[3]), await json(req));
           else if (method === 'GET' && route === '/admin/orders') result = store.ordersForStaff(user);
+          else if (method === 'POST' && /^\/admin\/orders\/[a-f0-9]{36}\/dispatch$/.test(route)) {
+            if (!transport) error(503, 'TaxiMaster delivery dispatch is not enabled');
+            result = transport.dispatch(user, route.split('/')[3], await json(req), key);
+          }
+          else if (method === 'GET' && route === '/admin/transport') result = { enabled: !!transport, jobs: store.all('SELECT order_id,crew_id,tariff_id,phase,transport_order_id,last_error,updated_at FROM delivery_transport_jobs ORDER BY created_at DESC LIMIT 200') };
+          else if (method === 'GET' && route === '/admin/transport-options') {
+            if (!transport) error(503, 'TaxiMaster delivery dispatch is not enabled');
+            result = await transport.adapter.options();
+          }
           else if (method === 'GET' && route === '/admin/finance') result = store.finance(user);
           else error(404, 'Delivery route not found');
         } else if (route.startsWith('/merchant/')) {

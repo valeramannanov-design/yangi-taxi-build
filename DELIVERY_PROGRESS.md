@@ -1,6 +1,6 @@
 # Yangi Taxi Delivery — progress
 
-Status 2026-10-17: backend, portal and passenger source stages saved; separate passenger debug APK built. Full MVP and live courier/TaxiMaster delivery integration are NOT finished.
+Status 2026-10-17: backend, portal and passenger source stages saved; separate passenger debug APK built. Durable real CommonAPI transport adapter and admin dispatch implemented locally; Driver+ delivery bridge and full live acceptance are NOT finished.
 
 ## Repositories and branch
 - Passenger: `C:\Yangi Taxi DEV\yangi-taxi-client`, cloned from `valeramannanov-design/yangi-taxi-build`; branch `feature/yangi-taxi-delivery`, baseline `4eb8b3c` (1.9.4+70).
@@ -28,9 +28,14 @@ Status 2026-10-17: backend, portal and passenger source stages saved; separate p
 - FINAL checks: 30/30 Node tests and 5/5 Flutter widget tests pass. Dart analysis: 0 errors, 9 existing warnings, 5 info diagnostics. Passenger APK successfully built and its separate package/label/minSdk verified. Scanned it for 7 known server secret values from private configuration: 0 matches. MapKit client key is intentionally a client build define, not a server credential.
 
 ## In progress / next
+- Added migration 003: durable transport jobs and cash receipts. Admin dispatch reserves a courier, validates current TaxiMaster crew/driver/on-line/idle state and live tariff, freezes only the delivery fee, then uses real `create_order2` with `crew_id`. Own delivery marker is stored in the documented `customer` field for reconciliation through `get_current_orders` + `get_order_state`.
+- Unknown creation outcome (including TM duplicate code 100) never repeats a POST. Exact returned order/marker/client/crew/driver/tariff/amount must match before atomic binding. Multiple/mismatched results require dispatcher review; unresolved/missing archive orders remain blocked from a second creation. Cross-process claims and repeated reconciliation are safe.
+- Bound transport polling uses actual `state_kind` and `confirmed_by_driver`, not guessed numeric state IDs. It restores assigned/accepted/picked-up stages, restores stock on cancellation before pickup, and flags abortion after pickup for dispatcher review. Completion/ledger requires both a private authenticated-driver cash receipt for the full delivery total and TM finished state with the exact delivery cash fee and zero noncash components.
+- Admin portal now offers dispatch using live idle crews/tariffs and shows durable dispatch status. Transport is separately opt-in (`DELIVERY_TRANSPORT_ENABLED=false` by default), refuses mock host mode, and has NOT been enabled/deployed. Cash confirmation is an internal method only: no public endpoint can forge it. Connecting it to the authenticated Driver+ gateway/UI is still required.
 - Build artifact: `C:\Yangi Taxi DEV\artifacts\YangiDelivery-Passenger-dev-20261017.apk`, package `uz.yangi.yangi_taxi.deliverydev`, label `Yangi Delivery Test`, versionCode70/versionName1.9.4, minSdk26/compileSdk36. SHA-256 `9e13ced516a43ac2ffc118acfe10ec122d7badd46d65747dc04a651bb17bfd2c`. This is a development checkpoint, not a completed/live Delivery release.
-- Next concrete feature: durable TM transport outbox and reconciliation (unknown create outcome must not be retried blindly). Reuse the real passenger backend's `tmPost/create_order2`, real `get_order_state` and authenticated Driver+ assignment proof, not invented TM endpoints. Then Driver+ delivery labels/actions, admin courier assignment/cancellation, taxi/delivery conflict checks and full merchant → customer → driver → finance acceptance.
-- Full MVP is NOT ready: no live transport worker/courier connection, no complete live delivery or real settlement acceptance yet. No Delivery APK installed on a real phone.
+- Current validation: 38/38 Node tests pass, including lost-response reconciliation, cross-worker claims, occupied/locked/offline courier rejection, exact lifecycle restoration, cash mismatch protection and single balanced settlement. Tests use isolated databases and test adapters; no live orders or finances were changed.
+- Next concrete feature: authenticated Driver+ delivery metadata/cash-receipt bridge and native delivery labels/actions. Then admin cancellation/reassignment recovery, deployment reconciliation and full merchant → customer → driver → finance acceptance.
+- Full MVP is NOT ready: transport adapter exists locally but is not deployed/enabled; no complete live delivery or real settlement acceptance yet. No Delivery APK installed on a real phone.
 - Actual Yandex address picker and key/application restrictions still need a phone check; widget tests use a test-only injected picker. Browser portal visuals/form interaction remain unverified because browser control is disabled.
 
 ## Blockers / validation

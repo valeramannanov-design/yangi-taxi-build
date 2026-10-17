@@ -36,6 +36,9 @@ test('HTTP auth derives identities from trusted host; role and passenger token s
   assert.equal((await f.request('/api/delivery/catalog')).json.data.shops.length, 1);
   assert.equal((await f.request('/api/delivery/admin/config')).status, 401);
   assert.equal((await f.request('/api/delivery/admin/config', { authorization: f.partnerToken })).status, 403);
+  assert.equal((await f.request('/api/delivery/admin/transport', { authorization: f.partnerToken })).status, 403);
+  assert.equal((await f.request('/api/delivery/admin/transport', { authorization: f.token })).json.data.enabled, false);
+  assert.equal((await f.request('/api/delivery/admin/transport-options', { authorization: f.token })).status, 503);
   assert.equal((await f.request('/api/delivery/customer/orders', { authorization: f.token })).status, 401);
   assert.equal((await f.request('/api/delivery/merchant/orders', { authorization: 'test-passenger-session' })).status, 401);
   assert.equal((await f.request('/api/delivery/customer/orders', { headers: { 'x-customer-id': '101', 'x-driver-id': '5' } })).status, 401);

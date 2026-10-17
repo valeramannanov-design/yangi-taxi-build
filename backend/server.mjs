@@ -2631,7 +2631,16 @@ if (process.env.DELIVERY_ENABLED === 'true') {
   const { DeliveryStore } = await import('./delivery/store.mjs');
   const { createDeliveryHandler } = await import('./delivery/http.mjs');
   const store = new DeliveryStore(process.env.DELIVERY_DB_PATH);
-  deliveryHandler = createDeliveryHandler({ store, passengerIdentity: req => {
+  let transport = null;
+  if (process.env.DELIVERY_TRANSPORT_ENABLED === 'true') {
+    if (cfg.mock) throw new Error('Delivery transport requires real TaxiMaster');
+    const { DeliveryTransport } = await import('./delivery/transport.mjs');
+    const { createTaxiMasterDeliveryAdapter } = await import('./delivery/tm-adapter.mjs');
+    transport = new DeliveryTransport(store, createTaxiMasterDeliveryAdapter({ get: tmGet, post: tmPostJson, catalog: liveCatalog, time: tmTime, phone: orderPhoneDigits }));
+    const timer = setInterval(() => transport.tick().catch(() => console.warn('Delivery transport reconciliation deferred')), 5000);
+    timer.unref();
+  }
+  deliveryHandler = createDeliveryHandler({ store, transport, passengerIdentity: req => {
     const session = auth(req);
     return { id: String(session.clientId), phone: session.phone };
   } });

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname, basename } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { DeliveryStore, distanceMeters } from './store.mjs';
+import { DeliveryTransport } from './transport.mjs';
 
 const password = 'unit-test-private-password';
 const customer = { id: '101', phone: '+998900000001' };
@@ -95,7 +96,7 @@ test('a merchant edit cannot overwrite stock reserved or restored after the form
   status(409, () => f.store.saveProduct(f.p1, { ...latest, active: true, name: 'Stale form after cancellation' }, f.product.id));
   assert.equal(f.store.shop(f.s1.id).products[0].stock, 5);
 });
-test('migration 002 upgrades an existing v1 database and preserves its data', t => {
+test('migrations upgrade an existing v1 database and preserve its data', t => {
   const dir = mkdtempSync(join(tmpdir(), 'yangi-delivery-migration-')); t.after(() => cleanupTemp(dir));
   const path = join(dir, 'existing.sqlite'), old = new DatabaseSync(path);
   old.exec(readFileSync(new URL('./migrations/001.sql', import.meta.url), 'utf8'));
@@ -104,7 +105,7 @@ test('migration 002 upgrades an existing v1 database and preserves its data', t 
   const upgraded = new DeliveryStore(path);
   try {
     assert.equal(upgraded.one('SELECT name FROM delivery_categories').name, 'Existing category');
-    assert.equal(upgraded.one('SELECT max(version) AS v FROM delivery_migrations').v, 2);
+    assert.equal(upgraded.one('SELECT max(version) AS v FROM delivery_migrations').v, 3);
     assert.ok(upgraded.all('PRAGMA table_info(delivery_products)').some(c => c.name === 'version'));
   } finally { upgraded.close(); }
 });
@@ -148,6 +149,86 @@ test('one courier cannot hold two delivery jobs', t => {
   f.store.bindTransport(a.id, 1001); f.store.bindTransport(b.id, 1002);
   f.store.recordTransport(a.id, { transport_order_id: 1001, driver_id: 5, crew_id: 4, status: 'assigned' });
   status(409, () => f.store.recordTransport(b.id, { transport_order_id: 1002, driver_id: 5, crew_id: 4, status: 'assigned' }));
+});
+
+test('transport outbox reconciles a lost creation response without another POST', async t => {
+  const f = fixture(t), o = confirmed(f), input = { crew_id: 4, tariff_id: 3, version: o.version };
+  let posts = 0, remote = null;
+  const adapter = {
+    prepare: async job => ({ driver_id: 5, body: { customer: job.marker } }),
+    create: async body => { posts++; remote = { order_id: 7001, customer: body.customer, client_id: 101, driver_id: 5, crew_id: 4, tariff_id: 3, total_sum: o.delivery_uzs }; throw new Error('Response lost'); },
+    find: async () => remote ? [remote] : [], read: async () => remote,
+  };
+  const transport = new DeliveryTransport(f.store, adapter);
+  status(403, () => transport.dispatch(f.p1, o.id, input, key('dispatch')));
+  assert.deepEqual(transport.dispatch(f.admin, o.id, input, key('dispatch')), { order_id: o.id, phase: 'queued' });
+  transport.dispatch(f.admin, o.id, input, key('dispatch'));
+  await transport.tick(); assert.equal(posts, 1);
+  assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase, 'uncertain');
+  await new DeliveryTransport(f.store, adapter).tick();
+  await transport.tick();
+  assert.equal(posts, 1); assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase, 'bound');
+  assert.equal(f.store.orderForCustomer(customer, o.id).transport_order_id, 7001);
+  assert.equal(f.store.one('SELECT count(*) AS n FROM delivery_ledger').n, 0);
+  const second = confirmed(f, 'second-dispatch');
+  status(409, () => transport.dispatch(f.admin, second.id, { ...input, version: second.version }, key('dispatch-second')));
+});
+
+test('uncertain, crashed and mismatched transport jobs never create duplicates', async t => {
+  const f = fixture(t), o = confirmed(f);
+  let posts = 0, matches = [];
+  const adapter = { prepare: async job => ({ driver_id: 5, body: { customer: job.marker } }), create: async () => { posts++; throw Object.assign(new Error('Duplicate'), { tmCode: 100 }); }, find: async () => matches };
+  const transport = new DeliveryTransport(f.store, adapter);
+  transport.dispatch(f.admin, o.id, { crew_id: 4, tariff_id: 3, version: o.version }, key('uncertain'));
+  await transport.tick(); await transport.tick(); assert.equal(posts, 1);
+  assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase, 'uncertain');
+  matches = [{ order_id: 7002, customer: 'YANGI_DELIVERY/' + o.id, client_id: 101, driver_id: 99, crew_id: 4, tariff_id: 3, total_sum: o.delivery_uzs }];
+  await transport.tick(); assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase, 'review');
+  assert.equal(f.store.orderForCustomer(customer, o.id).transport_order_id, null);
+  f.store.run("UPDATE delivery_transport_jobs SET phase='creating',request_json=NULL");
+  matches = [];
+  await new DeliveryTransport(f.store, adapter).tick(); assert.equal(posts, 1);
+});
+
+test('concurrent transport workers claim one request; offline courier prevents POST', async t => {
+  const f = fixture(t), o = confirmed(f);
+  let posts = 0;
+  const adapter = { prepare: async () => { throw new Error('Offline'); }, create: async () => { posts++; }, find: async () => [] };
+  const transport = new DeliveryTransport(f.store, adapter);
+  transport.dispatch(f.admin, o.id, { crew_id: 4, tariff_id: 3, version: o.version }, key('offline'));
+  await Promise.all([transport.tick(), new DeliveryTransport(f.store, adapter).tick()]);
+  assert.equal(posts, 0); assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase, 'blocked');
+});
+
+test('TaxiMaster lifecycle restores delivery state; only exact cash plus finished TM writes finance', async t => {
+  const f = fixture(t), o = confirmed(f);
+  let remote;
+  const adapter = {
+    prepare: async job => ({ driver_id: 5, body: { customer: job.marker } }),
+    create: async body => { remote = { order_id: 8001, customer: body.customer, client_id: 101, driver_id: 5, crew_id: 4, tariff_id: 3, total_sum: o.delivery_uzs, state_kind: 'driver_assigned', confirmed: 'not_confirmed', cash_sum: o.delivery_uzs, cashless_sum: 0, bonus_sum: 0, bank_card_sum: 0 }; return { order_id: 8001 }; },
+    read: async () => remote, find: async () => [],
+  };
+  const transport = new DeliveryTransport(f.store, adapter);
+  transport.dispatch(f.admin, o.id, { crew_id: 4, tariff_id: 3, version: o.version }, key('lifecycle'));
+  await transport.tick(); assert.equal(f.store.orderForCustomer(customer, o.id).status, 'assigned');
+  remote.confirmed = 'confirmed_by_oper'; await transport.tick();
+  assert.equal(f.store.orderForCustomer(customer, o.id).status, 'assigned');
+  remote.confirmed = 'confirmed_by_driver'; await transport.tick();
+  assert.equal(f.store.orderForCustomer(customer, o.id).status, 'accepted');
+  remote.state_kind = 'client_inside'; await new DeliveryTransport(f.store, adapter).tick();
+  assert.equal(f.store.orderForCustomer(customer, o.id).status, 'picked_up');
+  await assert.rejects(transport.confirmCash(8001, { driver_id: 6, crew_id: 4 }, o.total_uzs), e => e.statusCode === 403);
+  await assert.rejects(transport.confirmCash(8001, { driver_id: 5, crew_id: 4 }, o.delivery_uzs), e => e.statusCode === 409);
+  remote.state_kind = 'finished'; await transport.tick();
+  assert.equal(f.store.orderForCustomer(customer, o.id).status, 'picked_up');
+  await transport.confirmCash(8001, { driver_id: 5, crew_id: 4 }, o.total_uzs);
+  await transport.confirmCash(8001, { driver_id: 5, crew_id: 4 }, o.total_uzs);
+  remote.cash_sum = 0; await transport.tick(); assert.equal(f.store.finance(f.admin).length, 0);
+  remote.cash_sum = o.delivery_uzs; await transport.tick(); await transport.tick();
+  assert.equal(f.store.orderForCustomer(customer, o.id).status, 'completed');
+  assert.equal(f.store.one('SELECT count(*) AS n FROM delivery_cash_receipts').n, 1);
+  assert.equal(f.store.finance(f.admin).length, 4);
+  assert.equal(f.store.finance(f.admin).reduce((sum, r) => sum + r.amount_uzs, 0), 0);
 });
 test('authentication expires and is revoked; password hashes and throttle persist', t => {
   const f = fixture(t), session = f.store.login('partner1', password, 'fresh-peer');

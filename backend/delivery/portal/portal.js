@@ -1,5 +1,5 @@
 const main = document.querySelector('#main'), tabs = document.querySelector('#tabs'), notice = document.querySelector('#notice'), account = document.querySelector('#account');
-let token = '', me = null, tab = '', busy = false, config = null, products = [], orders = [], timer = null;
+let token = '', me = null, tab = '', busy = false, config = null, products = [], orders = [], timer = null, transport = { enabled:false, jobs:[] };
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = v => Number(v || 0).toLocaleString('ru-RU') + ' сум';
 const statusNames = { pending_shop: 'Новый заказ', confirmed: 'Подтверждён магазином', ready: 'Готов к выдаче', assigned: 'Курьер назначен', accepted: 'Курьер принял', picked_up: 'Товар у курьера', completed: 'Доставлен', cancelled: 'Отменён', rejected: 'Магазин отказал' };
@@ -56,7 +56,7 @@ async function show(next) {
   else if (tab === 'categories') categoriesView();
   else if (tab === 'zones') zonesView();
   else if (tab === 'products') { products = await request('/merchant/products'); productsView(); }
-  else if (tab === 'orders') { orders = await request(me.role === 'admin' ? '/admin/orders' : '/merchant/orders'); ordersView(); }
+  else if (tab === 'orders') { orders = await request(me.role === 'admin' ? '/admin/orders' : '/merchant/orders'); if (me.role === 'admin') transport = await request('/admin/transport'); ordersView(); }
   else if (tab === 'finance') financeView(await request(me.role === 'admin' ? '/admin/finance' : '/merchant/finance'));
 }
 function shopsView() {
@@ -109,6 +109,23 @@ function productForm(product) {
 function ordersView() {
   main.innerHTML = '<div class="row"><h1>Заказы</h1><button id="refresh" class="secondary">Обновить</button></div>' + (orders.length ? orders.map(o => `<article class="card"><div class="row"><b>${esc(o.shop_name)}</b><span class="badge">${esc(statusNames[o.status] || o.status)}</span></div><p class="mono">${esc(o.id)}</p><p>${o.items.map(i => `${esc(i.name)} × ${i.quantity}`).join('<br>')}</p><p>${esc(o.destination.address)}<br>${esc(o.phone)}</p><div class="row"><span class="muted">Товары ${money(o.subtotal_uzs)} · Доставка ${money(o.delivery_uzs)}</span><b class="price">${money(o.total_uzs)}</b></div>${me.role === 'partner' ? `<div class="actions">${o.status === 'pending_shop' ? `<button data-order="${o.id}" data-action="confirm">Подтвердить</button><button class="danger" data-order="${o.id}" data-action="reject">Отказать</button>` : ['confirmed','assigned','accepted'].includes(o.status) && !o.ready_at ? `<button data-order="${o.id}" data-action="ready">Готов к выдаче</button>` : ''}</div>` : ''}</article>`).join('') : empty('Заказов пока нет.'));
   document.querySelector('#refresh').onclick = () => perform(() => show('orders'));
+  if (me.role === 'admin') {
+    const panel = document.createElement('section');
+    const phases = { queued:'Ожидает назначения', creating:'Создаётся в TaxiMaster', uncertain:'Проверяется результат создания', bound:'Связан с TaxiMaster', blocked:'Назначение отклонено', review:'Нужна проверка диспетчера' };
+    panel.innerHTML = '<h2>Назначение курьеров</h2>' + (transport.enabled ? orders.filter(o => ['confirmed','ready','assigned','accepted','picked_up'].includes(o.status)).map(o => {
+      const job = transport.jobs.find(j => j.order_id === o.id);
+      return `<article class="card"><b>${esc(o.shop_name)}</b><p class="mono">${esc(o.id)}</p>${job ? `<p>${esc(phases[job.phase] || job.phase)}${job.transport_order_id ? ' · TaxiMaster ' + job.transport_order_id : ''}</p>${job.last_error ? '<p>Проверьте назначение в TaxiMaster. Повторное создание заблокировано до выяснения результата.</p>' : ''}` : `<button data-dispatch="${o.id}">Назначить курьера</button>`}</article>`;
+    }).join('') : '<p class="muted">Связь доставки с TaxiMaster пока не включена.</p>');
+    main.append(panel);
+    panel.querySelectorAll('[data-dispatch]').forEach(button => { button.onclick = () => perform(async () => {
+      const o = orders.find(o => o.id === button.dataset.dispatch), available = await request('/admin/transport-options');
+      main.innerHTML = `<h1>Назначить курьера</h1><p>${esc(o.shop_name)} → ${esc(o.destination.address)}</p><p>Наличные от клиента: ${money(o.total_uzs)}. Перевозка в TaxiMaster: ${money(o.delivery_uzs)}.</p><form id="dispatch-form">${choose('crew_id','Свободный экипаж на линии',available.crews)}${choose('tariff_id','Тариф TaxiMaster',available.tariffs)}<div class="full"><button>Назначить</button><button type="button" id="back" class="secondary">Назад</button></div></form>`;
+      document.querySelector('#back').onclick = () => perform(() => show('orders'));
+      document.querySelector('#dispatch-form').onsubmit = event => { event.preventDefault(); const input = Object.fromEntries(new FormData(event.currentTarget)); input.crew_id = Number(input.crew_id); input.tariff_id = Number(input.tariff_id); input.version = o.version;
+        perform(async () => { await request(`/admin/orders/${o.id}/dispatch`, { method:'POST', body:input, key:commandKey(o, 'dispatch-' + input.crew_id + '-' + input.tariff_id) }); await show('orders'); });
+      };
+    }); });
+  }
   main.querySelectorAll('[data-order]').forEach(b => { b.onclick = () => {
     const o = orders.find(o => o.id === b.dataset.order), action = b.dataset.action;
     const reason = action === 'reject' ? prompt('Причина отказа:') : undefined;
