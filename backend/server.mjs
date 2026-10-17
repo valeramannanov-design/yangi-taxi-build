@@ -5,6 +5,7 @@ import { assertOwnedOrder } from './order-ownership.mjs';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
+import { isAbsolute } from 'node:path';
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 
 function loadEnv() {
@@ -2619,10 +2620,27 @@ async function realRoute(req, res, path, url) {
   return send(res, 404, { ok: false, error: { message: 'Not found' } });
 }
 
+// Opt-in Delivery uses its own database. Existing taxi sessions remain the authority
+// for passenger identity; delivery staff tokens cannot authenticate taxi requests.
+let deliveryHandler = null;
+if (process.env.DELIVERY_ENABLED === 'true') {
+  if (cfg.sessionSecret.length < 32 || !process.env.DELIVERY_DB_PATH || !isAbsolute(process.env.DELIVERY_DB_PATH)) {
+    throw new Error('Delivery requires a strong SESSION_SECRET and absolute DELIVERY_DB_PATH');
+  }
+  const { DeliveryStore } = await import('./delivery/store.mjs');
+  const { createDeliveryHandler } = await import('./delivery/http.mjs');
+  const store = new DeliveryStore(process.env.DELIVERY_DB_PATH);
+  deliveryHandler = createDeliveryHandler({ store, passengerIdentity: req => {
+    const session = auth(req);
+    return { id: String(session.clientId), phone: session.phone };
+  } });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://local');
   const path = url.pathname;
   try {
+    if (deliveryHandler && await deliveryHandler(req, res)) return;
     if (req.method === 'OPTIONS') return send(res, 204, {});
     if (req.method === 'GET' && path === '/health') {
       if (cfg.mock) return send(res, 200, { ok: true, service: 'Yangi Taxi Backend', tmApi: 'demo', mock: true, timeZone: cfg.timeZone });
