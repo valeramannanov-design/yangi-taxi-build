@@ -34,6 +34,22 @@ function fixture(t, file = ':memory:') {
   return { store, admin, p1, p2, s1, s2, zone, category, product, productInput, quoteInput, clock: value => { now = value; }, quote: () => store.quote(customer, quoteInput) };
 }
 const status = (code, fn) => assert.throws(fn, e => e.statusCode === code);
+test('admin catalog edits preserve shop ownership, image isolation and stock versions', t => {
+  const f=fixture(t);
+  status(403,()=>f.store.adminProducts(f.p1,f.s1.id));
+  status(403,()=>f.store.adminSaveProduct(f.p1,f.s1.id,f.productInput));
+  status(404,()=>f.store.adminProducts(f.admin,9999));
+  const saved=f.store.adminSaveProduct(f.admin,f.s1.id,{...f.productInput,name:'Updated',stock:85,version:f.product.version},f.product.id);
+  assert.equal(saved.stock,85);
+  assert.equal(f.store.products(f.p1)[0].name,'Updated');
+  status(409,()=>f.store.saveProduct(f.p1,{...f.productInput,stock:999,version:f.product.version},f.product.id));
+  status(404,()=>f.store.adminSaveProduct(f.admin,f.s2.id,{...f.productInput,version:saved.version},saved.id));
+  const png=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(20)]);
+  const image=f.store.adminImage(f.admin,f.s2.id,png);
+  status(422,()=>f.store.adminSaveProduct(f.admin,f.s1.id,{...f.productInput,sku:'other',image_id:image.id}));
+  status(403,()=>f.store.adminImage(f.p1,f.s1.id,png));
+  assert.equal(f.store.adminProducts(f.admin,f.s2.id).length,0);
+});
 function confirmed(f, suffix = 'primary') {
   const q = f.quote(), o = f.store.checkout(customer, { quote_id: q.id }, key(suffix));
   return f.store.merchantAction(f.p1, o.id, { action: 'confirm', version: 1 }, key('confirm-' + suffix));

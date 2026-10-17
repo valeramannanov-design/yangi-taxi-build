@@ -85,6 +85,10 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
           else if (method === 'PUT' && /^\/admin\/zones\/[1-9][0-9]*$/.test(route)) result = store.zone(user, await json(req), Number(route.split('/')[3]));
           else if (method === 'POST' && route === '/admin/shops') result = store.createShop(user, await json(req));
           else if (method === 'PUT' && /^\/admin\/shops\/[1-9][0-9]*$/.test(route)) result = store.updateShop(user, Number(route.split('/')[3]), await json(req));
+          else if (method === 'GET' && /^\/admin\/shops\/[1-9][0-9]*\/products$/.test(route)) result = store.adminProducts(user, Number(route.split('/')[3]));
+          else if (method === 'POST' && /^\/admin\/shops\/[1-9][0-9]*\/products$/.test(route)) result = store.adminSaveProduct(user, Number(route.split('/')[3]), await json(req));
+          else if (method === 'POST' && /^\/admin\/shops\/[1-9][0-9]*\/images$/.test(route)) result = store.adminImage(user, Number(route.split('/')[3]), await bytes(req, 2 * 1024 * 1024));
+          else if (method === 'PUT' && /^\/admin\/shops\/[1-9][0-9]*\/products\/[1-9][0-9]*$/.test(route)) result = store.adminSaveProduct(user, Number(route.split('/')[3]), await json(req), Number(route.split('/')[5]));
           else if (method === 'GET' && route === '/admin/orders') result = store.ordersForStaff(user);
           else if (method === 'POST' && /^\/admin\/orders\/[a-f0-9]{36}\/dispatch$/.test(route)) {
             if (!transport) error(503, 'TaxiMaster delivery dispatch is not enabled');

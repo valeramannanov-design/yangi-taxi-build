@@ -46,6 +46,20 @@ test('HTTP auth derives identities from trusted host; role and passenger token s
   assert.equal((await f.request('/api/delivery/merchant/orders', { authorization: 'test-passenger-session' })).status, 401);
   assert.equal((await f.request('/api/delivery/customer/orders', { headers: { 'x-customer-id': '101', 'x-driver-id': '5' } })).status, 401);
 });
+
+test('admin product endpoints require admin identity and preserve merchant version checks', async t => {
+  const f=await fixture(t), path=`/api/delivery/admin/shops/${f.shop.id}/products`;
+  assert.equal((await f.request(path)).status,401);
+  assert.equal((await f.request(path,{authorization:f.partnerToken})).status,403);
+  assert.equal((await f.request(path,{authorization:'test-passenger-session'})).status,401);
+  assert.equal((await f.request(path,{authorization:f.token})).json.data[0].id,f.product.id);
+  const body={...f.product,name:'Admin update',stock:85,active:true};
+  assert.equal((await f.request(path+'/'+f.product.id,{method:'PUT',authorization:f.token,body})).status,200);
+  assert.equal((await f.request(path+'/'+f.product.id,{method:'PUT',authorization:f.token,body})).status,409);
+  assert.equal((await f.request('/api/delivery/merchant/products',{authorization:f.partnerToken})).json.data[0].stock,85);
+  assert.equal((await f.request(path,{method:'POST',authorization:f.partnerToken,body})).status,403);
+  assert.equal((await f.request(`/api/delivery/admin/shops/${f.shop.id}/images`,{method:'POST',authorization:f.partnerToken})).status,403);
+});
 test('HTTP catalog → quote → checkout → merchant confirmation; no endpoint can forge transport completion', async t => {
   const f = await fixture(t), authorization = 'test-passenger-session';
   const q = await f.request('/api/delivery/customer/quotes', { method: 'POST', authorization, body: { shop_id: f.shop.id, items: [{ product_id: f.product.id, quantity: 1 }], destination: { address: 'Customer address', lat: 40, lon: 65 } } });

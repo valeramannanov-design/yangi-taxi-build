@@ -1,5 +1,8 @@
 const main = document.querySelector('#main'), tabs = document.querySelector('#tabs'), notice = document.querySelector('#notice'), account = document.querySelector('#account');
 let token = '', me = null, tab = '', busy = false, config = null, products = [], orders = [], timer = null, transport = { enabled:false, jobs:[] }, management=[];
+let productShopId = null;
+const productsPath = () => me.role === 'admin' ? `/admin/shops/${productShopId}/products` : '/merchant/products';
+const imagesPath = () => me.role === 'admin' ? `/admin/shops/${productShopId}/images` : '/merchant/images';
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = v => Number(v || 0).toLocaleString('ru-RU') + ' сум';
 const statusNames = { pending_shop: 'Новый заказ', confirmed: 'Подтверждён магазином', ready: 'Готов к выдаче', assigned: 'Курьер назначен', accepted: 'Курьер принял', picked_up: 'Товар у курьера', completed: 'Доставлен', cancelled: 'Отменён', rejected: 'Магазин отказал' };
@@ -48,14 +51,33 @@ function loginView() {
 }
 async function show(next) {
   if (!me) return; tab = next;
-  const sections = me.role === 'admin' ? [['shops','Магазины'],['categories','Категории'],['pricing','Тариф доставки'],['orders','Заказы'],['finance','Финансы']] : [['products','Товары'],['orders','Заказы'],['finance','Финансы']];
+  const sections = me.role === 'admin' ? [['shops','Магазины'],['products','Товары'],['categories','Категории'],['pricing','Тариф доставки'],['orders','Заказы'],['finance','Финансы']] : [['products','Товары'],['orders','Заказы'],['finance','Финансы']];
   tabs.innerHTML = sections.map(([id, title]) => `<button data-tab="${id}" class="${id === tab ? 'selected' : ''}">${title}</button>`).join('');
   tabs.querySelectorAll('button').forEach(button => { button.onclick = () => perform(() => show(button.dataset.tab)); });
   if (me.role === 'admin') config = await request('/admin/config');
   if (tab === 'shops') shopsView();
   else if (tab === 'categories') categoriesView();
   else if (tab === 'pricing') await pricingView();
-  else if (tab === 'products') { products = await request('/merchant/products'); productsView(); }
+  else if (tab === 'products') {
+    if (me.role === 'admin') {
+      if (!config.shops.length) { main.innerHTML=empty('Сначала добавьте магазин.'); return; }
+      if (!config.shops.some(s=>s.id===productShopId)) productShopId=config.shops[0].id;
+    }
+    products = await request(productsPath()); productsView();
+    if (me.role === 'admin') {
+      const label=document.createElement('label'); label.textContent='Магазин';
+      const select=document.createElement('select'); select.innerHTML=options(config.shops,productShopId);
+      select.onchange=()=>{
+        if(busy){select.value=String(productShopId);return;}
+        perform(async()=>{
+          const previous=productShopId;
+          try{productShopId=Number(select.value);await show('products');}
+          catch(e){productShopId=previous;select.value=String(previous);throw e;}
+        });
+      };
+      label.append(select);main.querySelector('h1').after(label);
+    }
+  }
   else if (tab === 'orders') { orders = await request(me.role === 'admin' ? '/admin/orders' : '/merchant/orders'); if (me.role === 'admin') { transport = await request('/admin/transport'); management=await request('/admin/management'); } ordersView(); }
   else if (tab === 'finance') financeView(await request(me.role === 'admin' ? '/admin/finance' : '/merchant/finance'));
 }
@@ -96,9 +118,9 @@ function productForm(product) {
   document.querySelector('#back').onclick = () => perform(() => show('products'));
   document.querySelector('#product-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; perform(async () => {
     const input = Object.fromEntries(new FormData(form)), file = input.photo;
-    if (file?.size) { if (file.size > 2 * 1024 * 1024) throw new Error('Фото должно быть меньше 2 МБ'); imageId = (await request('/merchant/images', { method:'POST', body:file, raw:true })).id; form.elements.photo.value = ''; }
+    if (file?.size) { if (file.size > 2 * 1024 * 1024) throw new Error('Фото должно быть меньше 2 МБ'); imageId = (await request(imagesPath(), { method:'POST', body:file, raw:true })).id; form.elements.photo.value = ''; }
     delete input.photo; input.price_uzs = Number(input.price_uzs); input.stock = Number(input.stock); input.active = form.elements.active.checked; input.image_id = imageId; if (product) input.version = p.version;
-    await request('/merchant/products' + (product ? '/' + p.id : ''), { method:product ? 'PUT' : 'POST', body:input }); await show('products');
+    await request(productsPath() + (product ? '/' + p.id : ''), { method:product ? 'PUT' : 'POST', body:input }); await show('products');
   }); };
 }
 function ordersView() {

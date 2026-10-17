@@ -169,9 +169,18 @@ export class DeliveryStore {
     if (!shop) fail(409, 'Store unavailable');
     return shop;
   }
-  products(user) { return this.all('SELECT * FROM delivery_products WHERE shop_id=? ORDER BY name', this.partner(user)); }
-  saveProduct(user, input, productId) {
-    const shopId = this.partner(user), imageId = input.image_id ?? null;
+  products(user) { return this.#products(this.partner(user)); }
+  adminProducts(user, shopId) { this.admin(user); return this.#products(this.#adminShop(shopId)); }
+  adminSaveProduct(user, shopId, input, productId) { this.admin(user); return this.#saveProduct(this.#adminShop(shopId), input, productId); }
+  #adminShop(shopId) {
+    shopId = integer(shopId, 1);
+    if (!this.one('SELECT 1 FROM delivery_shops WHERE id=?', shopId)) fail(404, 'Store not found');
+    return shopId;
+  }
+  #products(shopId) { return this.all('SELECT * FROM delivery_products WHERE shop_id=? ORDER BY name', shopId); }
+  saveProduct(user, input, productId) { return this.#saveProduct(this.partner(user), input, productId); }
+  #saveProduct(shopId, input, productId) {
+    const imageId = input.image_id ?? null;
     const values = [text(input.sku, 80), text(input.name, 160), input.description ? text(input.description, 2000) : '', integer(input.price_uzs, 0), integer(input.stock, 0, 1_000_000), bool(input.active), imageId];
     return this.transaction(() => {
       if (imageId !== null && !this.one('SELECT 1 FROM delivery_images WHERE id=? AND shop_id=?', imageId, shopId)) fail(422, 'Image does not belong to store');
@@ -185,7 +194,10 @@ export class DeliveryStore {
     });
   }
   image(user, bytes) {
-    const shopId = this.partner(user);
+    return this.#image(this.partner(user), bytes);
+  }
+  adminImage(user, shopId, bytes) { this.admin(user); return this.#image(this.#adminShop(shopId), bytes); }
+  #image(shopId, bytes) {
     if (!Buffer.isBuffer(bytes) || bytes.length < 12 || bytes.length > 2 * 1024 * 1024) fail(422, 'Image must be at most 2 MiB');
     let mime;
     if (bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) mime = 'image/png';
