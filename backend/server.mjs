@@ -22,6 +22,7 @@ function loadEnv() {
   }
 }
 loadEnv();
+if (process.env.GO_ISOLATED_TEST === '1') throw new Error('Use the dedicated isolated GO test host, never the production server');
 
 const cfg = {
   port: Number(process.env.PORT || 8787),

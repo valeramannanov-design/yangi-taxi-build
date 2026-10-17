@@ -3751,7 +3751,7 @@ class _ShellState extends State<Shell> {
                 isActive: tab == 0 && service.shoppingKind != null,
                 onMenu: goHomeSafely,
                 serviceKind: service.shoppingKind ?? 'food',
-                checkoutEnabled: false),
+                checkoutEnabled: true),
             Center(
                 child: Padding(
                     padding: const EdgeInsets.all(24),

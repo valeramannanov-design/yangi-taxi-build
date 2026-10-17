@@ -445,6 +445,7 @@ class _GoPurchaseDetailsState extends State<GoPurchaseDetails> {
                 style: Theme.of(context).textTheme.headlineSmall),
             SelectableText('#${o['id']}'),
             Text('${o['status']}'),
+            GoCashHistory(order: o, lang: widget.lang),
             Text('${(o['destination'] as Map?)?['address'] ?? ''}'),
             for (final item in (o['items'] as List))
               ListTile(
@@ -458,5 +459,38 @@ class _GoPurchaseDetailsState extends State<GoPurchaseDetails> {
               onPressed: _load,
               child: Text(widget.lang == 'uz' ? 'Yangilash' : 'Обновить')),
         ]));
+  }
+}
+
+class GoCashHistory extends StatelessWidget {
+  const GoCashHistory({super.key, required this.order, required this.lang});
+  final Map<String, dynamic> order;
+  final String lang;
+  @override
+  Widget build(BuildContext context) {
+    if (order['cash_model'] != 'courier_buyout_v1')
+      return const SizedBox.shrink();
+    final names = lang == 'uz'
+        ? {
+            'shop_paid': 'Kuryer do‘konga to‘ladi',
+            'shop_received': 'Do‘kon pulni olganini tasdiqladi',
+            'client_arrived': 'Kuryer qabul qiluvchiga yetib keldi',
+            'client_cash': 'Mijozdan naqd pul olindi',
+            'completed': 'Yakunlash tasdiqlandi'
+          }
+        : {
+            'shop_paid': 'Курьер оплатил товары',
+            'shop_received': 'Магазин подтвердил получение денег',
+            'client_arrived': 'Курьер у получателя',
+            'client_cash': 'Наличные клиента получены',
+            'completed': 'Завершение подтверждено'
+          };
+    final events = (order['cash'] as Map?)?['events'] as List? ?? [];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (order['environment'] == 'TEST') const Text('TEST — тестовые суммы'),
+      for (final event in events)
+        Text(
+            '${names[event['kind']] ?? event['kind']} · ${event['amount_uzs']} сум'),
+    ]);
   }
 }

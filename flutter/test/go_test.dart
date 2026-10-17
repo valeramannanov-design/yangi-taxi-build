@@ -32,12 +32,17 @@ class GoTestApi extends ApiClient {
 
 class GoCatalogApi extends DeliveryTestApi {
   final calls = <String>[];
+  Map<String, dynamic>? capability;
   @override
   Future<dynamic> deliveryGet(String path, {Map<String, String>? query}) async {
     calls.add('$path:${query?['service']}');
     final result = await super.deliveryGet(path, query: query);
     if (path == '/catalog')
-      return {...result as Map, 'service': query?['service']};
+      return {
+        ...result as Map,
+        'service': query?['service'],
+        if (capability != null) 'go_checkout': capability
+      };
     if (path.startsWith('/shops/'))
       return {...result as Map, 'service_kind': query?['service']};
     return result;
@@ -283,7 +288,7 @@ void main() {
     await tester.tap(find.text('Корзина · 1'));
     await tester.pumpAndSettle();
     expect(
-        find.textContaining('Оформление в GO пока недоступно'), findsOneWidget);
+        find.textContaining('Оформление временно недоступно'), findsOneWidget);
     expect(
         tester
             .widget<FilledButton>(
@@ -306,5 +311,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('требуется обновление сервера'), findsOneWidget);
     expect(find.text('Test shop'), findsNothing);
+  });
+  testWidgets(
+      'GO TEST capability enables checkout and visibly labels fixture prices',
+      (tester) async {
+    final api = GoCatalogApi()
+      ..capability = {'enabled': true, 'environment': 'TEST'};
+    await tester.pumpWidget(MaterialApp(
+        home: DeliveryScreen(
+            api: api,
+            lang: 'ru',
+            isActive: true,
+            onMenu: () {},
+            serviceKind: 'food',
+            addressPicker: (_, __) async =>
+                Place('Test destination', 40.001, 65))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Test shop'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.add_circle_outline));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Корзина · 1'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('TEST —'), findsOneWidget);
+    await tester.tap(find.text('Выбрать адрес на карте'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Рассчитать стоимость'));
+    await tester.tap(find.text('Рассчитать стоимость'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Оформить заказ'));
+    await tester.tap(find.text('Оформить заказ'));
+    await tester.pumpAndSettle();
+    expect(api.checkoutKeys.length, 1);
+  });
+  testWidgets(
+      'GO missing production capability disables checkout even when local flag is true',
+      (tester) async {
+    final api = GoCatalogApi();
+    await tester.pumpWidget(MaterialApp(
+        home: DeliveryScreen(
+            api: api,
+            lang: 'ru',
+            isActive: true,
+            onMenu: () {},
+            serviceKind: 'food')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Test shop'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.add_circle_outline));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Корзина · 1'));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Рассчитать стоимость'))
+            .onPressed,
+        isNull);
+    expect(api.checkoutKeys, isEmpty);
   });
 }

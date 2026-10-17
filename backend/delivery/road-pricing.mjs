@@ -29,6 +29,8 @@ export function createRoadQuotes(store,provider) {
   const pending=new Set();
   return async (identity,input)=>{
     const context=store.roadQuoteContext(identity,input);
+    if(provider?.environment==='TEST' && !store.testIsolation)throw new DeliveryError(503,'TEST pricing is forbidden outside isolated tests');
+    if(store.testIsolation && provider?.environment!=='TEST')throw new DeliveryError(503,'Isolated TEST requires its TEST adapter');
     if(!provider)throw new DeliveryError(503,'Road pricing is not connected');
     if(pending.size>=8||pending.has(context.customer.id))throw new DeliveryError(429,'A delivery calculation is already running; retry later');
     pending.add(context.customer.id);

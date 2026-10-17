@@ -87,3 +87,11 @@ test('restricted rollout rejects other crews/drivers before any transport write'
   }
   const f=fixture({allowedCrews:[4],allowedDrivers:[5]});assert.equal((await f.adapter.prepare(f.job,f.order,f.snapshot)).driver_id,5);
 });
+
+test('driver operations are real read evidence, empty results do not manufacture zero commission',async()=>{
+ const f=fixture();f.records.get_driver_operations={operations:[]};
+ assert.deepEqual(await f.adapter.driverOperations(5,'20261017000000','20261018000000'),[]);
+ assert.equal(f.calls.at(-1).name,'get_driver_operations');
+ f.records.get_driver_operations={};await assert.rejects(f.adapter.driverOperations(5,'20261017000000','20261018000000'));
+ await assert.rejects(f.adapter.driverOperations(5,'bad','20261018000000'));
+});

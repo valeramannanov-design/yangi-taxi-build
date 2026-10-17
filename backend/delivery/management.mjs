@@ -6,7 +6,7 @@ const positive = value => { if (!Number.isSafeInteger(value) || value < 1 || val
 export class DeliveryManagement {
   constructor(transport) { this.transport=transport;this.store=transport.store; }
   active(orderId) { return this.store.one("SELECT * FROM delivery_management WHERE order_id=? AND phase IN ('queued','sending','uncertain','review')",orderId); }
-  hasGoods(orderId) { return this.store.one('SELECT 1 FROM delivery_pickup_authorizations WHERE order_id=?',orderId) || this.store.one('SELECT 1 FROM delivery_cash_receipts WHERE order_id=?',orderId); }
+  hasGoods(orderId) { return this.store.cash.has(orderId,'shop_paid') || this.store.one('SELECT 1 FROM delivery_pickup_authorizations WHERE order_id=?',orderId) || this.store.one('SELECT 1 FROM delivery_cash_receipts WHERE order_id=?',orderId); }
   reserveCrew(orderId,crew) {
     const s=this.store;
     if (s.one("SELECT 1 FROM delivery_transport_jobs j JOIN delivery_orders o ON o.id=j.order_id WHERE j.order_id<>? AND j.crew_id=? AND (j.phase IN ('queued','creating','uncertain','review') OR (j.phase='bound' AND o.status NOT IN ('completed','cancelled','rejected')))",orderId,crew)) fail('Courier already reserved');

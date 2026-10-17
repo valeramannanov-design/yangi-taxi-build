@@ -36,6 +36,14 @@ export function createTaxiMasterDeliveryAdapter({ get, post, postQuery, catalog,
         use_cashless: false, use_bonus: false, cashless_sum: 0, bonus_sum: 0 } };
     },
     create: body => post('create_order2', body), read,
+    async driverOperations(driverId,startTime,finishTime) {
+      if(!Number.isSafeInteger(driverId)||driverId<1||![startTime,finishTime].every(v=>typeof v==='string'&&/^\d{14}$/.test(v))||startTime>=finishTime)throw new Error('Invalid driver operation period');
+      const result=await get('get_driver_operations',{driver_id:driverId,start_time:startTime,finish_time:finishTime});
+      if(!Array.isArray(result.operations))throw new Error('Driver operations unavailable');
+      // Read evidence only. Absence of entries is NOT proof of zero commission;
+      // no order attribution or balance debit is guessed from names or amounts.
+      return result.operations;
+    },
     async prepareCancel(job,stateId) {
       if(typeof postQuery!=='function')throw new Error('Cancellation adapter unavailable');
       const states=await get('get_order_states_list');

@@ -6,6 +6,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { isTestIsolation } from './runtime-mode.mjs';
+import { CashJournal } from './cash-journal.mjs';
 
 export class DeliveryError extends Error {
   constructor(status, message) { super(message); this.statusCode = status; }
@@ -45,15 +47,19 @@ export function distanceMeters(a, b) {
 }
 
 export class DeliveryStore {
-  constructor(path, { now = () => Date.now() } = {}) {
+  constructor(path, { now = () => Date.now(), testIsolation = null } = {}) {
+    if (testIsolation && !isTestIsolation(testIsolation, path)) throw new Error('Invalid isolated TEST environment');
+    this.testIsolation = testIsolation;
+    this.testIsolationPath = path;
+    this.cash = new CashJournal(this);
     this.now = now;
     if (path !== ':memory:') mkdirSync(dirname(resolve(path)), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.function('delivery_fold', { deterministic: true }, value => String(value).normalize('NFKC').toLocaleLowerCase());
     this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)');
-    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 7) { this.close(); throw new Error('Delivery database requires a newer service version'); }
-    for (const version of [1, 2, 3, 4, 5, 6, 7]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
+    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 8) { this.close(); throw new Error('Delivery database requires a newer service version'); }
+    for (const version of [1, 2, 3, 4, 5, 6, 7, 8]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
       // SQLite table rebuild: disable FK enforcement outside the exclusive write
       // transaction, validate every reference before commit, then restore it.
       if(version===5)this.db.exec('PRAGMA foreign_keys=OFF');
@@ -159,7 +165,7 @@ export class DeliveryStore {
     commerceService(service);
     if (categoryId !== undefined) integer(categoryId, 1);
     if (typeof query !== 'string' || query.length > 100) fail(422, 'Invalid search');
-    return { service, categories: this.all('SELECT c.id,c.name FROM delivery_categories c WHERE c.active=1 AND (? IS NULL OR EXISTS(SELECT 1 FROM delivery_shops s WHERE s.category_id=c.id AND s.active=1 AND s.service_kind=?)) ORDER BY c.name', service, service),
+    return { service, go_checkout:this.goCheckout(), categories: this.all('SELECT c.id,c.name FROM delivery_categories c WHERE c.active=1 AND (? IS NULL OR EXISTS(SELECT 1 FROM delivery_shops s WHERE s.category_id=c.id AND s.active=1 AND s.service_kind=?)) ORDER BY c.name', service, service),
       shops: this.all('SELECT s.id,s.name,s.address,s.category_id,s.lat,s.lon,s.service_kind FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id WHERE s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) AND (? IS NULL OR s.service_kind=?) ORDER BY s.name', categoryId ?? null, categoryId ?? null, service, service),
       products: query.trim() ? this.all('SELECT p.id,p.shop_id,p.name,p.description,p.price_uzs,p.stock,p.image_id FROM delivery_products p JOIN delivery_shops s ON s.id=p.shop_id JOIN delivery_categories c ON c.id=s.category_id WHERE p.active=1 AND p.stock>0 AND s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) AND (? IS NULL OR s.service_kind=?) AND (instr(delivery_fold(p.name),delivery_fold(?))>0 OR instr(delivery_fold(p.description),delivery_fold(?))>0) ORDER BY p.name LIMIT 100', categoryId ?? null, categoryId ?? null, service, service, query.trim(), query.trim()) : [] };
   }
@@ -249,7 +255,7 @@ export class DeliveryStore {
     const customer = this.customer(identity), location = point(input.destination), address = text(input.destination.address);
     return this.transaction(() => {
       const shop = this.availableShop(input.shop_id), z = this.one('SELECT * FROM delivery_zones WHERE id=?', shop.zone_id);
-      this.assertLegacyCashShop(shop);
+      this.assertCashShop(shop);
       if (road) {
         const current=this.pricing(),before=road.context;
         if(!current.enabled || current.version!==before.pricing.version || shop.address!==before.shop.address || shop.lat!==before.shop.lat || shop.lon!==before.shop.lon)fail(409,'Delivery settings or store changed; calculate again');
@@ -268,9 +274,11 @@ export class DeliveryStore {
       const subtotal_uzs = items.reduce((sum, i) => sum + i.price_uzs * i.quantity, 0);
       // MVP straight-line zone tariff. This is not a road-route distance or taxi fare.
       const delivery_uzs = road ? road.delivery_uzs : z.base_uzs + Math.ceil(distance_m / 1000) * z.per_km_uzs;
-      const commission_uzs = Math.floor((subtotal_uzs * shop.commission_bps + 5000) / 10000);
+      const go = shop.service_kind !== null;
+      if (go && (!road || road.source !== 'TEST' || !this.testIsolation)) fail(503, 'GO requires a verified pricing adapter');
+      const commission_uzs = go ? null : Math.floor((subtotal_uzs * shop.commission_bps + 5000) / 10000);
       const snapshot = { shop_name: shop.name, service_kind:shop.service_kind, pickup: { address: shop.address, lat: shop.lat, lon: shop.lon }, destination: { ...location, address }, phone: customer.phone,
-        items, subtotal_uzs, delivery_uzs, total_uzs: subtotal_uzs + delivery_uzs, commission_bps: shop.commission_bps, commission_uzs, distance_m, pricing_basis: road ? 'taximaster_road' : 'straight_line_zone', ...(road?{delivery_tariff_id:road.context.pricing.tariff_id,delivery_crew_group_id:road.context.pricing.crew_group_id,pricing_version:road.context.pricing.version}:{}), payment_method: 'cash' };
+        items, subtotal_uzs, delivery_uzs, total_uzs: subtotal_uzs + delivery_uzs, commission_bps: go ? null : shop.commission_bps, commission_uzs, ...(go?{cash_model:'courier_buyout_v1',environment:'TEST',commission_source:'TaxiMaster',commission_status:'not_verified'}:{}), distance_m, pricing_basis: go ? 'TEST' : road ? 'taximaster_road' : 'straight_line_zone', ...(road?{delivery_tariff_id:road.context.pricing.tariff_id,delivery_crew_group_id:road.context.pricing.crew_group_id,pricing_version:road.context.pricing.version}:{}), payment_method: 'cash' };
       const quoteId = id(), expires_at = this.now() + 300_000;
       this.run('INSERT INTO delivery_quotes VALUES(?,?,?,?,?)', quoteId, customer.id, shop.id, JSON.stringify(snapshot), expires_at);
       return { id: quoteId, expires_at, ...this.publicSnapshot(snapshot) };
@@ -285,16 +293,18 @@ export class DeliveryStore {
   }
   roadQuoteContext(identity,input) {
     const customer=this.customer(identity),shop=this.availableShop(input.shop_id),destination={...point(input.destination),address:text(input.destination.address)},pricing=this.pricing();
-    this.assertLegacyCashShop(shop);
+    this.assertCashShop(shop);
     if(!pricing.enabled)fail(503,'Configure the delivery tariff in administration first');
     if(!Array.isArray(input.items)||input.items.length<1||input.items.length>50)fail(422,'Cart must have 1–50 items');
     return {customer,shop,destination,pricing};
   }
   publicSnapshot(snapshot) { const { commission_bps, commission_uzs, ...publicData } = snapshot; return publicData; }
-  assertLegacyCashShop(shop) {
-    // TODO(GO-cash): replace this gate only after dual buyout confirmation,
-    // verified TM approach/commission and post-buyout dispute handling exist.
-    if(shop.service_kind!==null)fail(503,'GO checkout awaits verified shop payment and TaxiMaster settlement integration');
+  goCheckout() {
+    return this.testIsolation ? {enabled:true,environment:'TEST',reason:'Isolated TEST amounts; not real TaxiMaster tariffs'} :
+      {enabled:false,environment:'production',reason:'TaxiMaster courier approach and commission accounting are not verified'};
+  }
+  assertCashShop(shop) {
+    if(shop.service_kind!==null && !this.goCheckout().enabled)fail(503,'GO checkout requires verified TaxiMaster approach and commission accounting');
   }
   command(actor, key, payload, fn) {
     if (typeof key !== 'string' || !/^[A-Za-z0-9_-]{16,100}$/.test(key)) fail(422, 'Valid Idempotency-Key required');
@@ -314,8 +324,8 @@ export class DeliveryStore {
       if (!quote || quote.expires_at <= this.now()) fail(409, 'Quote expired; calculate again');
       if (this.one('SELECT 1 FROM delivery_orders WHERE quote_id=?', quoteId)) fail(409, 'Quote already used');
       const shop = this.availableShop(quote.shop_id), snapshot = JSON.parse(quote.snapshot);
-      this.assertLegacyCashShop(shop);
-      if (shop.commission_bps !== snapshot.commission_bps || shop.address !== snapshot.pickup.address || shop.lat !== snapshot.pickup.lat || shop.lon !== snapshot.pickup.lon) fail(409, 'Store changed; calculate again');
+      this.assertCashShop(shop);
+      if (shop.service_kind !== (snapshot.service_kind ?? null) || (snapshot.cash_model==='courier_buyout_v1' ? !this.testIsolation || snapshot.environment!=='TEST' || snapshot.pricing_basis!=='TEST' : shop.commission_bps !== snapshot.commission_bps) || shop.address !== snapshot.pickup.address || shop.lat !== snapshot.pickup.lat || shop.lon !== snapshot.pickup.lon) fail(409, 'Store changed; calculate again');
       for (const i of snapshot.items) {
         const result = this.run('UPDATE delivery_products SET stock=stock-?,version=version+1 WHERE id=? AND shop_id=? AND active=1 AND price_uzs=? AND stock>=?', i.quantity, i.product_id, shop.id, i.price_uzs, i.quantity);
         if (!result.changes) fail(409, 'Price or availability changed; calculate again');
@@ -331,7 +341,7 @@ export class DeliveryStore {
     if (!row) fail(404, 'Order not found');
     const snapshot = JSON.parse(row.snapshot);
     return { id: row.id, quote_id: row.quote_id, shop_id: row.shop_id, status: row.status, version: row.version, created_at: row.created_at, updated_at: row.updated_at,
-      ready_at: row.ready_at, transport_order_id: row.transport_order_id, driver_id: row.driver_id, ...(financial ? snapshot : this.publicSnapshot(snapshot)) };
+      ready_at: row.ready_at, transport_order_id: row.transport_order_id, driver_id: row.driver_id, cash:this.cash.summary(row.id), ...(financial ? snapshot : this.publicSnapshot(snapshot)) };
   }
   orderForCustomer(identity, orderId) {
     const customer = this.customer(identity);
@@ -353,12 +363,16 @@ export class DeliveryStore {
   }
   merchantAction(user, orderId, input, key) {
     const shopId = this.partner(user), version = integer(input.version, 1), action = text(input.action, 16);
-    if (!['confirm', 'reject', 'ready'].includes(action)) fail(422, 'Unsupported action');
+    if (!['confirm', 'reject', 'ready', 'cash_received'].includes(action)) fail(422, 'Unsupported action');
     const reason = action === 'reject' ? text(input.reason, 300) : '';
     return this.command('partner:' + user.id, key, { orderId, version, action, reason }, () => {
       const order = this.one('SELECT * FROM delivery_orders WHERE id=? AND shop_id=?', text(orderId, 50), shopId);
       if (!order) fail(404, 'Order not found');
       if (order.version !== version) fail(409, 'Order changed; refresh');
+      if (action === 'cash_received') {
+        this.cash.merchantReceived(order,user);
+        return this.orderData(this.one('SELECT * FROM delivery_orders WHERE id=?',orderId),true);
+      }
       if (action === 'ready' ? (!['confirmed', 'assigned', 'accepted'].includes(order.status) || order.ready_at !== null) : order.status !== 'pending_shop') fail(409, 'Action not allowed in current state');
       if (action !== 'reject') this.availableShop(shopId);
       if (action === 'reject') this.restoreStock(order);
@@ -404,11 +418,14 @@ export class DeliveryStore {
       if (o.status === proof.status) return this.orderData(o, true);
       if (!allowed[proof.status].includes(o.status)) fail(409, 'Transport transition out of sequence');
       const snapshot = JSON.parse(o.snapshot);
+      this.cash.assertTransition(o,proof);
       if (proof.status === 'completed' && proof.cash_collected_uzs !== snapshot.total_uzs) fail(409, 'Cash collection not confirmed');
       this.run('UPDATE delivery_orders SET driver_id=?,crew_id=? WHERE id=?', driver, crew, orderId);
       if (proof.status === 'cancelled') this.restoreStock(o);
       this.transition(o, proof.status, 'tm-transport:' + o.transport_order_id);
-      if (proof.status === 'completed') {
+      if (proof.status === 'completed' && snapshot.cash_model==='courier_buyout_v1') {
+        this.cash.finish(o,driver,crew);
+      } else if (proof.status === 'completed') {
         const entries = { driver_cash_receivable: snapshot.total_uzs, courier_payable: -snapshot.delivery_uzs, merchant_payable: -(snapshot.subtotal_uzs - snapshot.commission_uzs), service_revenue: -snapshot.commission_uzs };
         for (const [kind, amount] of Object.entries(entries)) this.run('INSERT INTO delivery_ledger VALUES(?,?,?,?,?,?)', orderId, kind, o.shop_id, driver, amount, this.now());
       }

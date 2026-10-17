@@ -1,17 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { listenForFetch } from './testing/listen.mjs';
 import { createDeliveryBridge } from './bridge.mjs';
 
 test('private driver bridge requires its dedicated token and verified identities', async t => {
   const calls=[],token='private-test-token-'.padEnd(43,'x');
   const bridge=createDeliveryBridge({token,transport:{
+    confirmShopPayment:async(id,identity,amount)=>({shop_paid:true,amount_uzs:amount}),
+    confirmClientArrival:async()=>({client_arrived:true}),
     info:async(id,identity)=>{calls.push({id,identity});return {delivery:null};},
     confirmCash:async(id,identity,amount)=>{calls.push({id,identity,amount});return {cash_confirmed:true};},
     authorizePickup:async(id,identity)=>{calls.push({id,identity,pickup:true});return {pickup_authorized:true};},
   }});
   const server=http.createServer(async(req,res)=>{if(!await bridge(req,res)){res.writeHead(404);res.end();}});
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+  await listenForFetch(server);t.after(()=>new Promise(resolve=>server.close(resolve)));
   const base='http://127.0.0.1:'+server.address().port;
   async function request(path,body,authorization='Bearer '+token){return fetch(base+path,{method:'POST',headers:{'content-type':'application/json',authorization},body:JSON.stringify(body)});}
   const identity={order_id:90,driver_id:5,crew_id:4};
@@ -26,6 +29,9 @@ test('private driver bridge requires its dedicated token and verified identities
   assert.equal((await request('/internal/delivery/pickup',{...identity,ready:true})).status,422);
   assert.equal((await request('/internal/delivery/pickup',identity)).status,200);
   assert.equal(calls[2].pickup,true);
+  assert.equal((await request('/internal/delivery/shop-payment',{...identity,amount_uzs:25000})).status,200);
+  assert.equal((await request('/internal/delivery/client-arrival',identity)).status,200);
+  assert.equal((await request('/internal/delivery/client-arrival',{...identity,amount_uzs:1})).status,422);
   assert.equal((await request('/internal/delivery/complete',identity)).status,404);
   assert.throws(()=>createDeliveryBridge({token:'short'}));
 });

@@ -9,7 +9,7 @@ const positive = value => {
 };
 
 export class DeliveryTransport {
-  constructor(store, adapter) { this.store = store; this.adapter = adapter; this.running = false; this.management=new DeliveryManagement(this); }
+  constructor(store, adapter) { if(adapter.environment==='TEST'&&!store.testIsolation || store.testIsolation&&adapter.environment!=='TEST')throw new Error('TEST transport isolation mismatch');this.store = store; this.adapter = adapter; this.running = false; this.management=new DeliveryManagement(this); }
   dispatch(user, orderId, input, key) {
     const s = this.store; s.admin(user);
     const crew = positive(input.crew_id), tariff = positive(input.tariff_id), version = positive(input.version);
@@ -160,6 +160,12 @@ export class DeliveryTransport {
     if (identity.driver_id !== found.driver_id || identity.crew_id !== found.crew_id) fail(403, 'Courier does not own delivery');
     if (!['client_inside', 'finished'].includes(found.state_kind) || amount !== snapshot.total_uzs) fail(409, 'Cash amount or delivery state does not match');
     s.transaction(() => {
+      const current=s.one('SELECT * FROM delivery_orders WHERE id=?',order.id);
+      if(this.management.active(order.id)||current.transport_order_id!==transportOrderId)fail(409,'Delivery changed');
+      if(s.cash.isGo(current)) {
+        if(!['picked_up','completed'].includes(current.status)||!s.cash.has(order.id,'shop_received')||!s.cash.has(order.id,'client_arrived'))fail(409,'Shop buyout, pickup or customer arrival not confirmed');
+        s.cash.put(current,'client_cash',identity,amount,'driver:'+identity.driver_id);
+      }
       const existing = s.one('SELECT * FROM delivery_cash_receipts WHERE order_id=?', order.id);
       if (existing) { if (existing.driver_id !== identity.driver_id || existing.crew_id !== identity.crew_id || existing.amount_uzs !== amount) fail(409, 'Receipt differs'); return; }
       s.run('INSERT INTO delivery_cash_receipts VALUES(?,?,?,?,?)', order.id, identity.driver_id, identity.crew_id, amount, s.now());
@@ -182,7 +188,31 @@ export class DeliveryTransport {
       shop_name:snapshot.shop_name, pickup:snapshot.pickup, destination:snapshot.destination,
       items:snapshot.items.map(i => ({ name:i.name, quantity:i.quantity })),
       subtotal_uzs:snapshot.subtotal_uzs, delivery_uzs:snapshot.delivery_uzs, total_uzs:snapshot.total_uzs,
+      cash_model:snapshot.cash_model||'legacy', environment:snapshot.environment||'production', cash:s.cash.summary(order.id),
+      at_store:found.state_kind==='car_at_place', at_customer:!!s.cash.has(order.id,'client_arrived'),
       payment_method:'cash', ready:order.ready_at !== null && !this.management.active(order.id), management_pending:!!this.management.active(order.id), cash_confirmed:!!receipt } };
+  }
+  async confirmShopPayment(transportOrderId,identity,amount) {
+    const info=await this.info(transportOrderId,identity),d=info.delivery,s=this.store;
+    if(!d||d.cash_model!=='courier_buyout_v1'||d.management_pending||amount!==d.subtotal_uzs)fail(409,'Shop payment amount or arrival not confirmed');
+    return s.transaction(()=>{
+      const current=s.one('SELECT * FROM delivery_orders WHERE id=?',d.order_id);
+      if(s.cash.has(d.order_id,'shop_paid')) {s.cash.put(current,'shop_paid',identity,amount,'driver:'+identity.driver_id);return {shop_paid:true,amount_uzs:amount};}
+      if(!d.at_store||this.management.active(d.order_id)||!['assigned','accepted'].includes(current.status)||current.transport_order_id!==transportOrderId||current.driver_id!==identity.driver_id||current.crew_id!==identity.crew_id)fail(409,'Delivery changed');
+      s.cash.put(current,'shop_paid',identity,amount,'driver:'+identity.driver_id);
+      return {shop_paid:true,amount_uzs:amount};
+    });
+  }
+  async confirmClientArrival(transportOrderId,identity) {
+    const info=await this.info(transportOrderId,identity),d=info.delivery,s=this.store;
+    if(!d||d.cash_model!=='courier_buyout_v1'||d.management_pending)fail(409,'Goods pickup not confirmed');
+    return s.transaction(()=>{
+      const current=s.one('SELECT * FROM delivery_orders WHERE id=?',d.order_id);
+      if(s.cash.has(d.order_id,'client_arrived')) {s.cash.put(current,'client_arrived',identity,0,'driver:'+identity.driver_id);return {client_arrived:true};}
+      if(this.management.active(d.order_id)||current.status!=='picked_up'||current.transport_order_id!==transportOrderId)fail(409,'Delivery changed');
+      s.cash.put(current,'client_arrived',identity,0,'driver:'+identity.driver_id);
+      return {client_arrived:true};
+    });
   }
   async authorizePickup(transportOrderId,identity) {
     const info=await this.info(transportOrderId,identity),d=info.delivery,s=this.store;
@@ -193,6 +223,7 @@ export class DeliveryTransport {
       if(this.management.active(d.order_id))fail(409,'Dispatcher operation pending');
       const current=s.one('SELECT * FROM delivery_orders WHERE id=?',d.order_id);
       if(!current || current.transport_order_id!==transportOrderId || !['assigned','accepted'].includes(current.status) || current.ready_at===null)fail(409,'Delivery changed');
+      if(s.cash.isGo(current)&&!s.cash.has(d.order_id,'shop_received'))fail(409,'Courier payment and merchant receipt must both be confirmed');
       const old=s.one('SELECT * FROM delivery_pickup_authorizations WHERE order_id=?',d.order_id);
       if(old) { if(old.transport_order_id!==transportOrderId || old.driver_id!==identity.driver_id || old.crew_id!==identity.crew_id)fail(409,'Pickup proof changed');return; }
       s.run('INSERT INTO delivery_pickup_authorizations VALUES(?,?,?,?,?)',d.order_id,transportOrderId,identity.driver_id,identity.crew_id,s.now());

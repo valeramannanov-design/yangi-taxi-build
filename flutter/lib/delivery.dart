@@ -41,6 +41,10 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   Place? _destination;
   bool _busy = false, _loaded = false, _history = false, _cartOpen = false;
   bool _catalogReload = false;
+  Map<String, dynamic>? _checkoutCapability;
+  bool get _canCheckout =>
+      widget.checkoutEnabled &&
+      (widget.serviceKind == null || _checkoutCapability?['enabled'] == true);
   Timer? _poll, _searchTimer;
   String _t(String ru, String uz) => widget.lang == 'uz' ? uz : ru;
   List<Map<String, dynamic>> _rows(dynamic value) =>
@@ -153,6 +157,9 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       throw ApiException(_t('Для каталога GO требуется обновление сервера.',
           'GO katalogi uchun server yangilanishi kerak.'));
     setState(() {
+      _checkoutCapability = value['go_checkout'] is Map
+          ? Map<String, dynamic>.from(value['go_checkout'] as Map)
+          : null;
       _categories = _rows(value['categories']);
       _shops = _rows(value['shops']);
       _searchProducts = _rows(value['products']);
@@ -241,7 +248,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   }
 
   Future<void> _calculate() async {
-    if (!widget.checkoutEnabled) return;
+    if (!_canCheckout) return;
     if (_destination == null || _cart.isEmpty || _pending != null) return;
     final quote = await widget.api.deliveryPost('/customer/quotes', {
       'shop_id': _cartShop!['id'],
@@ -261,7 +268,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   }
 
   Future<void> _submit() async {
-    if (!widget.checkoutEnabled) {
+    if (!_canCheckout) {
       await _loadOrders();
       return;
     }
@@ -593,19 +600,22 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                             style: Theme.of(context).textTheme.titleLarge)
                       ]))),
         const SizedBox(height: 12),
-        if (!widget.checkoutEnabled)
+        if (_checkoutCapability?['environment'] == 'TEST')
+          const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child:
+                  Text('TEST — тестовые суммы, не реальные тарифы TaxiMaster')),
+        if (!_canCheckout)
           Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(_t(
-                  'Оформление в GO пока недоступно: подключаем подтверждение оплаты магазину и расчёты TaxiMaster.',
-                  'GO buyurtmalari hali mavjud emas: do‘konga to‘lov tasdig‘i va TaxiMaster hisob-kitoblari ulanmoqda.'))),
+                  'Оформление временно недоступно: требуется подтверждение расчёта подачи и комиссии TaxiMaster.',
+                  'Buyurtma vaqtincha mavjud emas: TaxiMaster yetib kelish narxi va komissiyasi tasdiqlanishi kerak.'))),
         FilledButton(
-            onPressed: !widget.checkoutEnabled ||
-                    _busy ||
-                    _destination == null ||
-                    _cart.isEmpty
-                ? null
-                : () => _run(_quote == null ? _calculate : _submit),
+            onPressed:
+                !_canCheckout || _busy || _destination == null || _cart.isEmpty
+                    ? null
+                    : () => _run(_quote == null ? _calculate : _submit),
             child: Text(_quote == null
                 ? _t('Рассчитать стоимость', 'Narxni hisoblash')
                 : _t('Оформить заказ', 'Buyurtma berish'))),
@@ -636,6 +646,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                               (i) => Text('${i['name']} × ${i['quantity']}')),
                           const SizedBox(height: 8),
                           Text(_money(o['total_uzs'])),
+                          GoCashHistory(order: o, lang: widget.lang),
                           if (o['status'] == 'pending_shop')
                             TextButton(
                                 onPressed:

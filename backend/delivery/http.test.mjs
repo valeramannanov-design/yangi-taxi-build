@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { listenForFetch } from './testing/listen.mjs';
 import { DeliveryStore } from './store.mjs';
 import { createDeliveryHandler } from './http.mjs';
 
@@ -21,7 +22,7 @@ async function fixture(t) {
     return { id: '101', phone: '+998900000001' };
   } });
   const server = http.createServer(async (req, res) => { if (!await handler(req, res)) { res.writeHead(404); res.end('taxi host fallback'); } });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await listenForFetch(server);
   t.after(async () => { await new Promise(resolve => server.close(resolve)); store.close(); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const request = async (path, { method = 'GET', body, authorization, key, headers = {} } = {}) => {
