@@ -60,6 +60,30 @@ test('admin product endpoints require admin identity and preserve merchant versi
   assert.equal((await f.request(path,{method:'POST',authorization:f.partnerToken,body})).status,403);
   assert.equal((await f.request(`/api/delivery/admin/shops/${f.shop.id}/images`,{method:'POST',authorization:f.partnerToken})).status,403);
 });
+
+test('GO catalog HTTP contract rejects unknown services and leaves unmapped legacy stores out',async t=>{
+  const f=await fixture(t);
+  assert.equal((await f.request('/api/delivery/catalog?service=food')).json.data.shops.length,0);
+  assert.equal((await f.request('/api/delivery/catalog?service=food')).json.data.service,'food');
+  assert.equal((await f.request('/api/delivery/catalog?service=parcel')).status,422);
+  assert.equal((await f.request(`/api/delivery/shops/${f.shop.id}?service=food`)).status,404);
+  assert.equal((await f.request(`/api/delivery/shops/${f.shop.id}`)).status,200);
+  assert.equal((await f.request(`/api/delivery/shops/${f.shop.id}/products/${f.product.id}`)).json.data.name,'Milk');
+  assert.equal((await f.request(`/api/delivery/shops/${f.shop.id+1}/products/${f.product.id}`)).status,409);
+});
+
+test('mapping a legacy store to GO blocks old quote checkout and new quotes before cash integration',async t=>{
+  const f=await fixture(t),customer='test-passenger-session';
+  const input={shop_id:f.shop.id,items:[{product_id:f.product.id,quantity:1}],destination:{lat:40.001,lon:65,address:'Test destination'}};
+  const quote=await f.request('/api/delivery/customer/quotes',{method:'POST',authorization:customer,body:input});
+  assert.equal(quote.status,200);
+  assert.equal((await f.request('/api/delivery/admin/shops/'+f.shop.id,{method:'PUT',authorization:f.token,body:{...f.shop,active:true,service_kind:'food'}})).status,200);
+  assert.equal((await f.request('/api/delivery/catalog?service=food')).json.data.shops.length,1);
+  assert.equal((await f.request('/api/delivery/customer/quotes',{method:'POST',authorization:customer,body:input})).status,503);
+  assert.equal((await f.request('/api/delivery/customer/orders',{method:'POST',authorization:customer,body:{quote_id:quote.json.data.id},key:'test-go-closed-checkout'})).status,503);
+  assert.equal((await f.request('/api/delivery/customer/orders',{authorization:customer})).json.data.length,0);
+  assert.equal((await f.request('/api/delivery/merchant/products',{authorization:f.partnerToken})).json.data[0].stock,5);
+});
 test('HTTP catalog → quote → checkout → merchant confirmation; no endpoint can forge transport completion', async t => {
   const f = await fixture(t), authorization = 'test-passenger-session';
   const q = await f.request('/api/delivery/customer/quotes', { method: 'POST', authorization, body: { shop_id: f.shop.id, items: [{ product_id: f.product.id, quantity: 1 }], destination: { address: 'Customer address', lat: 40, lon: 65 } } });

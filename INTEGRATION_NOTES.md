@@ -19,3 +19,7 @@ Previous +cash/-courier/-merchant/-service ledger is historical proof for the pr
 ## Catalog classification
 
 GO food/market are own-backend service classifications, not TM tariff names or inferred category translations. Legacy stores/orders require explicit mapping; do not guess “food” from a name or present purchases as parcels. Any new contract is documented with its implementation and compatibility tests before client integration.
+
+Implemented source contract: `GET /api/delivery/catalog?service=food|market`, scoped shop/product detail reads, shop `service_kind`, frozen snapshot classification (schema6), ordered `recommendation_ids` on own merchant/admin product writes and public available `recommendations` (schema7). These are our actual implemented backend contracts, not TM fields. GO quote/checkout is closed on mapped shops until the financial contract is ready. Production remains schema5; do not deploy the UI alone against an older filter-ignoring server.
+
+Public reference inspected: [official TM API documentation](https://help.taximaster.ru/index.php/TM_API), including catalog, calculation and driver-operation sections. It is a reference, not proof of every feature in installed3.16.115. Existing driver read allowlist includes `get_driver_operations`; exact per-order commission attribution and approach inclusion are still unverified. Their absence from our adapter is not a claim that TaxiMaster can never support them.

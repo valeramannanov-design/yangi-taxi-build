@@ -48,8 +48,9 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
     const route = path.slice(prefix.length), key = req.headers['idempotency-key'];
     try {
       let result;
-      if (method === 'GET' && route === '/catalog') result = store.catalog(url.searchParams.has('category') ? Number(url.searchParams.get('category')) : undefined, url.searchParams.get('q') || '');
-      else if (method === 'GET' && /^\/shops\/[1-9][0-9]*$/.test(route)) result = store.shop(Number(route.split('/')[2]));
+      if (method === 'GET' && route === '/catalog') result = store.catalog(url.searchParams.has('category') ? Number(url.searchParams.get('category')) : undefined, url.searchParams.get('q') || '', url.searchParams.get('service'));
+      else if (method === 'GET' && /^\/shops\/[1-9][0-9]*$/.test(route)) result = store.shop(Number(route.split('/')[2]), url.searchParams.get('service'));
+      else if (method === 'GET' && /^\/shops\/[1-9][0-9]*\/products\/[1-9][0-9]*$/.test(route)) result = store.productDetail(Number(route.split('/')[2]),Number(route.split('/')[4]),url.searchParams.get('service'));
       else if (method === 'GET' && /^\/images\/[a-f0-9]{36}$/.test(route)) {
         const image = store.publicImage(route.split('/')[2]);
         res.writeHead(200, { 'content-type': image.mime, 'content-length': image.data.length, 'cache-control': 'private,max-age=300', 'x-content-type-options': 'nosniff' });

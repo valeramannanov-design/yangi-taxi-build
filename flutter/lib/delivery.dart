@@ -13,11 +13,15 @@ class DeliveryScreen extends StatefulWidget {
       required this.lang,
       required this.isActive,
       required this.onMenu,
+      this.serviceKind,
+      this.checkoutEnabled = true,
       this.addressPicker});
   final ApiClient api;
   final String lang;
   final bool isActive;
   final VoidCallback onMenu;
+  final String? serviceKind;
+  final bool checkoutEnabled;
   final Future<Place?> Function(BuildContext, Place)? addressPicker;
   @override
   State<DeliveryScreen> createState() => _DeliveryScreenState();
@@ -36,6 +40,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   String? _owner, _error;
   Place? _destination;
   bool _busy = false, _loaded = false, _history = false, _cartOpen = false;
+  bool _catalogReload = false;
   Timer? _poll, _searchTimer;
   String _t(String ru, String uz) => widget.lang == 'uz' ? uz : ru;
   List<Map<String, dynamic>> _rows(dynamic value) =>
@@ -52,6 +57,18 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   @override
   void didUpdateWidget(covariant DeliveryScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.serviceKind != oldWidget.serviceKind) {
+      _shop = null;
+      _products = [];
+      _shops = [];
+      _searchProducts = [];
+      _categories = [];
+      _category = null;
+      _search.clear();
+      _history = false;
+      _catalogReload = true;
+      if (widget.isActive) _activate();
+    }
     if (widget.isActive && !oldWidget.isActive) _activate();
     if (!widget.isActive) _poll?.cancel();
   }
@@ -65,7 +82,9 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   }
 
   void _activate() {
-    if (!_loaded) unawaited(_run(_load));
+    if (!_loaded)
+      unawaited(_run(_load));
+    else if (_catalogReload) unawaited(_run(_catalog));
     _poll?.cancel();
     _poll = Timer.periodic(const Duration(seconds: 15), (_) {
       if (widget.isActive && _history && !_busy) unawaited(_run(_loadOrders));
@@ -93,6 +112,8 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
         setState(() {
           _busy = false;
         });
+      if (mounted && widget.isActive && _catalogReload)
+        unawaited(_run(_catalog));
     }
   }
 
@@ -114,12 +135,23 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   }
 
   Future<void> _catalog() async {
+    _catalogReload = false;
+    final kind = widget.serviceKind,
+        search = _search.text.trim(),
+        category = _category;
     final value = Map<String, dynamic>.from(
         await widget.api.deliveryGet('/catalog', query: {
+      if (kind != null) 'service': kind,
       if (_category != null) 'category': '$_category',
       if (_search.text.trim().isNotEmpty) 'q': _search.text.trim()
     }) as Map);
-    if (!mounted) return;
+    if (!mounted ||
+        kind != widget.serviceKind ||
+        search != _search.text.trim() ||
+        category != _category) return;
+    if (kind != null && value['service'] != kind)
+      throw ApiException(_t('Для каталога GO требуется обновление сервера.',
+          'GO katalogi uchun server yangilanishi kerak.'));
     setState(() {
       _categories = _rows(value['categories']);
       _shops = _rows(value['shops']);
@@ -128,6 +160,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   }
 
   Future<void> _openShop(int id) async {
+    final kind = widget.serviceKind;
     if (_cart.isNotEmpty && _cartShop?['id'] != id) {
       final clear = await showDialog<bool>(
           context: context,
@@ -150,12 +183,18 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       _cartShop = null;
       _quote = null;
     }
-    final shop = Map<String, dynamic>.from(
-        await widget.api.deliveryGet('/shops/$id') as Map);
-    if (!mounted) return;
+    final shop = Map<String, dynamic>.from(await widget.api.deliveryGet(
+        '/shops/$id',
+        query: {if (kind != null) 'service': kind}) as Map);
+    if (!mounted || kind != widget.serviceKind) return;
+    if (kind != null && shop['service_kind'] != kind)
+      throw ApiException(_t('Заведение недоступно в этом разделе.',
+          'Muassasa bu bo‘limda mavjud emas.'));
     setState(() {
       _shop = shop;
-      _products = _rows(shop['products']);
+      _products = _rows(shop['products'])
+          .map((p) => {...p, 'shop_id': shop['id']})
+          .toList();
       _history = false;
       _cartOpen = false;
     });
@@ -202,6 +241,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   }
 
   Future<void> _calculate() async {
+    if (!widget.checkoutEnabled) return;
     if (_destination == null || _cart.isEmpty || _pending != null) return;
     final quote = await widget.api.deliveryPost('/customer/quotes', {
       'shop_id': _cartShop!['id'],
@@ -221,6 +261,10 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   }
 
   Future<void> _submit() async {
+    if (!widget.checkoutEnabled) {
+      await _loadOrders();
+      return;
+    }
     if (_pending == null) {
       if (_quote == null || _owner == null) return;
       _pending = {'quote_id': _quote!['id'], 'key': deliveryRequestKey()};
@@ -316,6 +360,105 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   Widget _empty(String text) => Padding(
       padding: const EdgeInsets.all(28),
       child: Text(text, textAlign: TextAlign.center));
+  Future<void> _productDetails(Map<String, dynamic> product) async {
+    final shopId = product['shop_id'] ?? _cartShop?['id'] ?? _shop?['id'];
+    if (shopId == null) return;
+    Map<String, dynamic>? detail;
+    await _run(() async {
+      final value = Map<String, dynamic>.from(await widget.api
+          .deliveryGet('/shops/$shopId/products/${product['id']}', query: {
+        if (widget.serviceKind != null) 'service': widget.serviceKind!
+      }) as Map);
+      if (value['shop_id'] != shopId)
+        throw ApiException(_t('Товар недоступен.', 'Mahsulot mavjud emas.'));
+      detail = value;
+    });
+    if (!mounted || detail == null) return;
+    final p = detail!, seen = <int>{(detail!['id'] as num).toInt()};
+    final recommendations = _rows(p['recommendations'] ?? [])
+        .where((r) =>
+            r['shop_id'] == shopId &&
+            (r['stock'] as num) > 0 &&
+            seen.add((r['id'] as num).toInt()))
+        .take(10)
+        .toList();
+    await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (context) => StatefulBuilder(
+            builder: (context, refresh) => DraggableScrollableSheet(
+                expand: false,
+                initialChildSize: 0.8,
+                minChildSize: 0.4,
+                maxChildSize: 0.95,
+                builder: (context, controller) => ListView(
+                        controller: controller,
+                        padding: const EdgeInsets.all(20),
+                        children: [
+                          if (p['image_id'] != null)
+                            Image.network(
+                                '${widget.api.baseUrl}/api/delivery/images/${p['image_id']}',
+                                height: 200,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.image_not_supported_outlined)),
+                          Text('${p['name']}',
+                              style: Theme.of(context).textTheme.headlineSmall),
+                          if ((p['description'] ?? '').toString().isNotEmpty)
+                            Text('${p['description']}'),
+                          Text(_money(p['price_uzs']),
+                              style: Theme.of(context).textTheme.titleLarge),
+                          FilledButton.icon(
+                              onPressed: (_cart[p['id']]?['quantity'] ?? 0) >=
+                                      (p['stock'] as num)
+                                  ? null
+                                  : () {
+                                      _quantity(p, 1);
+                                      refresh(() {});
+                                    },
+                              icon: const Icon(Icons.add),
+                              label: Text(_t(
+                                  'Добавить в корзину', 'Savatga qo‘shish'))),
+                          if (recommendations.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            Text(
+                                _t('Вам может понравиться',
+                                    'Sizga yoqishi mumkin'),
+                                style: Theme.of(context).textTheme.titleMedium),
+                            for (final r in recommendations)
+                              Card(
+                                  child: ListTile(
+                                      leading: r['image_id'] == null
+                                          ? const Icon(
+                                              Icons.shopping_bag_outlined)
+                                          : Image.network(
+                                              '${widget.api.baseUrl}/api/delivery/images/${r['image_id']}',
+                                              width: 48,
+                                              height: 48,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  const Icon(Icons
+                                                      .image_not_supported_outlined)),
+                                      title: Text('${r['name']}'),
+                                      subtitle: Text(_money(r['price_uzs'])),
+                                      trailing: IconButton(
+                                          tooltip: _t('Добавить', 'Qo‘shish'),
+                                          onPressed: (_cart[r['id']]
+                                                          ?['quantity'] ??
+                                                      0) >=
+                                                  (r['stock'] as num)
+                                              ? null
+                                              : () {
+                                                  _quantity(r, 1);
+                                                  refresh(() {});
+                                                },
+                                          icon: const Icon(
+                                              Icons.add_circle_outline))))
+                          ],
+                        ]))));
+  }
+
   Widget _product(Map<String, dynamic> p) {
     final quantity = (_cart[(p['id'] as num).toInt()]?['quantity'] ?? 0) as int;
     return Card(
@@ -336,8 +479,14 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    Text('${p['name']}',
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    TextButton(
+                        onPressed: _busy ? null : () => _productDetails(p),
+                        style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            alignment: Alignment.centerLeft),
+                        child: Text('${p['name']}',
+                            style:
+                                const TextStyle(fontWeight: FontWeight.bold))),
                     Text(_money(p['price_uzs'])),
                     if ((p['description'] ?? '').toString().isNotEmpty)
                       Text('${p['description']}',
@@ -444,8 +593,17 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                             style: Theme.of(context).textTheme.titleLarge)
                       ]))),
         const SizedBox(height: 12),
+        if (!widget.checkoutEnabled)
+          Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(_t(
+                  'Оформление в GO пока недоступно: подключаем подтверждение оплаты магазину и расчёты TaxiMaster.',
+                  'GO buyurtmalari hali mavjud emas: do‘konga to‘lov tasdig‘i va TaxiMaster hisob-kitoblari ulanmoqda.'))),
         FilledButton(
-            onPressed: _busy || _destination == null || _cart.isEmpty
+            onPressed: !widget.checkoutEnabled ||
+                    _busy ||
+                    _destination == null ||
+                    _cart.isEmpty
                 ? null
                 : () => _run(_quote == null ? _calculate : _submit),
             child: Text(_quote == null
@@ -494,7 +652,12 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
               ? _t('История доставки', 'Buyurtmalar tarixi')
               : _cartOpen
                   ? _t('Корзина', 'Savat')
-                  : _shop?['name']?.toString() ?? _t('Доставка', 'Yetkazish')),
+                  : _shop?['name']?.toString() ??
+                      (widget.serviceKind == 'food'
+                          ? _t('Еда', 'Taom')
+                          : widget.serviceKind == 'market'
+                              ? _t('Маркет', 'Market')
+                              : _t('Доставка', 'Yetkazish'))),
           leading: IconButton(
               icon: Icon(back ? Icons.arrow_back : Icons.menu),
               onPressed: _busy

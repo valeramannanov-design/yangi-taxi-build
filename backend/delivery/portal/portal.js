@@ -82,14 +82,14 @@ async function show(next) {
   else if (tab === 'finance') financeView(await request(me.role === 'admin' ? '/admin/finance' : '/merchant/finance'));
 }
 function shopsView() {
-  main.innerHTML = '<h1>Магазины</h1><button id="new-shop">Добавить магазин</button><div style="height:16px"></div>' + config.shops.map(s => `<article class="card"><div class="row"><b>${esc(s.name)}</b><span class="badge">${s.active ? 'Работает' : 'Отключён'}</span></div><p>${esc(s.address)}</p><div class="muted">Комиссия ${s.commission_bps / 100}%</div><div class="actions"><button data-shop="${s.id}" class="secondary">Изменить</button></div></article>`).join('');
+  main.innerHTML = '<h1>Магазины</h1><button id="new-shop">Добавить магазин</button><div style="height:16px"></div>' + config.shops.map(s => `<article class="card"><div class="row"><b>${esc(s.name)}</b><span class="badge">${s.active ? 'Работает' : 'Отключён'}</span></div><p>${esc(s.address)}</p><div class="muted">Комиссия партнёра (история): ${s.commission_bps / 100}%</div><div class="actions"><button data-shop="${s.id}" class="secondary">Изменить</button></div></article>`).join('');
   document.querySelector('#new-shop').onclick = () => shopForm();
   main.querySelectorAll('[data-shop]').forEach(b => { b.onclick = () => shopForm(config.shops.find(s => s.id === Number(b.dataset.shop))); });
 }
 function shopForm(shop) {
   if (!config.categories.length) { notice.textContent = 'Сначала добавьте категорию магазина.'; return; }
   const s = shop || {};
-  main.innerHTML = `<h1>${shop ? 'Изменить магазин' : 'Новый магазин'}</h1><form id="shop-form">${field('name','Название',s.name)}${field('address','Адрес',s.address)}${field('lat','Широта',s.lat,'number','step="any" min="-90" max="90"')}${field('lon','Долгота',s.lon,'number','step="any" min="-180" max="180"')}${choose('category_id','Категория',config.categories,s.category_id)}${field('commission','Комиссия магазина, %',shop ? s.commission_bps / 100 : '','number','min="0" max="100" step="0.01"')}${shop ? check('active','Магазин активен',s.active) : field('login','Логин партнёра','','text','autocomplete="off" minlength="3"') + field('password','Первый пароль партнёра','','password','autocomplete="new-password" minlength="12"')}<div class="full"><button>Сохранить</button><button type="button" class="secondary" id="back">Назад</button></div></form>`;
+  main.innerHTML = `<h1>${shop ? 'Изменить магазин' : 'Новый магазин'}</h1><form id="shop-form">${field('name','Название',s.name)}${field('address','Адрес',s.address)}${field('lat','Широта',s.lat,'number','step="any" min="-90" max="90"')}${field('lon','Долгота',s.lon,'number','step="any" min="-180" max="180"')}${choose('category_id','Категория',config.categories,s.category_id)}${choose('service_kind','Раздел GO',[{id:'food',name:'Еда'},{id:'market',name:'Маркет'}],s.service_kind)}${field('commission','Историческая комиссия партнёра, % (не комиссия TaxiMaster)',shop ? s.commission_bps / 100 : 0,'number','readonly')}${shop ? check('active','Магазин активен',s.active) : field('login','Логин партнёра','','text','autocomplete="off" minlength="3"') + field('password','Первый пароль партнёра','','password','autocomplete="new-password" minlength="12"')}<div class="full"><button>Сохранить</button><button type="button" class="secondary" id="back">Назад</button></div></form>`;
   document.querySelector('#back').onclick = shopsView;
   document.querySelector('#shop-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; perform(async () => {
     const input = Object.fromEntries(new FormData(form)); for (const key of ['lat','lon','category_id']) input[key] = Number(input[key]); input.commission_bps = Math.round(Number(input.commission) * 100); delete input.commission;
@@ -115,13 +115,34 @@ function productsView() {
 function productForm(product) {
   const p = product || {}; let imageId = p.image_id || null;
   main.innerHTML = `<h1>${product ? 'Изменить товар' : 'Новый товар'}</h1><form id="product-form">${field('sku','Артикул',p.sku)}${field('name','Название',p.name)}<label class="full">Описание<textarea name="description" maxlength="2000">${esc(p.description)}</textarea></label>${field('price_uzs','Цена, сум',p.price_uzs,'number','min="0" max="10000000" step="1"')}${field('stock','Доступно, шт.',p.stock,'number','min="0" max="1000000" step="1"')}<label>Фотография (PNG, JPEG, WebP; до 2 МБ)<input name="photo" type="file" accept="image/png,image/jpeg,image/webp"></label>${check('active','В продаже',product ? p.active : true)}<div class="full"><button>Сохранить</button><button id="back" class="secondary" type="button">Назад</button></div></form>`;
+  recommendationsEditor(document.querySelector('#product-form'),p);
   document.querySelector('#back').onclick = () => perform(() => show('products'));
   document.querySelector('#product-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; perform(async () => {
     const input = Object.fromEntries(new FormData(form)), file = input.photo;
     if (file?.size) { if (file.size > 2 * 1024 * 1024) throw new Error('Фото должно быть меньше 2 МБ'); imageId = (await request(imagesPath(), { method:'POST', body:file, raw:true })).id; form.elements.photo.value = ''; }
-    delete input.photo; input.price_uzs = Number(input.price_uzs); input.stock = Number(input.stock); input.active = form.elements.active.checked; input.image_id = imageId; if (product) input.version = p.version;
+    delete input.photo; input.recommendation_ids=JSON.parse(input.recommendation_ids); input.price_uzs = Number(input.price_uzs); input.stock = Number(input.stock); input.active = form.elements.active.checked; input.image_id = imageId; if (product) input.version = p.version;
     await request(productsPath() + (product ? '/' + p.id : ''), { method:product ? 'PUT' : 'POST', body:input }); await show('products');
   }); };
+}
+function recommendationsEditor(form,product){
+  let selected=[...(product.recommendation_ids||[])];
+  const panel=document.createElement('section');panel.className='full';
+  panel.innerHTML='<h2>Рекомендуемые товары</h2><p>До 10 товаров своего заведения. Порядок можно менять; скрытые и отсутствующие товары клиентам не показываются.</p><input type="hidden" name="recommendation_ids"><label>Поиск по своему каталогу<input type="search" id="recommendation-search" maxlength="160"></label><div id="recommendation-selected"></div><div id="recommendation-options"></div>';
+  form.lastElementChild.before(panel);
+  const hidden=panel.querySelector('[name="recommendation_ids"]'),search=panel.querySelector('#recommendation-search');
+  function render(){
+    hidden.value=JSON.stringify(selected);
+    panel.querySelector('#recommendation-selected').innerHTML=selected.map((id,index)=>{
+      const p=products.find(p=>p.id===id);
+      return `<div class="card row"><span>${index+1}. ${esc(p?.name||'Товар недоступен')}</span><span><button type="button" data-up="${id}" ${index===0?'disabled':''}>↑</button><button type="button" data-down="${id}" ${index===selected.length-1?'disabled':''}>↓</button><button type="button" data-remove="${id}">Убрать</button></span></div>`;
+    }).join('');
+    const query=search.value.trim().normalize('NFKC').toLocaleLowerCase();
+    panel.querySelector('#recommendation-options').innerHTML=products.filter(p=>p.id!==product.id&&!selected.includes(p.id)&&p.active&&p.stock>0&&p.name.normalize('NFKC').toLocaleLowerCase().includes(query)).slice(0,50).map(p=>`<button type="button" class="secondary" data-recommend="${p.id}" ${selected.length>=10?'disabled':''}>+ ${esc(p.name)}</button>`).join('');
+    panel.querySelectorAll('[data-recommend]').forEach(b=>{b.onclick=()=>{if(busy||selected.length>=10)return;const id=Number(b.dataset.recommend);if(!selected.includes(id))selected.push(id);render();};});
+    panel.querySelectorAll('[data-remove]').forEach(b=>{b.onclick=()=>{if(busy)return;selected=selected.filter(id=>id!==Number(b.dataset.remove));render();};});
+    for(const direction of ['up','down'])panel.querySelectorAll(`[data-${direction}]`).forEach(b=>{b.onclick=()=>{if(busy)return;const i=selected.indexOf(Number(b.dataset[direction])),j=i+(direction==='up'?-1:1);if(i>=0&&j>=0&&j<selected.length){[selected[i],selected[j]]=[selected[j],selected[i]];render();}};});
+  }
+  search.oninput=()=>{if(!busy)render();};render();
 }
 function ordersView() {
   main.innerHTML = '<div class="row"><h1>Заказы</h1><button id="refresh" class="secondary">Обновить</button></div>' + (orders.length ? orders.map(o => `<article class="card"><div class="row"><b>${esc(o.shop_name)}</b><span class="badge">${esc(statusNames[o.status] || o.status)}</span></div><p class="mono">${esc(o.id)}</p><p>${o.items.map(i => `${esc(i.name)} × ${i.quantity}`).join('<br>')}</p><p>${esc(o.destination.address)}<br>${esc(o.phone)}</p><div class="row"><span class="muted">Товары ${money(o.subtotal_uzs)} · Доставка ${money(o.delivery_uzs)}</span><b class="price">${money(o.total_uzs)}</b></div>${me.role === 'partner' ? `<div class="actions">${o.status === 'pending_shop' ? `<button data-order="${o.id}" data-action="confirm">Подтвердить</button><button class="danger" data-order="${o.id}" data-action="reject">Отказать</button>` : ['confirmed','assigned','accepted'].includes(o.status) && !o.ready_at ? `<button data-order="${o.id}" data-action="ready">Готов к выдаче</button>` : ''}</div>` : ''}</article>`).join('') : empty('Заказов пока нет.'));

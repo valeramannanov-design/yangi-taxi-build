@@ -19,6 +19,7 @@ import 'package:yandex_maps_mapkit/search.dart' as ys;
 import 'package:yandex_maps_mapkit/yandex_map.dart' as ym_widget;
 
 part 'delivery.dart';
+part 'go.dart';
 
 const defaultLat = 41.3111;
 const defaultLon = 69.2797;
@@ -3139,6 +3140,8 @@ class Shell extends StatefulWidget {
     required this.onBackend,
     required this.onLogout,
     this.onMenu,
+    this.taxiPageBuilder,
+    this.ridePageBuilder,
   });
   final ApiClient api;
   final String lang;
@@ -3148,6 +3151,9 @@ class Shell extends StatefulWidget {
   final Future<void> Function(String) onBackend;
   final VoidCallback onLogout;
   final VoidCallback? onMenu;
+  // UI tests replace native MapKit views; production always uses the existing pages.
+  final Widget Function(Key key, bool isActive)? taxiPageBuilder;
+  final Widget Function(int? orderId, bool isActive)? ridePageBuilder;
 
   @override
   State<Shell> createState() => _ShellState();
@@ -3155,8 +3161,8 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   final GlobalKey<ScaffoldState> shellKey = GlobalKey<ScaffoldState>();
-  bool deliveryMode = false;
-  int tab = 0;
+  GoService service = GoService.taxi;
+  int tab = 6;
   int? activeId;
   int orderFormGeneration = 0;
   int _orderStateRevision = 0;
@@ -3218,13 +3224,6 @@ class _ShellState extends State<Shell> {
     } catch (_) {
       return null;
     }
-  }
-
-  int? _readOrderId(dynamic raw) {
-    if (raw is! Map) return null;
-    final value = raw['order_id'] ?? raw['orderId'] ?? raw['id'];
-    final id = value is num ? value.toInt() : int.tryParse(value?.toString() ?? '');
-    return id != null && id > 0 ? id : null;
   }
 
   // Order state writes must not overtake each other. Otherwise a slow
@@ -3330,8 +3329,7 @@ class _ShellState extends State<Shell> {
       scaffold!.closeDrawer();
       return;
     }
-    if (tab == 0 && deliveryMode) { setState(() { deliveryMode = false; }); return; }
-    final safeHomeTab = activeId != null ? 1 : 0;
+    const safeHomeTab = 6;
     if (tab != safeHomeTab) {
       selectTab(safeHomeTab);
       return;
@@ -3388,7 +3386,7 @@ class _ShellState extends State<Shell> {
       scaffold!.closeDrawer();
     }
     if (!mounted) return;
-    final target = activeId != null ? 1 : 0;
+    const target = 6;
     if (tab != target) setState(() => tab = target);
   }
 
@@ -3403,6 +3401,7 @@ class _ShellState extends State<Shell> {
     setState(() {
       activeId = null;
       orderFormGeneration += 1;
+      service = GoService.taxi;
       tab = 0;
     });
   }
@@ -3414,6 +3413,20 @@ class _ShellState extends State<Shell> {
       activeId = id;
       tab = 1;
     });
+  }
+
+  void openGoPurchase(Map<String, dynamic> order) {
+    final id = order['id'];
+    if (id is! String) return;
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(
+        builder: (_) => GoPurchaseDetails(
+            api: widget.api, lang: widget.lang, orderId: id)));
+  }
+
+  void openGoTaxiHistory(int id) {
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(builder:(routeContext)=>RideScreen(
+      api:widget.api,lang:widget.lang,orderId:id,isActive:true,
+      onMenu:()=>Navigator.pop(routeContext),onNewTrip:()=>Navigator.pop(routeContext))));
   }
 
   Future<void> openDrawerPage(Widget page) async {
@@ -3717,15 +3730,36 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      IndexedStack(index: deliveryMode ? 1 : 0, children: [OrderScreen(
-        key: ValueKey<int>(orderFormGeneration),
-        api: widget.api,
-        lang: widget.lang,
-        onOrder: orderCreated,
-        onMenu: openMenu,
-        isActive: tab == 0 && !deliveryMode,
-      ), DeliveryScreen(api: widget.api, lang: widget.lang, isActive: tab == 0 && deliveryMode, onMenu: openMenu)]),
-      RideScreen(
+      IndexedStack(
+          index: service.shoppingKind != null
+              ? 1
+              : service == GoService.parcel
+                  ? 2
+                  : 0,
+          children: [
+        widget.taxiPageBuilder?.call(ValueKey<int>(orderFormGeneration),tab == 0 && service == GoService.taxi) ?? OrderScreen(
+              key: ValueKey<int>(orderFormGeneration),
+              api: widget.api,
+              lang: widget.lang,
+              onOrder: orderCreated,
+              onMenu: openMenu,
+              isActive: tab == 0 && service == GoService.taxi,
+            ),
+            DeliveryScreen(
+                api: widget.api,
+                lang: widget.lang,
+                isActive: tab == 0 && service.shoppingKind != null,
+                onMenu: goHomeSafely,
+                serviceKind: service.shoppingKind ?? 'food',
+                checkoutEnabled: false),
+            Center(
+                child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(widget.lang == 'uz'
+                        ? 'Posilkalar xizmati tayyorlanmoqda. Jo‘natuvchi, oluvchi va topshirishni tasdiqlash hali ulanmagan.'
+                        : 'Доставка посылок готовится. Контакты отправителя, получателя и подтверждение вручения ещё не подключены.'))),
+          ]),
+      widget.ridePageBuilder?.call(activeId,tab==1) ?? RideScreen(
         api: widget.api,
         lang: widget.lang,
         orderId: activeId,
@@ -3733,7 +3767,7 @@ class _ShellState extends State<Shell> {
         onNewTrip: startNewTrip,
         isActive: tab == 1,
       ),
-      HistoryScreen(api: widget.api, lang: widget.lang, onMenu: goHomeSafely),
+      const SizedBox.shrink(), // Legacy history widget retained below; GO owns navigation.
       CardsScreen(
         api: widget.api,
         lang: widget.lang,
@@ -3760,7 +3794,41 @@ class _ShellState extends State<Shell> {
         onLogout: widget.onLogout,
         onMenu: goHomeSafely,
         isActive: tab == 5,
+        onOrders:()=>selectTab(7), onSupport:showHelpFromDrawer,
+        onAddresses:()=>openDrawerPage(FavoriteAddressesScreen(api:widget.api,lang:widget.lang)),
+        onCards:()=>selectTab(3), onSettings:()=>selectTab(4),
+        onPromos:()=>openDrawerPage(PromoCodesScreen(api:widget.api,lang:widget.lang)),
       ),
+      GoHomeScreen(
+          api: widget.api,
+          lang: widget.lang,
+          isActive: tab == 6,
+          onService: (value) => setState(() {
+                service = value;
+                tab = 0;
+              }),
+          onProfile: () => selectTab(5),
+          onOrders: () => selectTab(7),
+          onAddresses: () => openDrawerPage(
+              FavoriteAddressesScreen(api: widget.api, lang: widget.lang)),
+          onCards: () => selectTab(3),
+          onTaxiOrder: orderCreated,
+          onPurchaseOrder: openGoPurchase),
+      Scaffold(
+          appBar: AppBar(
+              title: Text(
+                  widget.lang == 'uz' ? 'Mening buyurtmalarim' : 'Мои заказы'),
+              leading: IconButton(
+                  onPressed: goHomeSafely, icon: const Icon(Icons.arrow_back))),
+          body: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: GoOrdersPanel(
+                  api: widget.api,
+                  lang: widget.lang,
+                  isActive: tab == 7,
+                  activeOnly: false,
+                  onTaxiOrder: openGoTaxiHistory,
+                  onPurchaseOrder: openGoPurchase))),
     ];
 
     final theme = Theme.of(context);
@@ -4090,7 +4158,7 @@ class _ShellState extends State<Shell> {
                 ),
               ),
               menuItem(
-                index: 0,
+                index: 6,
                 icon: Icons.home_rounded,
                 title: widget.lang == 'uz' ? 'Bosh sahifa' : 'Главная',
               ),
@@ -4101,9 +4169,9 @@ class _ShellState extends State<Shell> {
                   title: widget.lang == 'uz' ? 'Joriy safar' : 'Текущая поездка',
                 ),
               menuItem(
-                index: 2,
+                index: 7,
                 icon: Icons.history_rounded,
-                title: widget.lang == 'uz' ? 'Safarlar tarixi' : 'История поездок',
+                title: widget.lang == 'uz' ? 'Mening buyurtmalarim' : 'Мои заказы',
               ),
               menuActionItem(
                 icon: Icons.location_on_outlined,
@@ -4219,18 +4287,50 @@ class _ShellState extends State<Shell> {
         ),
       ),
         body: Column(children: [
-          if (tab == 0) ColoredBox(color: theme.colorScheme.surface, child: SafeArea(bottom: false, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: SizedBox(width: double.infinity, child: SegmentedButton<bool>(
-            segments: [ButtonSegment(value: false, icon: const Icon(Icons.local_taxi_outlined), label: Text(widget.lang == 'uz' ? 'TAKSI' : 'ТАКСИ')), ButtonSegment(value: true, icon: const Icon(Icons.shopping_bag_outlined), label: Text(widget.lang == 'uz' ? 'YETKAZISH' : 'ДОСТАВКА'))],
-            selected: {deliveryMode}, onSelectionChanged: (value) => setState(() { deliveryMode = value.single; }),
-          ))))),
+          if (tab == 0)
+            SafeArea(
+                bottom: false,
+                child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(children: [
+                      IconButton(
+                          tooltip:
+                              widget.lang == 'uz' ? 'Bosh sahifa' : 'Главная',
+                          onPressed: goHomeSafely,
+                          icon: const Icon(Icons.home_outlined)),
+                      for (final value in GoService.values)
+                        Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                                label: Text(value.label(widget.lang)),
+                                selected: service == value,
+                                onSelected: (_) =>
+                                    setState(() => service = value))),
+                    ]))),
           Expanded(child: IndexedStack(index: tab, children: pages)),
         ]),
-        bottomNavigationBar: null,
+        bottomNavigationBar: NavigationBar(
+            selectedIndex: tab == 7
+                ? 1
+                : tab == 5
+                    ? 2
+                    : 0,
+            onDestinationSelected: (index) => selectTab([6, 7, 5][index]),
+            destinations: [
+              NavigationDestination(
+                  icon: const Icon(Icons.home_outlined),
+                  label: widget.lang == 'uz' ? 'Bosh sahifa' : 'Главная'),
+              NavigationDestination(
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  label: widget.lang == 'uz' ? 'Buyurtmalar' : 'Заказы'),
+              NavigationDestination(
+                  icon: const Icon(Icons.person_outline),
+                  label: widget.lang == 'uz' ? 'Profil' : 'Профиль')
+            ]),
       ),
     );
   }
 }
-
 
 const _yangiLightMapStyle = '''
 [
@@ -11682,11 +11782,11 @@ class _CardsScreenState extends State<CardsScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                Container(
-                  decoration: BoxDecoration(
-                    color: selectedMethod == 'cash' ? selectedFill : scheme.surfaceContainerHigh,
+                Material(
+                  color: selectedMethod == 'cash' ? selectedFill : scheme.surfaceContainerHigh,
+                  shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.65)),
+                    side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.65)),
                   ),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
@@ -12191,11 +12291,11 @@ class SettingsScreen extends StatelessWidget {
     }
 
     Widget premiumCard(Widget child) {
-      return Container(
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerLow,
+      return Material(
+        color: scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(
+          side: BorderSide(
             color: scheme.outlineVariant.withValues(alpha: 0.65),
           ),
         ),
@@ -12487,6 +12587,7 @@ class ProfileScreen extends StatefulWidget {
     required this.onLogout,
     this.onMenu,
     this.isActive = true,
+    this.onOrders, this.onSupport, this.onAddresses, this.onCards, this.onSettings, this.onPromos,
   });
   final ApiClient api;
   final String lang;
@@ -12497,6 +12598,7 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback? onMenu;
   final bool isActive;
+  final VoidCallback? onOrders, onSupport, onAddresses, onCards, onSettings, onPromos;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -12839,34 +12941,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: 18),
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        children: <Widget>[
-                          Icon(
-                            Icons.menu_open_rounded,
-                            color: scheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              widget.lang == 'uz'
-                                  ? 'Safarlar, to‘lovlar, sevimli manzillar, promokodlar va sozlamalar chap menyuda.'
-                                  : 'Поездки, оплата, любимые адреса, промокоды и настройки находятся в левом меню.',
-                              style: TextStyle(
-                                color: scheme.onSurfaceVariant,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    Wrap(spacing:8,runSpacing:8,children:[
+                      if(widget.onOrders!=null)OutlinedButton.icon(onPressed:widget.onOrders,icon:const Icon(Icons.receipt_long_outlined),label:Text(widget.lang=='uz'?'Buyurtmalar':'Заказы')),
+                      if(widget.onSupport!=null)OutlinedButton.icon(onPressed:widget.onSupport,icon:const Icon(Icons.support_agent),label:Text(widget.lang=='uz'?'Yordam':'Поддержка')),
+                      if(widget.onAddresses!=null)OutlinedButton.icon(onPressed:widget.onAddresses,icon:const Icon(Icons.location_on_outlined),label:Text(widget.lang=='uz'?'Manzillar':'Адреса')),
+                      if(widget.onSettings!=null)OutlinedButton.icon(onPressed:widget.onSettings,icon:const Icon(Icons.settings_outlined),label:Text(widget.lang=='uz'?'Sozlamalar':'Настройки')),
+                      if(widget.onCards!=null)OutlinedButton.icon(onPressed:widget.onCards,icon:const Icon(Icons.credit_card),label:Text(widget.lang=='uz'?'To‘lov usullari':'Способы оплаты')),
+                      if(widget.onPromos!=null)OutlinedButton.icon(onPressed:widget.onPromos,icon:const Icon(Icons.local_offer_outlined),label:Text(widget.lang=='uz'?'Promo kodlar':'Промокоды')),
+                    ]),
                   ],
                 ),
               ),

@@ -22,6 +22,7 @@ const integer = (v, min = 0, max = 10_000_000) => {
   return v;
 };
 const bool = v => { if (typeof v !== 'boolean') fail(422, 'Expected boolean'); return Number(v); };
+const commerceService = value => { if (value !== null && !['food','market'].includes(value)) fail(422, 'Unknown shopping service'); return value; };
 const point = v => {
   if (!v || !Number.isFinite(v.lat) || !Number.isFinite(v.lon) || Math.abs(v.lat) > 90 || Math.abs(v.lon) > 180) fail(422, 'Invalid coordinates');
   return { lat: v.lat, lon: v.lon };
@@ -51,8 +52,8 @@ export class DeliveryStore {
     this.db.function('delivery_fold', { deterministic: true }, value => String(value).normalize('NFKC').toLocaleLowerCase());
     this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)');
-    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 5) { this.close(); throw new Error('Delivery database requires a newer service version'); }
-    for (const version of [1, 2, 3, 4, 5]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
+    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 7) { this.close(); throw new Error('Delivery database requires a newer service version'); }
+    for (const version of [1, 2, 3, 4, 5, 6, 7]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
       // SQLite table rebuild: disable FK enforcement outside the exclusive write
       // transaction, validate every reference before commit, then restore it.
       if(version===5)this.db.exec('PRAGMA foreign_keys=OFF');
@@ -135,6 +136,7 @@ export class DeliveryStore {
       if (this.one('SELECT 1 FROM delivery_users WHERE login=?', login)) fail(409, 'Login already exists');
       const partnerId = Number(this.run('INSERT INTO delivery_users(login,password_hash,role) VALUES(?,?,\'partner\')', login, hash).lastInsertRowid);
       const shopId = Number(this.run('INSERT INTO delivery_shops(partner_id,category_id,zone_id,name,address,lat,lon,commission_bps) VALUES(?,?,?,?,?,?,?,?)', partnerId, ...values).lastInsertRowid);
+      this.run('UPDATE delivery_shops SET service_kind=? WHERE id=?', commerceService(input.service_kind ?? null), shopId);
       return this.one('SELECT * FROM delivery_shops WHERE id=?', shopId);
     });
   }
@@ -149,20 +151,24 @@ export class DeliveryStore {
       this.validateShopLocation((input.zone_id == null ? null : integer(input.zone_id, 1)), location);
       if (!this.one('SELECT 1 FROM delivery_categories WHERE id=?', integer(input.category_id, 1))) fail(422, 'Category not found');
       if (!this.run('UPDATE delivery_shops SET category_id=?,zone_id=?,name=?,address=?,lat=?,lon=?,commission_bps=?,active=? WHERE id=?', input.category_id, input.zone_id ?? null, text(input.name, 100), text(input.address), location.lat, location.lon, integer(input.commission_bps, 0, 10000), bool(input.active), integer(shopId, 1)).changes) fail(404, 'Store not found');
+      if (Object.hasOwn(input, 'service_kind')) this.run('UPDATE delivery_shops SET service_kind=? WHERE id=?', commerceService(input.service_kind), shopId);
       return this.one('SELECT * FROM delivery_shops WHERE id=?', shopId);
     });
   }
-  catalog(categoryId, query = '') {
+  catalog(categoryId, query = '', service = null) {
+    commerceService(service);
     if (categoryId !== undefined) integer(categoryId, 1);
     if (typeof query !== 'string' || query.length > 100) fail(422, 'Invalid search');
-    return { categories: this.all('SELECT id,name FROM delivery_categories WHERE active=1 ORDER BY name'),
-      shops: this.all('SELECT s.id,s.name,s.address,s.category_id,s.lat,s.lon FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id WHERE s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) ORDER BY s.name', categoryId ?? null, categoryId ?? null),
-      products: query.trim() ? this.all('SELECT p.id,p.shop_id,p.name,p.description,p.price_uzs,p.stock,p.image_id FROM delivery_products p JOIN delivery_shops s ON s.id=p.shop_id JOIN delivery_categories c ON c.id=s.category_id WHERE p.active=1 AND p.stock>0 AND s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) AND (instr(delivery_fold(p.name),delivery_fold(?))>0 OR instr(delivery_fold(p.description),delivery_fold(?))>0) ORDER BY p.name LIMIT 100', categoryId ?? null, categoryId ?? null, query.trim(), query.trim()) : [] };
+    return { service, categories: this.all('SELECT c.id,c.name FROM delivery_categories c WHERE c.active=1 AND (? IS NULL OR EXISTS(SELECT 1 FROM delivery_shops s WHERE s.category_id=c.id AND s.active=1 AND s.service_kind=?)) ORDER BY c.name', service, service),
+      shops: this.all('SELECT s.id,s.name,s.address,s.category_id,s.lat,s.lon,s.service_kind FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id WHERE s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) AND (? IS NULL OR s.service_kind=?) ORDER BY s.name', categoryId ?? null, categoryId ?? null, service, service),
+      products: query.trim() ? this.all('SELECT p.id,p.shop_id,p.name,p.description,p.price_uzs,p.stock,p.image_id FROM delivery_products p JOIN delivery_shops s ON s.id=p.shop_id JOIN delivery_categories c ON c.id=s.category_id WHERE p.active=1 AND p.stock>0 AND s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) AND (? IS NULL OR s.service_kind=?) AND (instr(delivery_fold(p.name),delivery_fold(?))>0 OR instr(delivery_fold(p.description),delivery_fold(?))>0) ORDER BY p.name LIMIT 100', categoryId ?? null, categoryId ?? null, service, service, query.trim(), query.trim()) : [] };
   }
-  shop(shopId) {
+  shop(shopId, service = null) {
+    commerceService(service);
     const shop = this.availableShop(shopId);
+    if (service && shop.service_kind !== service) fail(404, 'Store not in this service');
     const { id, name, address, category_id, lat, lon } = shop;
-    return { id, name, address, category_id, lat, lon, products: this.all('SELECT id,sku,name,description,price_uzs,stock,image_id FROM delivery_products WHERE shop_id=? AND active=1 ORDER BY name', shopId) };
+    return { id, name, address, category_id, lat, lon, service_kind:shop.service_kind, products: this.all('SELECT id,sku,name,description,price_uzs,stock,image_id FROM delivery_products WHERE shop_id=? AND active=1 ORDER BY name', shopId) };
   }
   availableShop(shopId) {
     const shop = this.one('SELECT s.* FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id WHERE s.id=? AND s.active=1 AND c.active=1', integer(shopId, 1));
@@ -177,7 +183,26 @@ export class DeliveryStore {
     if (!this.one('SELECT 1 FROM delivery_shops WHERE id=?', shopId)) fail(404, 'Store not found');
     return shopId;
   }
-  #products(shopId) { return this.all('SELECT * FROM delivery_products WHERE shop_id=? ORDER BY name', shopId); }
+  #products(shopId) {
+    const rows=this.all('SELECT * FROM delivery_products WHERE shop_id=? ORDER BY name',shopId), byId=new Map();
+    for(const row of this.all('SELECT r.product_id,r.recommended_id FROM delivery_product_recommendations r JOIN delivery_products p ON p.id=r.product_id JOIN delivery_products rp ON rp.id=r.recommended_id WHERE p.shop_id=? AND rp.shop_id=p.shop_id ORDER BY r.position',shopId)){
+      if(!byId.has(row.product_id))byId.set(row.product_id,[]);byId.get(row.product_id).push(row.recommended_id);
+    }
+    return rows.map(p=>({...p,recommendation_ids:byId.get(p.id)||[]}));
+  }
+  productDetail(shopId, productId, service=null) {
+    commerceService(service);const shop=this.availableShop(shopId);
+    if(service&&shop.service_kind!==service)fail(404,'Store not in this service');
+    const product=this.one('SELECT id,shop_id,sku,name,description,price_uzs,stock,image_id FROM delivery_products WHERE id=? AND shop_id=? AND active=1',integer(productId,1),shop.id);
+    if(!product)fail(404,'Product not found');
+    return {...product,recommendations:this.all('SELECT p.id,p.shop_id,p.sku,p.name,p.description,p.price_uzs,p.stock,p.image_id FROM delivery_product_recommendations r JOIN delivery_products p ON p.id=r.recommended_id WHERE r.product_id=? AND p.shop_id=? AND p.active=1 AND p.stock>0 ORDER BY r.position',product.id,shop.id)};
+  }
+  #setRecommendations(shopId,productId,ids) {
+    if(!Array.isArray(ids)||ids.length>10||new Set(ids).size!==ids.length)fail(422,'Choose up to 10 unique recommendations');
+    for(const value of ids){integer(value,1);if(value===productId||!this.one('SELECT 1 FROM delivery_products WHERE id=? AND shop_id=?',value,shopId))fail(422,'Recommendation must be another product in this store');}
+    this.run('DELETE FROM delivery_product_recommendations WHERE product_id=?',productId);
+    ids.forEach((value,index)=>this.run('INSERT INTO delivery_product_recommendations VALUES(?,?,?)',productId,value,index));
+  }
   saveProduct(user, input, productId) { return this.#saveProduct(this.partner(user), input, productId); }
   #saveProduct(shopId, input, productId) {
     const imageId = input.image_id ?? null;
@@ -190,7 +215,8 @@ export class DeliveryStore {
         if (!this.one('SELECT 1 FROM delivery_products WHERE id=? AND shop_id=?', integer(productId, 1), shopId)) fail(404, 'Product not found');
         if (!this.run('UPDATE delivery_products SET sku=?,name=?,description=?,price_uzs=?,stock=?,active=?,image_id=?,version=version+1 WHERE id=? AND shop_id=? AND version=?', ...values, productId, shopId, integer(input.version, 1)).changes) fail(409, 'Product changed; refresh before editing stock');
       } else productId = Number(this.run('INSERT INTO delivery_products(shop_id,sku,name,description,price_uzs,stock,active,image_id) VALUES(?,?,?,?,?,?,?,?)', shopId, ...values).lastInsertRowid);
-      return this.one('SELECT * FROM delivery_products WHERE id=?', productId);
+      if(Object.hasOwn(input,'recommendation_ids'))this.#setRecommendations(shopId,productId,input.recommendation_ids);
+      return {...this.one('SELECT * FROM delivery_products WHERE id=?', productId),recommendation_ids:this.all('SELECT recommended_id FROM delivery_product_recommendations WHERE product_id=? ORDER BY position',productId).map(r=>r.recommended_id)};
     });
   }
   image(user, bytes) {
@@ -223,6 +249,7 @@ export class DeliveryStore {
     const customer = this.customer(identity), location = point(input.destination), address = text(input.destination.address);
     return this.transaction(() => {
       const shop = this.availableShop(input.shop_id), z = this.one('SELECT * FROM delivery_zones WHERE id=?', shop.zone_id);
+      this.assertLegacyCashShop(shop);
       if (road) {
         const current=this.pricing(),before=road.context;
         if(!current.enabled || current.version!==before.pricing.version || shop.address!==before.shop.address || shop.lat!==before.shop.lat || shop.lon!==before.shop.lon)fail(409,'Delivery settings or store changed; calculate again');
@@ -242,7 +269,7 @@ export class DeliveryStore {
       // MVP straight-line zone tariff. This is not a road-route distance or taxi fare.
       const delivery_uzs = road ? road.delivery_uzs : z.base_uzs + Math.ceil(distance_m / 1000) * z.per_km_uzs;
       const commission_uzs = Math.floor((subtotal_uzs * shop.commission_bps + 5000) / 10000);
-      const snapshot = { shop_name: shop.name, pickup: { address: shop.address, lat: shop.lat, lon: shop.lon }, destination: { ...location, address }, phone: customer.phone,
+      const snapshot = { shop_name: shop.name, service_kind:shop.service_kind, pickup: { address: shop.address, lat: shop.lat, lon: shop.lon }, destination: { ...location, address }, phone: customer.phone,
         items, subtotal_uzs, delivery_uzs, total_uzs: subtotal_uzs + delivery_uzs, commission_bps: shop.commission_bps, commission_uzs, distance_m, pricing_basis: road ? 'taximaster_road' : 'straight_line_zone', ...(road?{delivery_tariff_id:road.context.pricing.tariff_id,delivery_crew_group_id:road.context.pricing.crew_group_id,pricing_version:road.context.pricing.version}:{}), payment_method: 'cash' };
       const quoteId = id(), expires_at = this.now() + 300_000;
       this.run('INSERT INTO delivery_quotes VALUES(?,?,?,?,?)', quoteId, customer.id, shop.id, JSON.stringify(snapshot), expires_at);
@@ -258,11 +285,17 @@ export class DeliveryStore {
   }
   roadQuoteContext(identity,input) {
     const customer=this.customer(identity),shop=this.availableShop(input.shop_id),destination={...point(input.destination),address:text(input.destination.address)},pricing=this.pricing();
+    this.assertLegacyCashShop(shop);
     if(!pricing.enabled)fail(503,'Configure the delivery tariff in administration first');
     if(!Array.isArray(input.items)||input.items.length<1||input.items.length>50)fail(422,'Cart must have 1–50 items');
     return {customer,shop,destination,pricing};
   }
   publicSnapshot(snapshot) { const { commission_bps, commission_uzs, ...publicData } = snapshot; return publicData; }
+  assertLegacyCashShop(shop) {
+    // TODO(GO-cash): replace this gate only after dual buyout confirmation,
+    // verified TM approach/commission and post-buyout dispute handling exist.
+    if(shop.service_kind!==null)fail(503,'GO checkout awaits verified shop payment and TaxiMaster settlement integration');
+  }
   command(actor, key, payload, fn) {
     if (typeof key !== 'string' || !/^[A-Za-z0-9_-]{16,100}$/.test(key)) fail(422, 'Valid Idempotency-Key required');
     const keyHash = digest(key), fingerprint = digest(JSON.stringify(payload));
@@ -281,6 +314,7 @@ export class DeliveryStore {
       if (!quote || quote.expires_at <= this.now()) fail(409, 'Quote expired; calculate again');
       if (this.one('SELECT 1 FROM delivery_orders WHERE quote_id=?', quoteId)) fail(409, 'Quote already used');
       const shop = this.availableShop(quote.shop_id), snapshot = JSON.parse(quote.snapshot);
+      this.assertLegacyCashShop(shop);
       if (shop.commission_bps !== snapshot.commission_bps || shop.address !== snapshot.pickup.address || shop.lat !== snapshot.pickup.lat || shop.lon !== snapshot.pickup.lon) fail(409, 'Store changed; calculate again');
       for (const i of snapshot.items) {
         const result = this.run('UPDATE delivery_products SET stock=stock-?,version=version+1 WHERE id=? AND shop_id=? AND active=1 AND price_uzs=? AND stock>=?', i.quantity, i.product_id, shop.id, i.price_uzs, i.quantity);

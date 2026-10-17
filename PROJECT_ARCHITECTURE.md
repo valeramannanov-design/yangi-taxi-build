@@ -10,7 +10,7 @@ Authoritative new scope: `docs/YANGI_TAXI_GO_SPEC.md`. Supersedes the previous D
 | Taxi booking, tariffs, route, active ride restoration | ГОТОВ, requires GO regression | OrderScreen/RideScreen/Shell, real CommonAPI; keep widgets mounted across service switches |
 | Yandex map picker/geolocation | ЧАСТИЧНО ГОТОВ | TaxiYandexMap/MapPointPickerScreen; exact point support exists; GO visual/address reuse needs device acceptance |
 | Profile, settings, languages/themes, photo, addresses, cards, promo UI | ТРЕБУЕТ ИНТЕГРАЦИИ | Existing ProfileScreen/SettingsScreen/CardsScreen/FavoriteAddressesScreen/PromoCodesScreen; one GO shell, no new account/card wallet |
-| Unified GO home/navigation | ОТСУТСТВУЕТ before this stage | Replace two-service switch in the same Flutter app, not a separate product |
+| Unified GO home/navigation | ЧАСТИЧНО ГОТОВ | `flutter/lib/go.dart`, same Shell; local widget proof, no GO device/release acceptance |
 | Food/market catalog, shop/product/cart/quote/checkouts | ЧАСТИЧНО ГОТОВ | `flutter/lib/delivery.dart`, `backend/delivery`; typed catalogs, richer products/recommendations/pickup/ETA remain |
 | Merchant/admin portal, tenancy and stock CAS | ЧАСТИЧНО ГОТОВ | `backend/delivery/portal`, http/store; preserve role and ownership checks; receipt-from-courier absent |
 | Tariff27 road quote | ЧАСТИЧНО ГОТОВ | Existing analyze_route2/calc_order_cost2; 2160m/9800 verified; courier-to-store approach price inclusion not proved |
@@ -18,6 +18,7 @@ Authoritative new scope: `docs/YANGI_TAXI_GO_SPEC.md`. Supersedes the previous D
 | Driver+ lifecycle and isolated sessions | ЧАСТИЧНО ГОТОВ | Existing Android Driver+50 / gateway; missing shop-payment and client-arrival proofs, appropriate refusal/dispute flow |
 | Parcel delivery | ЧАСТИЧНО ГОТОВ | Existing taxi delivery tariff and route can be reused; sender/recipient contacts, handover and allowed parcel rules not complete |
 | Unified history/active service orders | ТРЕБУЕТ ИНТЕГРАЦИИ | Existing taxi history/current API plus owned Delivery orders; classify legacy purchases explicitly rather than calling them parcels |
+| GO shared profile/history and manual recommendations | ЧАСТИЧНО ГОТОВ | Local source/tests connected; see `docs/GO_FOUNDATION.md`; visual/device/final metadata remain |
 | Reviews/complaints, promotions, notifications | ЧАСТИЧНО ГОТОВ / ОТСУТСТВУЕТ | Taxi feedback/promo mechanisms exist; restaurant/courier reviews, low-rating complaints, Delivery outbox and rules need extension |
 
 ## Repositories / access audit
