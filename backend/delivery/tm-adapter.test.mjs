@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTaxiMasterDeliveryAdapter } from './tm-adapter.mjs';
 
-function fixture() {
+function fixture(scope={}) {
   const calls = [], records = {
     get_crew_info: { crew_id: 4, driver_id: 5, crew_group_id: 8, online: true },
     get_driver_info: { driver_id: 5, is_locked: false, is_dismissed: false },
@@ -13,6 +13,7 @@ function fixture() {
     get_order_state: { order_id: 90, customer: 'YANGI_DELIVERY/abc' },
   };
   const adapter = createTaxiMasterDeliveryAdapter({
+    ...scope,
     get: async (name, params) => { calls.push({ name, params }); return records[name]; },
     post: async (name, body) => { calls.push({ name, body }); return { order_id: 90 }; },
     postQuery:async(name,body)=>{calls.push({name,body});return {};},
@@ -70,4 +71,11 @@ test('cancellation validates the real aborted state and refuses any unknown or p
   f.records.check_cancel_order_penalty.cancel_order_penalty_sum=0;
   const plan=await f.adapter.prepareCancel(job,88);await f.adapter.cancel(plan);
   assert.deepEqual(f.calls.at(-1),{name:'change_order_state',body:{order_id:90,new_state:88,cancel_order_penalty_sum:0}});
+});
+
+test('restricted rollout rejects other crews/drivers before any transport write',async()=>{
+  for(const scope of [{allowedCrews:[999]},{allowedDrivers:[999]}]){
+    const f=fixture(scope);await assert.rejects(f.adapter.prepare(f.job,f.order,f.snapshot));assert.ok(!f.calls.some(c=>c.name==='create_order2'));
+  }
+  const f=fixture({allowedCrews:[4],allowedDrivers:[5]});assert.equal((await f.adapter.prepare(f.job,f.order,f.snapshot)).driver_id,5);
 });

@@ -2637,7 +2637,8 @@ if (process.env.DELIVERY_ENABLED === 'true') {
     if (cfg.mock) throw new Error('Delivery transport requires real TaxiMaster');
     const { DeliveryTransport } = await import('./delivery/transport.mjs');
     const { createTaxiMasterDeliveryAdapter } = await import('./delivery/tm-adapter.mjs');
-    transport = new DeliveryTransport(store, createTaxiMasterDeliveryAdapter({ get: tmGet, post: tmPostJson, postQuery:tmPostQuery, catalog: liveCatalog, time: tmTime, phone: orderPhoneDigits }));
+    const deliveryScope=name=>{const value=process.env[name];if(value===undefined)return null;if(!/^[1-9][0-9]*(?:,[1-9][0-9]*)*$/.test(value))throw new Error('Invalid '+name);const ids=value.split(',').map(Number);if(ids.some(id=>!Number.isSafeInteger(id)||id>2147483647))throw new Error('Invalid '+name);return ids;};
+    transport = new DeliveryTransport(store, createTaxiMasterDeliveryAdapter({ get: tmGet, post: tmPostJson, postQuery:tmPostQuery, catalog: liveCatalog, time: tmTime, phone: orderPhoneDigits, allowedCrews:deliveryScope('DELIVERY_ALLOWED_CREW_IDS'),allowedDrivers:deliveryScope('DELIVERY_ALLOWED_DRIVER_IDS') }));
     if (process.env.DELIVERY_BRIDGE_TOKEN) {
       const { createDeliveryBridge } = await import('./delivery/bridge.mjs');
       deliveryBridge = createDeliveryBridge({ transport, token:process.env.DELIVERY_BRIDGE_TOKEN });

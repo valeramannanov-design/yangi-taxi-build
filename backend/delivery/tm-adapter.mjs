@@ -1,6 +1,7 @@
 /** Real CommonAPI adapter; injected host functions retain existing signing/TLS.
  * Reference: https://help.taximaster.ru/index.php/TM_API */
-export function createTaxiMasterDeliveryAdapter({ get, post, postQuery, catalog, time, phone }) {
+export function createTaxiMasterDeliveryAdapter({ get, post, postQuery, catalog, time, phone, allowedCrews=null, allowedDrivers=null }) {
+  const allowed=(crew,driver)=>(allowedCrews===null || allowedCrews.includes(crew)) && (allowedDrivers===null || allowedDrivers.includes(driver));
   const read = order_id => get('get_order_state', { order_id });
   return {
     async options() {
@@ -8,13 +9,14 @@ export function createTaxiMasterDeliveryAdapter({ get, post, postQuery, catalog,
       if (!Array.isArray(working.crews_info) || !Array.isArray(current.orders)) throw new Error('Invalid TaxiMaster fleet response');
       const occupied = new Set(current.orders.flatMap(o => ['c' + o.crew_id, 'd' + o.driver_id]));
       return {
-        crews: working.crews_info.filter(c => c.online === true && c.driver_id > 0 && !occupied.has('c' + c.crew_id) && !occupied.has('d' + c.driver_id)).map(c => ({ id: c.crew_id, name: c.name || c.code || String(c.crew_id) })),
+        crews: working.crews_info.filter(c => c.online === true && c.driver_id > 0 && allowed(c.crew_id,c.driver_id) && !occupied.has('c' + c.crew_id) && !occupied.has('d' + c.driver_id)).map(c => ({ id: c.crew_id, name: c.name || c.code || String(c.crew_id) })),
         tariffs: [...definitions.tariffs.entries()].filter(([, t]) => t.is_active === true).map(([id, t]) => ({ id, name: t.name || String(id) })),
         cancel_states:(states.order_states||[]).filter(s=>s.state_type==='aborted').map(s=>({id:s.id,name:s.name})),
       };
     },
     async prepare(job, order, snapshot) {
       const crew = await get('get_crew_info', { crew_id: job.crew_id });
+      if(!allowed(crew.crew_id,crew.driver_id))throw new Error('Courier is outside enabled Delivery scope');
       if (crew.crew_id !== job.crew_id || crew.online !== true || !Number.isSafeInteger(crew.driver_id) || crew.driver_id < 1) throw new Error('Courier unavailable');
       const [driver, working, current, definitions] = await Promise.all([
         get('get_driver_info', { driver_id: crew.driver_id, fields: 'driver_id,is_locked,is_dismissed' }),
