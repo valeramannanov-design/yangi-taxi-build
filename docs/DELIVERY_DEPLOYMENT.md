@@ -54,3 +54,14 @@ Two discovered corrections are now active: fleet gateway resolves the private br
 ### Catalog009 follow-up (source only)
 
 The staged source now requires additive migration009 after008. Only product metadata/options/catalog revision change; recommendations and finance are preserved. Include delivery/product-options.mjs when reconciling the existing local deployed host. Dry schema4/5/6/7/8→9 tests preserve existing finance including journal008 rows. Production has NOT been migrated. Back up/restore matching code+DB; schema8 code cannot open9. After new variant reservations/cash events, keep their evidence and recover forward rather than reverting to an old stock/financial snapshot. Exact reference visuals, native map/GPS/courier acceptance, discounts/coupons and verified TM financial contracts remain separate launch gates.
+
+### Latest source requirement — schema10 / product promotions
+
+Additive010 adds nullable JSON product promotions with default JSONnull. Deploy
+product-promotions.mjs together with product-options/store,010.sql,portal and the
+matching Flutter source. Schema9 code rejects schema10; source cannot be rolled
+back independently of its database. Production remains schema5, unchanged.
+Dry upgrades through10 preserve v9 variants and prior cash evidence. Continue the
+consistent backup/rollback procedure above; never restore stale money/stock data
+after new writes. No production migration or checkout enablement authorized by
+this implementation. TEST promotion/receipt proof is not a live TM commission proof.

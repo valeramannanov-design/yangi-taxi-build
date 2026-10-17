@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { DeliveryError } from './store.mjs';
+import { validatePromotion, promotionalPrice } from './product-promotions.mjs';
 const fail=(message,code=422)=>{throw new DeliveryError(code,message);};
 const amount=(value,max=10000000)=>{if(!Number.isSafeInteger(value)||value<0||value>max)fail('Invalid catalog integer');return value;};
 const measure=value=>value==null||value===''?null:amount(value,1000000)||fail('Measurement must be positive');
@@ -9,10 +10,11 @@ const total=rows=>rows.filter(v=>v.active).reduce((sum,v)=>sum+v.stock,0);
 export class ProductOptions {
  constructor(store){this.s=store;}
  describe(row,staff=false){
-  const p=this.s.one('SELECT ingredients,weight_g,volume_ml,variants_json,catalog_version FROM delivery_products WHERE id=?',row.id);
-  const {variants_json,...data}={...row,...p};const variants=JSON.parse(variants_json);
+  const p=this.s.one('SELECT ingredients,weight_g,volume_ml,variants_json,catalog_version,promotion_json FROM delivery_products WHERE id=?',row.id);
+  const {variants_json,promotion_json,...data}={...row,...p};const promotion=JSON.parse(promotion_json),variants=JSON.parse(variants_json);
   const available=variants.filter(v=>v.active&&v.stock>0);
-  return {...data,...(!staff&&available.length?{price_uzs:Math.min(...available.map(v=>v.price_uzs))}:{}),has_variants:variants.length>0,variants:staff?variants:variants.filter(v=>v.active)};
+  const base=!staff&&available.length?Math.min(...available.map(v=>v.price_uzs)):data.price_uzs;
+  return {...data,...(staff?{promotion}:promotionalPrice(base,promotion,this.s.now())),has_variants:variants.length>0,variants:staff?variants:variants.filter(v=>v.active).map(v=>({...v,...promotionalPrice(v.price_uzs,promotion,this.s.now())}))};
  }
  prepare(shopId,input,productId){
   const old=productId?this.s.one('SELECT * FROM delivery_products WHERE id=? AND shop_id=?',productId,shopId):null;
@@ -37,14 +39,15 @@ export class ProductOptions {
   const ingredients=Object.hasOwn(input,'ingredients')?composition(input.ingredients):old?.ingredients||'';
   const weight_g=Object.hasOwn(input,'weight_g')?measure(input.weight_g):old?.weight_g??null,volume_ml=Object.hasOwn(input,'volume_ml')?measure(input.volume_ml):old?.volume_ml??null;
   const active=variants.filter(v=>v.active);
-  return {ingredients,weight_g,volume_ml,variants,stock:variants.length?amount(total(variants),1000000):input.stock,price_uzs:variants.length?(active.length?Math.min(...active.map(v=>v.price_uzs)):old?.price_uzs??input.price_uzs):input.price_uzs};
+  const promotion=Object.hasOwn(input,'promotion')?validatePromotion(input.promotion):JSON.parse(old?.promotion_json??'null');
+  return {ingredients,weight_g,volume_ml,variants,promotion,stock:variants.length?amount(total(variants),1000000):input.stock,price_uzs:variants.length?(active.length?Math.min(...active.map(v=>v.price_uzs)):old?.price_uzs??input.price_uzs):input.price_uzs};
  }
- write(productId,value){this.s.run('UPDATE delivery_products SET ingredients=?,weight_g=?,volume_ml=?,variants_json=?,catalog_version=catalog_version+1 WHERE id=?',value.ingredients,value.weight_g,value.volume_ml,JSON.stringify(value.variants),productId);}
+ write(productId,value){this.s.run('UPDATE delivery_products SET ingredients=?,weight_g=?,volume_ml=?,variants_json=?,promotion_json=?,catalog_version=catalog_version+1 WHERE id=?',value.ingredients,value.weight_g,value.volume_ml,JSON.stringify(value.variants),JSON.stringify(value.promotion),productId);}
  line(product,row){
   const variants=JSON.parse(product.variants_json),variant=row.variant_id==null?null:variants.find(v=>v.id===row.variant_id);
   if(variants.length&&(!variant||!variant.active)||!variants.length&&row.variant_id!=null)fail('Choose an available product variant',409);
   if((variant?.stock??product.stock)<row.quantity)fail('Variant unavailable',409);
-  return {product_id:product.id,name:product.name,price_uzs:variant?.price_uzs??product.price_uzs,quantity:row.quantity,catalog_version:product.catalog_version,ingredients:product.ingredients,weight_g:variant?.weight_g??product.weight_g,volume_ml:variant?.volume_ml??product.volume_ml,...(variant?{variant_id:variant.id,variant_name:variant.name}:{})};
+  return {product_id:product.id,name:product.name,...promotionalPrice(variant?.price_uzs??product.price_uzs,JSON.parse(product.promotion_json),this.s.now()),quantity:row.quantity,catalog_version:product.catalog_version,ingredients:product.ingredients,weight_g:variant?.weight_g??product.weight_g,volume_ml:variant?.volume_ml??product.volume_ml,...(variant?{variant_id:variant.id,variant_name:variant.name}:{})};
  }
  reserve(item,shopId){
   const p=this.s.one('SELECT * FROM delivery_products WHERE id=? AND shop_id=? AND active=1',item.product_id,shopId);

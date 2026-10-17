@@ -90,6 +90,31 @@ Future<void> open(WidgetTester tester, OptionsApi api) async {
 void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
   testWidgets(
+      'server promotion shows original price without narrowing card overflow',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = OptionsApi();
+    api.product['original_price_uzs'] = 22500;
+    await open(tester, api);
+    final tile = find.byKey(const ValueKey('go-product-1'));
+    final oldPrice = find.descendant(
+        of: tile,
+        matching: find.byWidgetPredicate((w) =>
+            w is Text && w.style?.decoration == TextDecoration.lineThrough));
+    expect(oldPrice, findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('TEST drink'));
+    await tester.pumpAndSettle();
+    expect(
+        find.byWidgetPredicate((w) =>
+            w is Text && w.style?.decoration == TextDecoration.lineThrough),
+        findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
       'variant selection is mandatory and two options remain distinct in one cart and quote',
       (tester) async {
     final api = OptionsApi();

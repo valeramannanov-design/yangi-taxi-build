@@ -116,14 +116,30 @@ function productForm(product) {
   const p = product || {}; let imageId = p.image_id || null;
   main.innerHTML = `<h1>${product ? 'Изменить товар' : 'Новый товар'}</h1><form id="product-form">${field('sku','Артикул',p.sku)}${field('name','Название',p.name)}<label class="full">Описание<textarea name="description" maxlength="2000">${esc(p.description)}</textarea></label>${field('price_uzs','Цена, сум',p.price_uzs,'number','min="0" max="10000000" step="1"')}${field('stock','Доступно, шт.',p.stock,'number','min="0" max="1000000" step="1"')}<label>Фотография (PNG, JPEG, WebP; до 2 МБ)<input name="photo" type="file" accept="image/png,image/jpeg,image/webp"></label>${check('active','В продаже',product ? p.active : true)}<div class="full"><button>Сохранить</button><button id="back" class="secondary" type="button">Назад</button></div></form>`;
   catalogDetailsEditor(document.querySelector('#product-form'),p);
+  promotionEditor(document.querySelector('#product-form'),p);
   recommendationsEditor(document.querySelector('#product-form'),p);
   document.querySelector('#back').onclick = () => perform(() => show('products'));
   document.querySelector('#product-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; perform(async () => {
     const input = Object.fromEntries(new FormData(form)), file = input.photo;
+    input.promotion=readPromotion(form);
     if (file?.size) { if (file.size > 2 * 1024 * 1024) throw new Error('Фото должно быть меньше 2 МБ'); imageId = (await request(imagesPath(), { method:'POST', body:file, raw:true })).id; form.elements.photo.value = ''; }
     delete input.photo; input.variants=readVariantEditor(form);input.ingredients=form.elements.ingredients.value;input.weight_g=form.elements.weight_g.value===''?null:Number(form.elements.weight_g.value);input.volume_ml=form.elements.volume_ml.value===''?null:Number(form.elements.volume_ml.value); input.recommendation_ids=JSON.parse(input.recommendation_ids); input.price_uzs = Number(input.price_uzs); input.stock = Number(input.stock); input.active = form.elements.active.checked; input.image_id = imageId; if (product) input.version = p.version;
     await request(productsPath() + (product ? '/' + p.id : ''), { method:product ? 'PUT' : 'POST', body:input }); await show('products');
   }); };
+}
+function promotionEditor(form,product){
+ const p=product.promotion||{},panel=document.createElement('section');panel.className='full';
+ const date=value=>value==null?'':new Date(value-new Date(value).getTimezoneOffset()*60000).toISOString().slice(0,16);
+ panel.innerHTML=`<h2>Акция на товар</h2><p>За счёт магазина: снижает сумму выкупа товара. Доставка TaxiMaster не меняется. Одна акция на товар и все его варианты. При процентной скидке дробная часть суммы скидки отбрасывается.</p><label>Тип<select name="promotion_kind"><option value="">Без акции</option><option value="percent">Процент</option><option value="fixed">Скидка в сум на единицу</option></select></label><label>Размер<input name="promotion_amount" type="number" min="1" max="10000000" step="1" value="${esc(p.amount)}"></label><label>Начало (местное время)<input name="promotion_start" type="datetime-local" value="${esc(date(p.starts_at))}"></label><label>Окончание (местное время)<input name="promotion_end" type="datetime-local" value="${esc(date(p.ends_at))}"></label>`;
+ form.lastElementChild.before(panel);form.elements.promotion_kind.value=p.kind||'';
+ const refresh=()=>{for(const key of ['amount','start','end']){const input=form.elements['promotion_'+key];input.required=!!form.elements.promotion_kind.value;input.disabled=!input.required;}};
+ form.elements.promotion_kind.onchange=refresh;refresh();
+}
+function readPromotion(form){
+ const kind=form.elements.promotion_kind.value;if(!kind)return null;
+ const p={kind,amount:Number(form.elements.promotion_amount.value),starts_at:new Date(form.elements.promotion_start.value).getTime(),ends_at:new Date(form.elements.promotion_end.value).getTime()};
+ if(!Number.isSafeInteger(p.amount)||p.amount<1||p.amount>(kind==='percent'?100:10000000)||!Number.isSafeInteger(p.starts_at)||!Number.isSafeInteger(p.ends_at)||p.starts_at<0||p.ends_at<=p.starts_at)throw new Error('Проверьте размер и период акции');
+ return p;
 }
 function catalogDetailsEditor(form,product){
  const panel=document.createElement('section');panel.className='full';

@@ -277,6 +277,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
         'variant_id': selected['id'],
         'variant_name': selected['name'],
         'price_uzs': selected['price_uzs'],
+        'original_price_uzs': selected['original_price_uzs'],
         'stock': selected['stock'],
         'weight_g': selected['weight_g'] ?? p['weight_g'],
         'volume_ml': selected['volume_ml'] ?? p['volume_ml']
@@ -326,6 +327,12 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                     maxLines: 2, overflow: TextOverflow.ellipsis)),
             if (_measure(p).isNotEmpty)
               Text(_measure(p), maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (p['original_price_uzs'] != null)
+              Text(_money(p['original_price_uzs']),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(decoration: TextDecoration.lineThrough)),
             Text(
                 '${p['has_variants'] == true ? _t('от ', 'dan ') : ''}${_money(p['price_uzs'])}',
                 maxLines: 1,
@@ -621,6 +628,10 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                             Text(
                                 '${_t('Состав', 'Tarkibi')}: ${p['ingredients']}'),
                           if (_measure(p).isNotEmpty) Text(_measure(p)),
+                          if (p['original_price_uzs'] != null)
+                            Text(_money(p['original_price_uzs']),
+                                style: const TextStyle(
+                                    decoration: TextDecoration.lineThrough)),
                           Text(_money(p['price_uzs']),
                               style: Theme.of(context).textTheme.titleLarge),
                           FilledButton.icon(
