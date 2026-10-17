@@ -1,15 +1,16 @@
 /** Real CommonAPI adapter; injected host functions retain existing signing/TLS.
  * Reference: https://help.taximaster.ru/index.php/TM_API */
-export function createTaxiMasterDeliveryAdapter({ get, post, catalog, time, phone }) {
+export function createTaxiMasterDeliveryAdapter({ get, post, postQuery, catalog, time, phone }) {
   const read = order_id => get('get_order_state', { order_id });
   return {
     async options() {
-      const [working, current, definitions] = await Promise.all([get('get_crews_info'), get('get_current_orders'), catalog()]);
+      const [working, current, definitions, states] = await Promise.all([get('get_crews_info'), get('get_current_orders'), catalog(), get('get_order_states_list')]);
       if (!Array.isArray(working.crews_info) || !Array.isArray(current.orders)) throw new Error('Invalid TaxiMaster fleet response');
       const occupied = new Set(current.orders.flatMap(o => ['c' + o.crew_id, 'd' + o.driver_id]));
       return {
         crews: working.crews_info.filter(c => c.online === true && c.driver_id > 0 && !occupied.has('c' + c.crew_id) && !occupied.has('d' + c.driver_id)).map(c => ({ id: c.crew_id, name: c.name || c.code || String(c.crew_id) })),
         tariffs: [...definitions.tariffs.entries()].filter(([, t]) => t.is_active === true).map(([id, t]) => ({ id, name: t.name || String(id) })),
+        cancel_states:(states.order_states||[]).filter(s=>s.state_type==='aborted').map(s=>({id:s.id,name:s.name})),
       };
     },
     async prepare(job, order, snapshot) {
@@ -32,6 +33,16 @@ export function createTaxiMasterDeliveryAdapter({ get, post, catalog, time, phon
         use_cashless: false, use_bonus: false, cashless_sum: 0, bonus_sum: 0 } };
     },
     create: body => post('create_order2', body), read,
+    async prepareCancel(job,stateId) {
+      if(typeof postQuery!=='function')throw new Error('Cancellation adapter unavailable');
+      const states=await get('get_order_states_list');
+      if(!states.order_states?.some(s=>s.id===stateId && s.state_type==='aborted'))throw new Error('Unknown cancellation state');
+      const penalty=await get('check_cancel_order_penalty',{order_id:job.transport_order_id,cancel_order_state_id:stateId});
+      const amount=penalty.cancel_order_penalty_sum;
+      if(!['number','string'].includes(typeof amount) || typeof amount==='string'&&!/^[0-9]+(?:\.[0-9]+)?$/.test(amount) || Number(amount)!==0)throw new Error('Cancellation has a fee; dispatcher review required');
+      return {order_id:job.transport_order_id,new_state:stateId,cancel_order_penalty_sum:0};
+    },
+    cancel:plan=>{if(typeof postQuery!=='function')throw new Error('Cancellation adapter unavailable');return postQuery('change_order_state',plan);},
     async find(job, order) {
       // No time-limited archive assumptions. Missing/expired orders stay unresolved
       // for dispatcher review; an unresolved job never permits another creation.

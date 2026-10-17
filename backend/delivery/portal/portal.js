@@ -1,5 +1,5 @@
 const main = document.querySelector('#main'), tabs = document.querySelector('#tabs'), notice = document.querySelector('#notice'), account = document.querySelector('#account');
-let token = '', me = null, tab = '', busy = false, config = null, products = [], orders = [], timer = null, transport = { enabled:false, jobs:[] };
+let token = '', me = null, tab = '', busy = false, config = null, products = [], orders = [], timer = null, transport = { enabled:false, jobs:[] }, management=[];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = v => Number(v || 0).toLocaleString('ru-RU') + ' сум';
 const statusNames = { pending_shop: 'Новый заказ', confirmed: 'Подтверждён магазином', ready: 'Готов к выдаче', assigned: 'Курьер назначен', accepted: 'Курьер принял', picked_up: 'Товар у курьера', completed: 'Доставлен', cancelled: 'Отменён', rejected: 'Магазин отказал' };
@@ -56,7 +56,7 @@ async function show(next) {
   else if (tab === 'categories') categoriesView();
   else if (tab === 'zones') zonesView();
   else if (tab === 'products') { products = await request('/merchant/products'); productsView(); }
-  else if (tab === 'orders') { orders = await request(me.role === 'admin' ? '/admin/orders' : '/merchant/orders'); if (me.role === 'admin') transport = await request('/admin/transport'); ordersView(); }
+  else if (tab === 'orders') { orders = await request(me.role === 'admin' ? '/admin/orders' : '/merchant/orders'); if (me.role === 'admin') { transport = await request('/admin/transport'); management=await request('/admin/management'); } ordersView(); }
   else if (tab === 'finance') financeView(await request(me.role === 'admin' ? '/admin/finance' : '/merchant/finance'));
 }
 function shopsView() {
@@ -112,11 +112,14 @@ function ordersView() {
   if (me.role === 'admin') {
     const panel = document.createElement('section');
     const phases = { queued:'Ожидает назначения', creating:'Создаётся в TaxiMaster', uncertain:'Проверяется результат создания', bound:'Связан с TaxiMaster', blocked:'Назначение отклонено', review:'Нужна проверка диспетчера' };
-    panel.innerHTML = '<h2>Назначение курьеров</h2>' + (transport.enabled ? orders.filter(o => ['confirmed','ready','assigned','accepted','picked_up'].includes(o.status)).map(o => {
+    panel.innerHTML = '<h2>Назначение курьеров</h2>' + (transport.enabled ? orders.filter(o => ['pending_shop','confirmed','ready','assigned','accepted','picked_up'].includes(o.status)).map(o => {
       const job = transport.jobs.find(j => j.order_id === o.id);
-      return `<article class="card"><b>${esc(o.shop_name)}</b><p class="mono">${esc(o.id)}</p>${job ? `<p>${esc(phases[job.phase] || job.phase)}${job.transport_order_id ? ' · TaxiMaster ' + job.transport_order_id : ''}</p>${job.last_error ? '<p>Проверьте назначение в TaxiMaster. Повторное создание заблокировано до выяснения результата.</p>' : ''}` : `<button data-dispatch="${o.id}">Назначить курьера</button>`}</article>`;
+      const actions=management.filter(a=>a.order_id===o.id),pending=actions.find(a=>['queued','sending','uncertain','review'].includes(a.phase)),last=actions[0];
+      const allowed=!pending && ['pending_shop','confirmed','ready','assigned','accepted'].includes(o.status) && (!job || ['queued','blocked','bound'].includes(job.phase));
+      return `<article class="card"><b>${esc(o.shop_name)}</b><p class="mono">${esc(o.id)}</p>${job ? `<p>${esc(phases[job.phase] || job.phase)}${job.transport_order_id ? ' · TaxiMaster ' + job.transport_order_id : ''}</p>${job.last_error ? '<p>Проверьте назначение в TaxiMaster. Повторное создание заблокировано до выяснения результата.</p>' : ''}` : ['confirmed','ready'].includes(o.status)?`<button data-dispatch="${o.id}">Назначить курьера</button>`:''}${pending?'<p role="status">Проверяем отмену прежней перевозки в TaxiMaster. Новое назначение пока заблокировано.</p>':last?.phase==='blocked'?'<p>Действие отклонено. Проверьте состояние, готовность и штраф за отмену в TaxiMaster.</p>':''}${allowed?`<div class="actions"><button class="danger" data-manage="${o.id}" data-operation="cancel">Отменить доставку</button>${job && o.status!=='pending_shop'?`<button class="secondary" data-manage="${o.id}" data-operation="reassign">Другой курьер</button>`:''}</div>`:''}</article>`;
     }).join('') : '<p class="muted">Связь доставки с TaxiMaster пока не включена.</p>');
     main.append(panel);
+    panel.querySelectorAll('[data-manage]').forEach(button=>{button.onclick=()=>perform(()=>managementForm(orders.find(o=>o.id===button.dataset.manage),button.dataset.operation));});
     panel.querySelectorAll('[data-dispatch]').forEach(button => { button.onclick = () => perform(async () => {
       const o = orders.find(o => o.id === button.dataset.dispatch), available = await request('/admin/transport-options');
       main.innerHTML = `<h1>Назначить курьера</h1><p>${esc(o.shop_name)} → ${esc(o.destination.address)}</p><p>Наличные от клиента: ${money(o.total_uzs)}. Перевозка в TaxiMaster: ${money(o.delivery_uzs)}.</p><form id="dispatch-form">${choose('crew_id','Свободный экипаж на линии',available.crews)}${choose('tariff_id','Тариф TaxiMaster',available.tariffs)}<div class="full"><button>Назначить</button><button type="button" id="back" class="secondary">Назад</button></div></form>`;
@@ -132,6 +135,17 @@ function ordersView() {
     if (action === 'reject' && !reason?.trim()) return;
     perform(async () => { await request(`/merchant/orders/${o.id}/action`, { method:'POST', body:{ action, version:o.version, ...(reason ? { reason:reason.trim() } : {}) }, key:commandKey(o, action) }); await show('orders'); });
   }; });
+}
+async function managementForm(order,action){
+  const job=transport.jobs.find(j=>j.order_id===order.id),bound=!!job?.transport_order_id;
+  const available=(bound||action==='reassign')?await request('/admin/transport-options'):{crews:[],tariffs:[],cancel_states:[]};
+  main.innerHTML=`<h1>${action==='cancel'?'Отменить доставку':'Назначить другого курьера'}</h1><p>${esc(order.shop_name)} → ${esc(order.destination.address)}</p><p>${bound?'Прежняя перевозка будет отменена только при нулевом штрафе. Дождитесь подтверждения TaxiMaster.':''}${action==='reassign'?' Товар останется в резерве. Новое назначение появится после подтверждённой отмены прежнего.':''}</p><form id="management-form">${action==='reassign'?choose('crew_id','Новый свободный экипаж',available.crews.filter(c=>c.id!==job.crew_id))+choose('tariff_id','Тариф TaxiMaster',available.tariffs,job.tariff_id):''}${bound?choose('cancel_state_id','Причина отмены в TaxiMaster',available.cancel_states,available.cancel_states.length===1?available.cancel_states[0].id:undefined):''}${field('reason','Комментарий диспетчера','','text','maxlength="300"')}<div class="full"><button>Подтвердить</button><button type="button" id="management-back" class="secondary">Назад</button></div></form>`;
+  document.querySelector('#management-back').onclick=()=>perform(()=>show('orders'));
+  document.querySelector('#management-form').onsubmit=event=>{
+    event.preventDefault();const input=Object.fromEntries(new FormData(event.currentTarget));input.action=action;input.version=order.version;
+    for(const name of ['crew_id','tariff_id','cancel_state_id'])if(input[name]!=null)input[name]=Number(input[name]);
+    perform(async()=>{await request(`/admin/orders/${order.id}/manage`,{method:'POST',body:input,key:commandKey(order,'manage-'+action+'-'+(input.crew_id||0)+'-'+(input.tariff_id||0)+'-'+(input.cancel_state_id||0))});await show('orders');});
+  };
 }
 function financeView(rows) {
   main.innerHTML = '<h1>Финансовая сводка</h1><p>Данные по доставленным заказам. Записи показывают собранные наличные и обязательства; фактические выплаты отражаются отдельно.</p>' + (rows.length ? '<div class="card tablewrap"><table><thead><tr><th>Показатель</th><th>Заказов</th><th>Сумма</th></tr></thead><tbody>' + rows.map(r => `<tr><td>${esc(financeNames[r.kind] || r.kind)}</td><td>${r.entries}</td><td>${money(Math.abs(r.amount_uzs))}</td></tr>`).join('') + '</tbody></table></div>' : empty('Пока нет завершённых доставок.'));

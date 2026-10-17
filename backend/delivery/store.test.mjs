@@ -38,6 +38,100 @@ function confirmed(f, suffix = 'primary') {
   const q = f.quote(), o = f.store.checkout(customer, { quote_id: q.id }, key(suffix));
   return f.store.merchantAction(f.p1, o.id, { action: 'confirm', version: 1 }, key('confirm-' + suffix));
 }
+function managementFixture(f) {
+  const remote=new Map();let created=0,cancelled=0,lost=false;
+  const adapter={
+    prepare:async job=>({driver_id:job.crew_id+1,body:{crew_id:job.crew_id,tariff_id:job.tariff_id,customer:job.marker}}),
+    create:async body=>{const order_id=9000+(++created);remote.set(order_id,{order_id,customer:body.customer,client_id:101,driver_id:body.crew_id+1,crew_id:body.crew_id,tariff_id:body.tariff_id,total_sum:4000,state_kind:'driver_assigned',confirmed:'not_confirmed'});return {order_id};},
+    read:async id=>remote.get(id),find:async()=>[],
+    prepareCancel:async job=>({order_id:job.transport_order_id,new_state:88,cancel_order_penalty_sum:0}),
+    cancel:async plan=>{cancelled++;remote.get(plan.order_id).state_kind='aborted';if(lost)throw new Error('Response lost');},
+  };
+  return {transport:new DeliveryTransport(f.store,adapter),remote,adapter,counts:()=>({created,cancelled}),lose:()=>{lost=true;}};
+}
+
+test('admin local cancellation is idempotent and prevents queued transport creation',async t=>{
+  const f=fixture(t),o=confirmed(f),m=managementFixture(f);
+  m.transport.dispatch(f.admin,o.id,{crew_id:4,tariff_id:3,version:o.version},key('local-dispatch'));
+  const input={action:'cancel',version:o.version,reason:'Test cancellation'};
+  status(403,()=>m.transport.management.request(f.p1,o.id,input,key('local-cancel')));
+  m.transport.management.request(f.admin,o.id,input,key('local-cancel'));
+  m.transport.management.request(f.admin,o.id,input,key('local-cancel'));
+  await m.transport.tick();assert.equal(m.counts().created,0);
+  assert.equal(f.store.orderForCustomer(customer,o.id).status,'cancelled');
+  assert.equal(f.store.shop(f.s1.id).products[0].stock,5);
+});
+
+test('bound cancellation waits for real TM abort proof before restoring stock exactly once',async t=>{
+  const f=fixture(t),o=confirmed(f),m=managementFixture(f);
+  m.transport.dispatch(f.admin,o.id,{crew_id:4,tariff_id:3,version:o.version},key('bound-dispatch'));await m.transport.tick();
+  const input={action:'cancel',version:f.store.orderForCustomer(customer,o.id).version,reason:'Cancel before pickup',cancel_state_id:88};
+  m.transport.management.request(f.admin,o.id,input,key('bound-cancel'));
+  assert.equal(f.store.shop(f.s1.id).products[0].stock,3);
+  await m.transport.tick();await m.transport.tick();
+  assert.equal(m.counts().cancelled,1);assert.equal(f.store.orderForCustomer(customer,o.id).status,'cancelled');
+  assert.equal(f.store.shop(f.s1.id).products[0].stock,5);assert.equal(f.store.finance(f.admin).length,0);
+});
+
+test('reassignment reconciles a lost cancel response, archives old transport and retains goods',async t=>{
+  const f=fixture(t),o=confirmed(f),m=managementFixture(f);
+  m.transport.dispatch(f.admin,o.id,{crew_id:4,tariff_id:3,version:o.version},key('replace-dispatch'));await m.transport.tick();
+  m.lose();m.transport.management.request(f.admin,o.id,{action:'reassign',crew_id:6,tariff_id:3,cancel_state_id:88,version:f.store.orderForCustomer(customer,o.id).version,reason:'Other courier'},key('replace-command'));
+  const second=confirmed(f,'other');
+  status(409,()=>m.transport.dispatch(f.admin,second.id,{crew_id:6,tariff_id:3,version:second.version},key('reserved-target')));
+  await m.transport.tick();assert.equal(m.counts().created,1);assert.equal(f.store.one('SELECT phase FROM delivery_management').phase,'uncertain');
+  await new DeliveryTransport(f.store,m.adapter).tick();
+  assert.equal(m.counts().cancelled,1);assert.equal(m.counts().created,2);
+  const fresh=f.store.orderForCustomer(customer,o.id);assert.equal(fresh.transport_order_id,9002);assert.equal(fresh.driver_id,7);
+  assert.equal(f.store.one('SELECT transport_order_id FROM delivery_transport_history').transport_order_id,9001);
+  assert.equal(f.store.shop(f.s1.id).products[0].stock,1);assert.equal(f.store.finance(f.admin).length,0);
+});
+
+test('pickup authorization and management cannot race into a false stock restoration',async t=>{
+  const f=fixture(t),o=confirmed(f),m=managementFixture(f);
+  m.transport.dispatch(f.admin,o.id,{crew_id:4,tariff_id:3,version:o.version},key('pickup-dispatch'));await m.transport.tick();
+  m.remote.get(9001).state_kind='car_at_place';
+  await assert.rejects(m.transport.authorizePickup(9001,{driver_id:5,crew_id:4}),e=>e.statusCode===409);
+  const current=f.store.orderForCustomer(customer,o.id);
+  f.store.merchantAction(f.p1,o.id,{action:'ready',version:current.version},key('ready-pickup'));
+  await m.transport.authorizePickup(9001,{driver_id:5,crew_id:4});await m.transport.authorizePickup(9001,{driver_id:5,crew_id:4});
+  assert.equal(f.store.one('SELECT count(*) AS n FROM delivery_pickup_authorizations').n,1);
+  status(409,()=>m.transport.management.request(f.admin,o.id,{action:'cancel',version:f.store.orderForCustomer(customer,o.id).version,reason:'Too late'},key('late-cancel')));
+  m.remote.get(9001).state_kind='aborted';await m.transport.tick();
+  assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase,'review');assert.equal(f.store.shop(f.s1.id).products[0].stock,3);
+});
+
+test('a queued dispatcher action blocks pickup, cash and ambiguous creation changes',async t=>{
+  const f=fixture(t),o=confirmed(f),m=managementFixture(f);
+  m.transport.dispatch(f.admin,o.id,{crew_id:4,tariff_id:3,version:o.version},key('gate-dispatch'));await m.transport.tick();
+  m.transport.management.request(f.admin,o.id,{action:'cancel',cancel_state_id:88,version:f.store.orderForCustomer(customer,o.id).version,reason:'Cancel'},key('gate-cancel'));
+  await assert.rejects(m.transport.authorizePickup(9001,{driver_id:5,crew_id:4}));
+  await assert.rejects(m.transport.confirmCash(9001,{driver_id:5,crew_id:4},o.total_uzs));
+  assert.equal((await m.transport.info(9001,{driver_id:5,crew_id:4})).delivery.management_pending,true);
+});
+
+test('unresolved creation cannot be cancelled and missing-write restart does not send cancellation',async t=>{
+  const f=fixture(t),o=confirmed(f),m=managementFixture(f);
+  m.transport.dispatch(f.admin,o.id,{crew_id:4,tariff_id:3,version:o.version},key('uncertain-management'));
+  f.store.run("UPDATE delivery_transport_jobs SET phase='uncertain'");
+  status(409,()=>m.transport.management.request(f.admin,o.id,{action:'cancel',version:o.version,reason:'Unknown creation'},key('uncertain-management-cancel')));
+  f.store.run("UPDATE delivery_transport_jobs SET phase='queued'");await m.transport.tick();
+  const action=m.transport.management.request(f.admin,o.id,{action:'cancel',cancel_state_id:88,version:f.store.orderForCustomer(customer,o.id).version,reason:'Before write'},key('interrupted-cancel'));
+  f.store.run("UPDATE delivery_management SET phase='sending' WHERE id=?",action.action_id);
+  await m.transport.tick();assert.equal(m.counts().cancelled,0);
+  assert.equal(f.store.one('SELECT phase FROM delivery_management').phase,'blocked');
+  assert.equal(f.store.orderForCustomer(customer,o.id).status,'assigned');
+});
+
+test('known cancellation rejection releases management gate without changing stock or transport',async t=>{
+  const f=fixture(t),o=confirmed(f),m=managementFixture(f);
+  m.transport.dispatch(f.admin,o.id,{crew_id:4,tariff_id:3,version:o.version},key('rejected-cancel-dispatch'));await m.transport.tick();
+  m.adapter.cancel=async()=>{throw Object.assign(new Error('TM rejected'),{tmCode:107});};
+  m.transport.management.request(f.admin,o.id,{action:'cancel',cancel_state_id:88,version:f.store.orderForCustomer(customer,o.id).version,reason:'Cancel'},key('rejected-cancel-command'));
+  await m.transport.tick();assert.equal(f.store.one('SELECT phase FROM delivery_management').phase,'blocked');
+  assert.equal(f.store.orderForCustomer(customer,o.id).status,'assigned');assert.equal(f.store.shop(f.s1.id).products[0].stock,3);
+  assert.equal((await m.transport.info(9001,{driver_id:5,crew_id:4})).delivery.management_pending,false);
+});
 test('migrations and checkout survive restart; quote and checkout are idempotent', t => {
   const dir = mkdtempSync(join(tmpdir(), 'yangi-delivery-'));
   const file = join(dir, 'test.sqlite'), f = fixture(t, file), q = f.quote();
@@ -105,7 +199,7 @@ test('migrations upgrade an existing v1 database and preserve its data', t => {
   const upgraded = new DeliveryStore(path);
   try {
     assert.equal(upgraded.one('SELECT name FROM delivery_categories').name, 'Existing category');
-    assert.equal(upgraded.one('SELECT max(version) AS v FROM delivery_migrations').v, 3);
+    assert.equal(upgraded.one('SELECT max(version) AS v FROM delivery_migrations').v, 4);
     assert.ok(upgraded.all('PRAGMA table_info(delivery_products)').some(c => c.name === 'version'));
   } finally { upgraded.close(); }
 });

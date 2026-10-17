@@ -51,8 +51,8 @@ export class DeliveryStore {
     this.db.function('delivery_fold', { deterministic: true }, value => String(value).normalize('NFKC').toLocaleLowerCase());
     this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)');
-    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 3) { this.close(); throw new Error('Delivery database requires a newer service version'); }
-    for (const version of [1, 2, 3]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
+    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 4) { this.close(); throw new Error('Delivery database requires a newer service version'); }
+    for (const version of [1, 2, 3, 4]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
       this.transaction(() => {
         // Another process may have migrated while this connection waited for its lock.
         if (this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) return;

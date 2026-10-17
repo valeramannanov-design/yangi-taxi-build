@@ -82,6 +82,11 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
             if (!transport) error(503, 'TaxiMaster delivery dispatch is not enabled');
             result = transport.dispatch(user, route.split('/')[3], await json(req), key);
           }
+          else if (method === 'POST' && /^\/admin\/orders\/[a-f0-9]{36}\/manage$/.test(route)) {
+            if(!transport)error(503,'TaxiMaster delivery dispatch is not enabled');
+            result=transport.management.request(user,route.split('/')[3],await json(req),key);
+          }
+          else if(method==='GET' && route==='/admin/management')result=store.all('SELECT id,order_id,action,phase,last_error,updated_at FROM delivery_management ORDER BY created_at DESC LIMIT 200');
           else if (method === 'GET' && route === '/admin/transport') result = { enabled: !!transport, jobs: store.all('SELECT order_id,crew_id,tariff_id,phase,transport_order_id,last_error,updated_at FROM delivery_transport_jobs ORDER BY created_at DESC LIMIT 200') };
           else if (method === 'GET' && route === '/admin/transport-options') {
             if (!transport) error(503, 'TaxiMaster delivery dispatch is not enabled');

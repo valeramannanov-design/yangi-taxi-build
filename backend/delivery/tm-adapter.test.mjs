@@ -8,11 +8,14 @@ function fixture() {
     get_driver_info: { driver_id: 5, is_locked: false, is_dismissed: false },
     get_crews_info: { crews_info: [{ crew_id: 4, driver_id: 5 }] },
     get_current_orders: { orders: [] },
+    get_order_states_list:{order_states:[{id:88,name:'Cancelled from server',state_type:'aborted'}]},
+    check_cancel_order_penalty:{cancel_order_penalty_sum:0},
     get_order_state: { order_id: 90, customer: 'YANGI_DELIVERY/abc' },
   };
   const adapter = createTaxiMasterDeliveryAdapter({
     get: async (name, params) => { calls.push({ name, params }); return records[name]; },
     post: async (name, body) => { calls.push({ name, body }); return { order_id: 90 }; },
+    postQuery:async(name,body)=>{calls.push({name,body});return {};},
     catalog: async () => ({ groups: new Map([[8, {}]]), tariffs: new Map([[9, { is_active: true }]]) }),
     phone: p => p.replace(/\D/g, ''), time: () => '20261017120000',
   });
@@ -57,4 +60,14 @@ test('admin choices exclude occupied and offline couriers and use the live tarif
   const options = await f.adapter.options();
   assert.deepEqual(options.crews, [{ id: 4, name: 'Free' }]);
   assert.deepEqual(options.tariffs, [{ id: 9, name: '9' }]);
+});
+
+test('cancellation validates the real aborted state and refuses any unknown or positive fee',async()=>{
+  const f=fixture(),job={transport_order_id:90};
+  await assert.rejects(f.adapter.prepareCancel(job,123));
+  f.records.check_cancel_order_penalty.cancel_order_penalty_sum=1000;await assert.rejects(f.adapter.prepareCancel(job,88));
+  for(const amount of [null,false,'',[],{}]){f.records.check_cancel_order_penalty.cancel_order_penalty_sum=amount;await assert.rejects(f.adapter.prepareCancel(job,88));}
+  f.records.check_cancel_order_penalty.cancel_order_penalty_sum=0;
+  const plan=await f.adapter.prepareCancel(job,88);await f.adapter.cancel(plan);
+  assert.deepEqual(f.calls.at(-1),{name:'change_order_state',body:{order_id:90,new_state:88,cancel_order_penalty_sum:0}});
 });

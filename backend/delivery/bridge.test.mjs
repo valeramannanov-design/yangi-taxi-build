@@ -8,6 +8,7 @@ test('private driver bridge requires its dedicated token and verified identities
   const bridge=createDeliveryBridge({token,transport:{
     info:async(id,identity)=>{calls.push({id,identity});return {delivery:null};},
     confirmCash:async(id,identity,amount)=>{calls.push({id,identity,amount});return {cash_confirmed:true};},
+    authorizePickup:async(id,identity)=>{calls.push({id,identity,pickup:true});return {pickup_authorized:true};},
   }});
   const server=http.createServer(async(req,res)=>{if(!await bridge(req,res)){res.writeHead(404);res.end();}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
@@ -22,6 +23,9 @@ test('private driver bridge requires its dedicated token and verified identities
   assert.equal(calls[0].identity.driver_id,5);
   assert.equal((await request('/internal/delivery/cash',{...identity,amount_uzs:25000})).status,200);
   assert.equal(calls[1].amount,25000);
+  assert.equal((await request('/internal/delivery/pickup',{...identity,ready:true})).status,422);
+  assert.equal((await request('/internal/delivery/pickup',identity)).status,200);
+  assert.equal(calls[2].pickup,true);
   assert.equal((await request('/internal/delivery/complete',identity)).status,404);
   assert.throws(()=>createDeliveryBridge({token:'short'}));
 });

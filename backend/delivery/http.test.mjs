@@ -37,6 +37,8 @@ test('HTTP auth derives identities from trusted host; role and passenger token s
   assert.equal((await f.request('/api/delivery/admin/config')).status, 401);
   assert.equal((await f.request('/api/delivery/admin/config', { authorization: f.partnerToken })).status, 403);
   assert.equal((await f.request('/api/delivery/admin/transport', { authorization: f.partnerToken })).status, 403);
+  assert.equal((await f.request('/api/delivery/admin/management', { authorization: f.partnerToken })).status, 403);
+  assert.equal((await f.request('/api/delivery/admin/orders/'+'a'.repeat(36)+'/manage', { method:'POST',authorization:f.partnerToken,body:{action:'cancel'} })).status,403);
   assert.equal((await f.request('/api/delivery/admin/transport', { authorization: f.token })).json.data.enabled, false);
   assert.equal((await f.request('/api/delivery/admin/transport-options', { authorization: f.token })).status, 503);
   assert.equal((await f.request('/api/delivery/customer/orders', { authorization: f.token })).status, 401);
