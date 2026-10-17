@@ -18,6 +18,8 @@ import 'package:yandex_maps_mapkit/mapkit_factory.dart' as ym_factory;
 import 'package:yandex_maps_mapkit/search.dart' as ys;
 import 'package:yandex_maps_mapkit/yandex_map.dart' as ym_widget;
 
+part 'delivery.dart';
+
 const defaultLat = 41.3111;
 const defaultLon = 69.2797;
 
@@ -189,6 +191,23 @@ class ApiClient {
         .delete(Uri.parse(baseUrl + path), headers: headers)
         .timeout(const Duration(seconds: 20));
     return _decode(r);
+  }
+
+  void _requireDeliveryBackend() {
+    if (isDemo) throw ApiException('Доставка доступна после подключения к службе');
+    if (Uri.parse(baseUrl).scheme != 'https') throw ApiException('Для доставки требуется защищённое подключение HTTPS');
+  }
+
+  Future<dynamic> deliveryGet(String path, {Map<String, String>? query}) {
+    _requireDeliveryBackend();
+    return get('/api/delivery' + path, query: query);
+  }
+
+  Future<dynamic> deliveryPost(String path, Map<String, dynamic> body, {String? idempotencyKey}) async {
+    _requireDeliveryBackend();
+    final response = await http.post(Uri.parse(baseUrl + '/api/delivery' + path),
+      headers: {...headers, if (idempotencyKey != null) 'Idempotency-Key': idempotencyKey}, body: jsonEncode(body)).timeout(const Duration(seconds: 20));
+    return _decode(response);
   }
 
   dynamic _decode(http.Response r) {
@@ -3136,6 +3155,7 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   final GlobalKey<ScaffoldState> shellKey = GlobalKey<ScaffoldState>();
+  bool deliveryMode = false;
   int tab = 0;
   int? activeId;
   int orderFormGeneration = 0;
@@ -3310,6 +3330,7 @@ class _ShellState extends State<Shell> {
       scaffold!.closeDrawer();
       return;
     }
+    if (tab == 0 && deliveryMode) { setState(() { deliveryMode = false; }); return; }
     final safeHomeTab = activeId != null ? 1 : 0;
     if (tab != safeHomeTab) {
       selectTab(safeHomeTab);
@@ -3696,14 +3717,14 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      OrderScreen(
+      IndexedStack(index: deliveryMode ? 1 : 0, children: [OrderScreen(
         key: ValueKey<int>(orderFormGeneration),
         api: widget.api,
         lang: widget.lang,
         onOrder: orderCreated,
         onMenu: openMenu,
-        isActive: tab == 0,
-      ),
+        isActive: tab == 0 && !deliveryMode,
+      ), DeliveryScreen(api: widget.api, lang: widget.lang, isActive: tab == 0 && deliveryMode, onMenu: openMenu)]),
       RideScreen(
         api: widget.api,
         lang: widget.lang,
@@ -4197,7 +4218,13 @@ class _ShellState extends State<Shell> {
           ),
         ),
       ),
-        body: IndexedStack(index: tab, children: pages),
+        body: Column(children: [
+          if (tab == 0) ColoredBox(color: theme.colorScheme.surface, child: SafeArea(bottom: false, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: SizedBox(width: double.infinity, child: SegmentedButton<bool>(
+            segments: [ButtonSegment(value: false, icon: const Icon(Icons.local_taxi_outlined), label: Text(widget.lang == 'uz' ? 'TAKSI' : 'ТАКСИ')), ButtonSegment(value: true, icon: const Icon(Icons.shopping_bag_outlined), label: Text(widget.lang == 'uz' ? 'YETKAZISH' : 'ДОСТАВКА'))],
+            selected: {deliveryMode}, onSelectionChanged: (value) => setState(() { deliveryMode = value.single; }),
+          ))))),
+          Expanded(child: IndexedStack(index: tab, children: pages)),
+        ]),
         bottomNavigationBar: null,
       ),
     );

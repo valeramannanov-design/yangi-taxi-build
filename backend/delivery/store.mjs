@@ -261,7 +261,7 @@ export class DeliveryStore {
   orderData(row, financial = false) {
     if (!row) fail(404, 'Order not found');
     const snapshot = JSON.parse(row.snapshot);
-    return { id: row.id, shop_id: row.shop_id, status: row.status, version: row.version, created_at: row.created_at, updated_at: row.updated_at,
+    return { id: row.id, quote_id: row.quote_id, shop_id: row.shop_id, status: row.status, version: row.version, created_at: row.created_at, updated_at: row.updated_at,
       ready_at: row.ready_at, transport_order_id: row.transport_order_id, driver_id: row.driver_id, ...(financial ? snapshot : this.publicSnapshot(snapshot)) };
   }
   orderForCustomer(identity, orderId) {
