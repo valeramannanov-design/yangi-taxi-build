@@ -66,3 +66,13 @@ test('HTTP rejects malformed JSON, excessive bodies and SQL-shaped identifiers',
   assert.equal((await f.request('/api/delivery/catalog?category=1%20OR%201=1')).status, 422);
   assert.equal((await f.request('/api/delivery/shops/1%20OR%201=1')).status, 401);
 });
+test('responsive portal assets are served without exposing local files', async t => {
+  const f = await fixture(t);
+  const page = await f.request('/delivery');
+  assert.equal(page.status, 200); assert.match(page.text, /name="viewport"/);
+  assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  const script = await f.request('/delivery/portal.js');
+  assert.equal(script.status, 200); assert.match(script.headers.get('content-type'), /javascript/);
+  assert.equal((await f.request('/delivery/store.mjs')).status, 404);
+  assert.equal((await f.request('/delivery/migrations/001.sql')).status, 404);
+});

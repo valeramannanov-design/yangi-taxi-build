@@ -17,11 +17,16 @@
 - Backend stage: native SQLite migrations; partner/admin authentication and tenant isolation; categories, stores, zones, image upload, Unicode product search, catalog; server quote snapshots, stock reservation, idempotent checkout, cancellation/rejection and merchant confirmation/readiness.
 - Internal transport-binding and balanced cash-liability ledger implemented. These methods have no public completion endpoint; live TaxiMaster adapter is still required.
 - Validation: `node --test` in `backend` passed 26 tests (12 Delivery and 14 existing taxi/payment safety tests). Includes separate-worker stock race, restart persistence, role/ownership, cancellation, price validation and duplicate settlement. No live network calls or real documents/payments used.
+- Admin/merchant portal at `/delivery`: responsive light/system-dark layout, private login, category and zone/rate management, shop/partner creation, shop blocking/commission editing, product/photo/price/stock management, order confirm/reject/readiness, history and cash-liability summaries. Financial completion is deliberately not exposed as a public endpoint.
+- Latest validation: `node --test` passed 28 tests (14 Delivery and 14 existing safety tests); portal JS syntax checked. The actual passenger HTTP server was started only in an isolated test directory, with synthetic authentication and no TM/ATMOS calls. Portal asset routing and CSP were checked.
 
 ## In progress / next
-- Next: responsive admin/merchant portal using the real Delivery API; then passenger Flutter integration, live TM transport adapter and Driver+ delivery display/actions, end-to-end tests and APK builds.
+- Next concrete step: integrate a Delivery catalog/cart/history screen and `ТАКСИ | ДОСТАВКА` switch into `flutter/lib/main.dart`, reusing `MapPointPickerScreen`, `ApiClient` and passenger sessions. Keep pending checkout idempotency keys in secure storage across network failures/restarts.
+- Then build the durable TM transport outbox and reconciliation (unknown create outcome must not be retried blindly), reuse actual driver/crew assignment proof, integrate Driver+ delivery labels/actions, test taxi/delivery conflict handling, full flow and financial settlement, build APKs.
 
 ## Blockers / validation
-- Flutter SDK not yet located. Running passenger backend differs from its manifest commit.
+- Flutter SDK absent initially; cloned official stable Flutter into `C:\Yangi Taxi DEV\.local\tools\flutter`, first Dart/tool initialization in progress. APKs not built for Delivery yet. Running passenger backend differs from its manifest commit.
+- Browser UI verification blocked: CUA reports `Local browser use is disabled in Work settings`. Do not bypass that setting with another browser automation route. Portal visual/form acceptance remains unverified.
 - No delivery changes deployed; no live orders or money affected.
 - Delivery is opt-in (`DELIVERY_ENABLED=true`), requires Node 24+, a private absolute `DELIVERY_DB_PATH` and a strong existing passenger session secret. Fees are explicitly configured straight-line zone tariffs, not claimed road distances. All current transport tests use test-only simulated proof.
+- Baseline/backend commit: `b00944e`. Portal changes are the next isolated commit. Local git commit author is Codex; no global Git identity was changed. No pushes or CI runs were triggered.

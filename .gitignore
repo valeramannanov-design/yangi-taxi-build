@@ -1,0 +1,11 @@
+.env
+backend/data/
+*.sqlite
+*.sqlite-*
+.dart_tool/
+.gradle/
+build/
+.flutter-plugins*
+**/local.properties
+*.jks
+*.keystore

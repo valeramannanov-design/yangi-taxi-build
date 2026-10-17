@@ -2624,6 +2624,7 @@ async function realRoute(req, res, path, url) {
 // for passenger identity; delivery staff tokens cannot authenticate taxi requests.
 let deliveryHandler = null;
 if (process.env.DELIVERY_ENABLED === 'true') {
+  if (Number(process.versions.node.split('.')[0]) < 24) throw new Error('Delivery requires Node.js 24 or newer');
   if (cfg.sessionSecret.length < 32 || !process.env.DELIVERY_DB_PATH || !isAbsolute(process.env.DELIVERY_DB_PATH)) {
     throw new Error('Delivery requires a strong SESSION_SECRET and absolute DELIVERY_DB_PATH');
   }

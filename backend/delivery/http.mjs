@@ -1,4 +1,5 @@
 import { DeliveryError } from './store.mjs';
+import { readFileSync } from 'node:fs';
 
 const error = (status, message) => { throw new DeliveryError(status, message); };
 async function bytes(req, limit) {
@@ -33,6 +34,13 @@ export function createDeliveryHandler({ store, passengerIdentity }) {
   if (typeof passengerIdentity !== 'function') throw new TypeError('Passenger authentication adapter required');
   return async function handle(req, res) {
     const url = new URL(req.url, 'http://local'), path = url.pathname, method = req.method;
+    const files = { '/delivery': ['index.html', 'text/html; charset=utf-8'], '/delivery/': ['index.html', 'text/html; charset=utf-8'], '/delivery/portal.css': ['portal.css', 'text/css; charset=utf-8'], '/delivery/portal.js': ['portal.js', 'text/javascript; charset=utf-8'] };
+    if (method === 'GET' && Object.hasOwn(files, path)) {
+      const [file, mime] = files[path];
+      res.writeHead(200, { 'content-type': mime, 'x-content-type-options': 'nosniff', 'cache-control': 'no-store',
+        'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
+      res.end(readFileSync(new URL('./portal/' + file, import.meta.url))); return true;
+    }
     const prefix = '/api/delivery';
     if (path !== prefix && !path.startsWith(prefix + '/')) return false;
     const route = path.slice(prefix.length), key = req.headers['idempotency-key'];
