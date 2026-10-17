@@ -24,6 +24,10 @@ Caddy now proxies Delivery paths to 8788 and preserves existing driver gateway p
 
 ## Verification and gaps
 
+Acceptance follow-up: a separate loopback-only sandbox under `delivery-private\acceptance` exercised merchant checkout/readiness and actual Driver+ swipe acceptance on TM order 11691 / synthetic client 1640. USB then disconnected, so arrival, goods pickup, cash receipt and completion were not verified. The TM test order is independently confirmed aborted after a zero-fee cancellation preflight. Sandbox process is stopped, production bridge restored, production catalog/orders/ledger remain empty. Private fixture/cleanup intents must not be replayed blindly.
+
+Two discovered corrections are now active: fleet gateway resolves the private bridge relative to the workspace, and an already-bound assignment review can recover through exact TM read proofs before goods pickup. Unknown creation, financial reviews, foreign ownership, changed amounts and pending management remain blocked. The production patch changed only `delivery/transport.mjs`; `server.mjs` and `.env` hashes were preserved and the replacement process owns the single settlement lock. Private rollback/proof: `delivery-private\acceptance\production-recovery-deployment.json`. Validation now passes 52 Node and 72 targeted Python tests.
+
 - 50 Node tests pass. The merged server also passed isolated host/auth/catalog/portal smoke testing before deployment.
 - Live real-TM health, administrator login/role/logout, empty catalog, schema 4, preserved non-Delivery config, single settlement worker and driver scope verified.
 - Live choices returned test crew 4, thirteen actual tariffs and four actual cancellation states; IDs/names are loaded from TM.

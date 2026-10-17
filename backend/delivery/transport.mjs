@@ -33,6 +33,10 @@ export class DeliveryTransport {
     this.running = true;
     try {
       await this.management.tick();
+      for (const job of this.store.all("SELECT j.* FROM delivery_transport_jobs j JOIN delivery_orders o ON o.id=j.order_id WHERE j.phase='review' AND j.last_error='Transport assignment or amount changed' AND o.transport_order_id=j.transport_order_id AND o.status IN ('confirmed','ready','assigned','accepted') ORDER BY j.updated_at LIMIT 20")) {
+        this.store.run('UPDATE delivery_transport_jobs SET updated_at=? WHERE order_id=?', this.store.now(), job.order_id);
+        try { await this.recoverAssignment(job); } catch { /* Reads cannot authorize a changed or unavailable transport. */ }
+      }
       for (const job of this.store.all("SELECT * FROM delivery_transport_jobs WHERE phase IN ('queued','creating','uncertain') ORDER BY updated_at,created_at LIMIT 20")) {
         this.store.run('UPDATE delivery_transport_jobs SET updated_at=? WHERE order_id=?', this.store.now(), job.order_id);
         try { if (job.phase === 'queued') await this.create(job); else await this.reconcile(job); }
@@ -96,6 +100,21 @@ export class DeliveryTransport {
     const expected = JSON.parse(job.request_json), snapshot = JSON.parse(order.snapshot);
     if (Number(found.order_id) !== job.transport_order_id || found.customer !== job.marker || String(found.client_id) !== order.customer_id || found.driver_id !== expected.driver_id || found.crew_id !== job.crew_id || found.tariff_id !== job.tariff_id || Number(found.total_sum) !== snapshot.delivery_uzs) fail(409, 'TaxiMaster transport proof changed');
     return snapshot;
+  }
+  async recoverAssignment(job) {
+    const s = this.store;
+    if (this.management.active(job.order_id) || this.management.hasGoods(job.order_id)) return;
+    const order = s.one('SELECT * FROM delivery_orders WHERE id=?', job.order_id);
+    const found = await this.adapter.read(job.transport_order_id);
+    this.verify(job, order, found);
+    // Recover only an already bound, current order restored to the exact original
+    // courier before pickup. Creation uncertainty and financial reviews stay blocked.
+    if (found.is_prior !== false || !['driver_assigned','car_at_place'].includes(found.state_kind)) return;
+    s.transaction(() => {
+      if (this.management.active(order.id) || this.management.hasGoods(order.id)) return;
+      const changed = s.run("UPDATE delivery_transport_jobs SET phase='bound',last_error='',updated_at=? WHERE order_id=? AND phase='review' AND last_error='Transport assignment or amount changed'", s.now(), order.id).changes;
+      if (changed) s.event(order.id, 'tm-transport:' + job.transport_order_id, 'transport_assignment_restored');
+    });
   }
   async synchronize(job) {
     const s = this.store, order = s.one('SELECT * FROM delivery_orders WHERE id=?', job.order_id);

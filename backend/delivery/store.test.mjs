@@ -101,6 +101,41 @@ test('pickup authorization and management cannot race into a false stock restora
   assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase,'review');assert.equal(f.store.shop(f.s1.id).products[0].stock,3);
 });
 
+test('restored bound assignment recovers by reads only, once and with exact identity',async t=>{
+  const f=fixture(t),o=confirmed(f),m=managementFixture(f);
+  m.transport.dispatch(f.admin,o.id,{crew_id:4,tariff_id:3,version:o.version},key('recover-dispatch'));await m.transport.tick();
+  const remote=m.remote.get(9001),original={...remote,is_prior:false};
+  remote.crew_id=0;remote.driver_id=0;await m.transport.tick();
+  assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase,'review');
+  for (const change of [{driver_id:9},{crew_id:8},{client_id:102},{customer:'other'},{tariff_id:8},{total_sum:5000},{is_prior:true},{state_kind:'client_inside'},{state_kind:'finished'}]) {
+    Object.assign(remote,original,change);await m.transport.tick();
+    assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase,'review');
+  }
+  Object.assign(remote,original);await new DeliveryTransport(f.store,m.adapter).tick();await m.transport.tick();
+  assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase,'bound');
+  assert.deepEqual(m.counts(),{created:1,cancelled:0});
+  assert.equal(f.store.one("SELECT count(*) AS n FROM delivery_events WHERE action='transport_assignment_restored'").n,1);
+  assert.equal(f.store.finance(f.admin).length,0);assert.equal(f.store.shop(f.s1.id).products[0].stock,3);
+});
+
+test('assignment recovery cannot bypass pickup proof, management or creation review',async t=>{
+  const f=fixture(t),o=confirmed(f),m=managementFixture(f);
+  m.transport.dispatch(f.admin,o.id,{crew_id:4,tariff_id:3,version:o.version},key('guard-recovery'));await m.transport.tick();
+  const remote=m.remote.get(9001);remote.is_prior=false;
+  f.store.run("UPDATE delivery_transport_jobs SET phase='review',last_error='Transport identity or assignment does not match'");
+  await m.transport.tick();assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase,'review');
+  f.store.run("UPDATE delivery_transport_jobs SET phase='review',last_error='Transport assignment or amount changed'");
+  f.store.run("UPDATE delivery_transport_jobs SET phase='bound'");
+  const action=m.transport.management.request(f.admin,o.id,{action:'cancel',cancel_state_id:88,version:f.store.orderForCustomer(customer,o.id).version,reason:'Test management gate'},key('recovery-gate'));
+  f.store.run("UPDATE delivery_transport_jobs SET phase='review',last_error='Transport assignment or amount changed'");
+  f.store.run("UPDATE delivery_management SET phase='review' WHERE id=?",action.action_id);
+  await m.transport.tick();assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase,'review');
+  f.store.run("UPDATE delivery_management SET phase='blocked' WHERE id=?",action.action_id);
+  f.store.run('INSERT INTO delivery_pickup_authorizations VALUES(?,?,?,?,?)',o.id,9001,5,4,f.store.now());
+  await m.transport.tick();assert.equal(f.store.one('SELECT phase FROM delivery_transport_jobs').phase,'review');
+  assert.deepEqual(m.counts(),{created:1,cancelled:0});assert.equal(f.store.finance(f.admin).length,0);
+});
+
 test('a queued dispatcher action blocks pickup, cash and ambiguous creation changes',async t=>{
   const f=fixture(t),o=confirmed(f),m=managementFixture(f);
   m.transport.dispatch(f.admin,o.id,{crew_id:4,tariff_id:3,version:o.version},key('gate-dispatch'));await m.transport.tick();
