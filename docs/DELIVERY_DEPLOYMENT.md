@@ -49,3 +49,8 @@ Two discovered corrections are now active: fleet gateway resolves the private br
 - Deploy compatible server plus backend/address-details.mjs/delivery modules, bridge/Driver+ and passenger client together. Test shared profile metadata echo; old servers must not silently drop delivery details. No new address-specific DB migration is required.
 - Before new writes, rollback can restore the matching old code+DB+profile snapshot. After any new cash event/order, DO NOT restore a stale DB or delete evidence: freeze new checkout, retain schema8/journal/receipts, reconcile and recover forward. Older code must not open schema8. Keep a complete post-cutover snapshot for investigation.
 - Device/native map/location, active taxi restore and new courier cash actions remain pending acceptance. ADB online is not a completed GUI test. No production changes were made by this stage.
+
+
+### Catalog009 follow-up (source only)
+
+The staged source now requires additive migration009 after008. Only product metadata/options/catalog revision change; recommendations and finance are preserved. Include delivery/product-options.mjs when reconciling the existing local deployed host. Dry schema4/5/6/7/8→9 tests preserve existing finance including journal008 rows. Production has NOT been migrated. Back up/restore matching code+DB; schema8 code cannot open9. After new variant reservations/cash events, keep their evidence and recover forward rather than reverting to an old stock/financial snapshot. Exact reference visuals, native map/GPS/courier acceptance, discounts/coupons and verified TM financial contracts remain separate launch gates.

@@ -6,7 +6,7 @@ import { join,resolve,dirname,basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DeliveryStore } from './store.mjs';
 
-for(const baseline of [4,5,6,7])test('schema'+baseline+' → schema8 preserves orders, receipts, ledger and foreign keys',t=>{
+for(const baseline of [4,5,6,7,8])test('schema'+baseline+' → schema9 preserves orders, receipts, ledger and foreign keys',t=>{
   const dir=mkdtempSync(join(tmpdir(),'yangi-delivery-road-migration-')),file=join(dir,'existing.sqlite');
   t.after(()=>{const target=resolve(dir);assert.equal(dirname(target),resolve(tmpdir()));assert.ok(basename(target).startsWith('yangi-delivery-'));rmSync(target,{recursive:true,force:true});});
   const old=new DatabaseSync(file);old.exec('PRAGMA foreign_keys=ON');
@@ -18,9 +18,10 @@ for(const baseline of [4,5,6,7])test('schema'+baseline+' → schema8 preserves o
   old.prepare('UPDATE delivery_orders SET snapshot=?').run(snapshot);
   old.exec("INSERT INTO delivery_cash_receipts VALUES('old-order',5,4,12000,1);INSERT INTO delivery_pickup_authorizations VALUES('old-order',7001,5,4,1)");
   for(const [kind,amount] of [['driver_cash_receivable',12000],['courier_payable',-6000],['merchant_payable',-5250],['service_revenue',-750]])old.prepare('INSERT INTO delivery_ledger VALUES(?,?,?,?,?,?)').run('old-order',kind,1,5,amount,1);
+  if(baseline>=8)old.exec("INSERT INTO delivery_cash_journal VALUES('old-order','completed',5,4,12000,'tm-transport:7001',1)");
   old.close();const store=new DeliveryStore(file);
   try{
-    assert.equal(store.one('SELECT max(version) AS version FROM delivery_migrations').version,8);assert.equal(store.one('SELECT count(*) AS n FROM delivery_cash_journal').n,0);
+    assert.equal(store.one('SELECT max(version) AS version FROM delivery_migrations').version,9);assert.equal(store.one('SELECT count(*) AS n FROM delivery_cash_journal').n,baseline>=8?1:0);
     assert.deepEqual(store.all('PRAGMA foreign_key_check'),[]);assert.equal(store.one('SELECT snapshot FROM delivery_orders').snapshot,snapshot);
     assert.equal(store.one('SELECT count(*) AS n FROM delivery_cash_receipts').n,1);assert.equal(store.one('SELECT count(*) AS n,sum(amount_uzs) AS sum FROM delivery_ledger').n,4);
     assert.equal(store.one('SELECT sum(amount_uzs) AS sum FROM delivery_ledger').sum,0);assert.equal(store.pricing().enabled,0);

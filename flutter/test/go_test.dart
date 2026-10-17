@@ -148,7 +148,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Test description'), findsOneWidget);
     expect(find.text('Server recommendation'), findsOneWidget);
-    await tester.tap(find.byTooltip('Добавить'));
+    await tester.ensureVisible(find.byKey(const ValueKey('go-product-3')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byKey(const ValueKey('go-product-3')),
+        matching: find.byTooltip('Добавить')));
     await tester.pumpAndSettle();
     await tester.tapAt(const Offset(8, 8));
     await tester.pumpAndSettle();

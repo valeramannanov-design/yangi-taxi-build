@@ -186,7 +186,7 @@ export class DeliveryTransport {
     const receipt = s.one('SELECT 1 FROM delivery_cash_receipts WHERE order_id=?', order.id);
     return { delivery:{ order_id:order.id, transport_order_id:transportOrderId, status:order.status,
       shop_name:snapshot.shop_name, pickup:snapshot.pickup, destination:snapshot.destination,
-      items:snapshot.items.map(i => ({ name:i.name, quantity:i.quantity })),
+      items:snapshot.items.map(i => ({ name:i.name+(i.variant_name?' · '+i.variant_name:''), quantity:i.quantity })),
       subtotal_uzs:snapshot.subtotal_uzs, delivery_uzs:snapshot.delivery_uzs, total_uzs:snapshot.total_uzs,
       cash_model:snapshot.cash_model||'legacy', environment:snapshot.environment||'production', cash:s.cash.summary(order.id),
       at_store:found.state_kind==='car_at_place', at_customer:!!s.cash.has(order.id,'client_arrived'),

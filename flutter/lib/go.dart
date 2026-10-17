@@ -451,7 +451,8 @@ class _GoPurchaseDetailsState extends State<GoPurchaseDetails> {
                 (o['destination'] as Map?) ?? {}, widget.lang)),
             for (final item in (o['items'] as List))
               ListTile(
-                  title: Text('${item['name']} × ${item['quantity']}'),
+                  title: Text(
+                      '${item['name']}${item['variant_name'] != null ? ' · ${item['variant_name']}' : ''} × ${item['quantity']}'),
                   trailing: Text('${item['price_uzs']} сум')),
             Text(
                 '${widget.lang == 'uz' ? 'Jami' : 'Итого'}: ${o['total_uzs']} сум',

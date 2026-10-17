@@ -115,15 +115,32 @@ function productsView() {
 function productForm(product) {
   const p = product || {}; let imageId = p.image_id || null;
   main.innerHTML = `<h1>${product ? 'Изменить товар' : 'Новый товар'}</h1><form id="product-form">${field('sku','Артикул',p.sku)}${field('name','Название',p.name)}<label class="full">Описание<textarea name="description" maxlength="2000">${esc(p.description)}</textarea></label>${field('price_uzs','Цена, сум',p.price_uzs,'number','min="0" max="10000000" step="1"')}${field('stock','Доступно, шт.',p.stock,'number','min="0" max="1000000" step="1"')}<label>Фотография (PNG, JPEG, WebP; до 2 МБ)<input name="photo" type="file" accept="image/png,image/jpeg,image/webp"></label>${check('active','В продаже',product ? p.active : true)}<div class="full"><button>Сохранить</button><button id="back" class="secondary" type="button">Назад</button></div></form>`;
+  catalogDetailsEditor(document.querySelector('#product-form'),p);
   recommendationsEditor(document.querySelector('#product-form'),p);
   document.querySelector('#back').onclick = () => perform(() => show('products'));
   document.querySelector('#product-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; perform(async () => {
     const input = Object.fromEntries(new FormData(form)), file = input.photo;
     if (file?.size) { if (file.size > 2 * 1024 * 1024) throw new Error('Фото должно быть меньше 2 МБ'); imageId = (await request(imagesPath(), { method:'POST', body:file, raw:true })).id; form.elements.photo.value = ''; }
-    delete input.photo; input.recommendation_ids=JSON.parse(input.recommendation_ids); input.price_uzs = Number(input.price_uzs); input.stock = Number(input.stock); input.active = form.elements.active.checked; input.image_id = imageId; if (product) input.version = p.version;
+    delete input.photo; input.variants=readVariantEditor(form);input.ingredients=form.elements.ingredients.value;input.weight_g=form.elements.weight_g.value===''?null:Number(form.elements.weight_g.value);input.volume_ml=form.elements.volume_ml.value===''?null:Number(form.elements.volume_ml.value); input.recommendation_ids=JSON.parse(input.recommendation_ids); input.price_uzs = Number(input.price_uzs); input.stock = Number(input.stock); input.active = form.elements.active.checked; input.image_id = imageId; if (product) input.version = p.version;
     await request(productsPath() + (product ? '/' + p.id : ''), { method:product ? 'PUT' : 'POST', body:input }); await show('products');
   }); };
 }
+function catalogDetailsEditor(form,product){
+ const panel=document.createElement('section');panel.className='full';
+ panel.innerHTML=`<h2>Состав и варианты</h2><label>Состав<textarea name="ingredients" maxlength="2000">${esc(product.ingredients)}</textarea></label><div class="row"><label>Вес, г<input name="weight_g" type="number" min="1" max="1000000" value="${esc(product.weight_g)}"></label><label>Объём, мл<input name="volume_ml" type="number" min="1" max="1000000" value="${esc(product.volume_ml)}"></label></div><p>Для товара с вариантами общая цена «от» и остаток определяются сервером. Удалённые из продажи варианты сохраняются для истории заказов.</p><div class="tablewrap" id="variant-rows"></div><button type="button" id="new-variant">Добавить вариант</button>`;
+ form.lastElementChild.before(panel);let rows=(product.variants||[]).map(v=>({...v}));
+ function render(){
+  panel.querySelector('#variant-rows').innerHTML=rows.map((v,i)=>`<div class="card" data-variant-row data-id="${esc(v.id||'')}"><label>Название<input data-key="name" maxlength="100" required value="${esc(v.name)}"></label><div class="row"><label>Цена, сум<input data-key="price_uzs" type="number" min="0" max="10000000" step="1" required value="${esc(v.price_uzs)}"></label><label>Остаток<input data-key="stock" type="number" min="0" max="1000000" step="1" required value="${esc(v.stock)}"></label></div><div class="row"><label>Вес, г<input data-key="weight_g" type="number" min="1" max="1000000" value="${esc(v.weight_g)}"></label><label>Объём, мл<input data-key="volume_ml" type="number" min="1" max="1000000" value="${esc(v.volume_ml)}"></label></div><label class="check"><input data-key="active" type="checkbox" ${v.active?'checked':''}>В продаже</label></div>`).join('');
+  form.elements.stock.readOnly=rows.length>0;form.elements.price_uzs.readOnly=rows.length>0;
+ }
+ panel.querySelector('#new-variant').onclick=()=>{if(busy||rows.length>=100)return;rows=readVariantEditor(form);rows.push({name:'',price_uzs:0,stock:0,active:true});render();};render();
+}
+function readVariantEditor(form){return [...form.querySelectorAll('[data-variant-row]')].map(row=>{
+ const result={};if(row.dataset.id)result.id=row.dataset.id;
+ for(const name of ['name','price_uzs','stock','weight_g','volume_ml','active']){
+  const input=row.querySelector(`[data-key="${name}"]`);result[name]=name==='active'?input.checked:name==='name'?input.value:input.value===''?null:Number(input.value);
+ }return result;
+});}
 function recommendationsEditor(form,product){
   let selected=[...(product.recommendation_ids||[])];
   const panel=document.createElement('section');panel.className='full';
@@ -151,7 +168,7 @@ function cashHistory(o){
  return '<p><b>'+esc(o.environment==='TEST'?'TEST · тестовые суммы':'Наличные: курьер оплачивает товары')+'</b></p><ul>'+o.cash.events.map(e=>'<li>'+esc(names[e.kind]||e.kind)+' · '+money(e.amount_uzs)+'</li>').join('')+'</ul>';
 }
 function ordersView() {
-  main.innerHTML = '<div class="row"><h1>Заказы</h1><button id="refresh" class="secondary">Обновить</button></div>' + (orders.length ? orders.map(o => `<article class="card"><div class="row"><b>${esc(o.shop_name)}</b><span class="badge">${esc(statusNames[o.status] || o.status)}</span></div><p class="mono">${esc(o.id)}</p><p>${o.items.map(i => `${esc(i.name)} × ${i.quantity}`).join('<br>')}</p><p>${esc(o.destination.address)}<br>${destinationDetails(o.destination)}<br>${esc(o.phone)}</p><div class="row"><span class="muted">Товары ${money(o.subtotal_uzs)} · Доставка ${money(o.delivery_uzs)}</span><b class="price">${money(o.total_uzs)}</b></div>${cashHistory(o)}${me.role === 'partner' ? `<div class="actions">${o.cash?.shop_paid && !o.cash.shop_received && ['assigned','accepted'].includes(o.status) ? `<button data-order="${o.id}" data-action="cash_received">Получены наличные от курьера: ${money(o.subtotal_uzs)}</button>` : ''}${o.status === 'pending_shop' ? `<button data-order="${o.id}" data-action="confirm">Подтвердить</button><button class="danger" data-order="${o.id}" data-action="reject">Отказать</button>` : ['confirmed','assigned','accepted'].includes(o.status) && !o.ready_at ? `<button data-order="${o.id}" data-action="ready">Готов к выдаче</button>` : ''}</div>` : ''}</article>`).join('') : empty('Заказов пока нет.'));
+  main.innerHTML = '<div class="row"><h1>Заказы</h1><button id="refresh" class="secondary">Обновить</button></div>' + (orders.length ? orders.map(o => `<article class="card"><div class="row"><b>${esc(o.shop_name)}</b><span class="badge">${esc(statusNames[o.status] || o.status)}</span></div><p class="mono">${esc(o.id)}</p><p>${o.items.map(i => `${esc(i.name)}${i.variant_name?' · '+esc(i.variant_name):''} × ${i.quantity}`).join('<br>')}</p><p>${esc(o.destination.address)}<br>${destinationDetails(o.destination)}<br>${esc(o.phone)}</p><div class="row"><span class="muted">Товары ${money(o.subtotal_uzs)} · Доставка ${money(o.delivery_uzs)}</span><b class="price">${money(o.total_uzs)}</b></div>${cashHistory(o)}${me.role === 'partner' ? `<div class="actions">${o.cash?.shop_paid && !o.cash.shop_received && ['assigned','accepted'].includes(o.status) ? `<button data-order="${o.id}" data-action="cash_received">Получены наличные от курьера: ${money(o.subtotal_uzs)}</button>` : ''}${o.status === 'pending_shop' ? `<button data-order="${o.id}" data-action="confirm">Подтвердить</button><button class="danger" data-order="${o.id}" data-action="reject">Отказать</button>` : ['confirmed','assigned','accepted'].includes(o.status) && !o.ready_at ? `<button data-order="${o.id}" data-action="ready">Готов к выдаче</button>` : ''}</div>` : ''}</article>`).join('') : empty('Заказов пока нет.'));
   document.querySelector('#refresh').onclick = () => perform(() => show('orders'));
   if (me.role === 'admin') {
     const panel = document.createElement('section');

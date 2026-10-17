@@ -1,20 +1,34 @@
 # Yangi Taxi Delivery — progress
 
-Status 2026-10-17: existing GO foundation and courier_buyout_v1 retained. Shared delivery address details/profile reuse now implemented; first courier address confirmed on map, later saved/last address offered explicitly. Source schema8; production remains5 (no migration/deployment). Backend76, Flutter16, Driver JS7; analyzer0 errors/14 existing diagnostics. Actual TM tariff/group catalog lacks approach/commission rules; diagnostic calc_order_cost tariff27 returned9200 for city2km with source_country_distance0/2km (not proof of free/complete approach). Pilot still blocked on verified courier approach and TM commission/debit/reversal evidence plus native acceptance. NEXT: remaining variants/weight/composition/promos/catalog visuals and other missing GO features, while resolving those external contracts. Do not resume acceptance5.
+## Latest confirmed checkpoint — 2026-10-17
 
-## Repositories and branch
+- Existing GO/taxi/profile/history/address/courier_buyout_v1/schema7 recommendations/cash008 retained. Source catalog now supports product variants, composition, grams/ml, mandatory option selection and two-column product/recommendation grids. Variants of one product remain separate cart/receipt lines; Driver+ metadata includes the selected option name.
+- Additive migration009 extends only product metadata and catalog revision. It does not rebuild schema7 recommendations or cash008. Existing variant IDs are retained on deactivation for correct stock restoration; prices and stock are server owned. Quotes freeze variant/price/measure/composition; metadata changes invalidate quotes independently from stock reservations.
+- Validation:83 backend tests,19 Flutter tests. Schema4/5/6/7/8→9 preserves prior snapshot/receipt/ledger and v8 cash-journal rows. Variant retry/availability/restoration, wrong options, stale edits, mandatory selection, narrow Android-sized layout and recommendation option selection covered. Widget tests are NOT native Android acceptance.
+- Production remains schema5 and its existing local backend/config untouched. No real GO checkout enabled, new live orders, tariff edits, account operations, production migration or APK installation. Driver+ unrelated dirty/untracked files preserved.
+
+## Next / external blockers
+
+1. TM priority: use actual «Тарифы» and «Правила расчётов с водителями», then read verified order-linked debit/reversal evidence. Do not query nonexistent catalog settings again or treat empty operations as zero commission. Current UI attempt: tme.exe initially exposed no window; launch returned a minimized Enterprise window, restoration/read recovery failed with `window id 655432 was not found`. No authentication or financial action attempted. Need a targetable actual logged-in working window for the rules; production financial operations need permission.
+2. Catalog remaining: promotions/coupons and exact visual-reference acceptance. Do not add discount badges or fake promo endpoints before authoritative backend rules/accounting. Variant/measurement/grid work above is complete source, not to be recreated.
+3. Remaining GO: dynamic ETA, pickup, merchant/courier reviews and low-rating complaints, notifications, full parcel sender/recipient handover, history polish and final visuals. Reuse existing APIs/components.
+4. Native Android acceptance and compatible pilot staging remain. Production migration needs permission; see docs/DELIVERY_DEPLOYMENT.md for coordinated code/DB backup/rollback boundaries. Source requires schema9; do not run schema8 code on it. Never resume acceptance5 or restore a stale financial backup after new events.
+
+## Historical records — reference only; do not replay old next steps
+
+### Repositories and branch
 - Passenger: `C:\Yangi Taxi DEV\yangi-taxi-client`, cloned from `valeramannanov-design/yangi-taxi-build`; branch `feature/yangi-taxi-delivery`, baseline `4eb8b3c` (1.9.4+70).
 - Driver+: `C:\Yangi Taxi DEV\yangi-taxi-building`, branch `feature/yangi-taxi-delivery`; existing dirty files preserved, not included in delivery commits.
 - Running passenger backend: `C:\Yangi-Taxi-client\backend`. It has local fixes beyond the repository baseline; do not overwrite or deploy the repository copy over it without reconciliation.
 - TaxiMaster 3.16: CommonAPI and authenticated Driver+ gateway already exist. `yangi_platform` / independent Android clients are separate DEV projects, not the live fleet.
 
-## Architecture
+### Architecture
 - Extend the real passenger Node backend. Delivery is opt-in and has its own SQLite database, migrations and integer-money ledger; no changes to live databases or service processes during development.
 - Reuse passenger authentication. Separate hashed partner/admin sessions and store ownership checks. Only admin creates partners.
 - One store per order; server-side quote snapshots; transactional stock, idempotency and cancellation. No online payments in this MVP.
 - Courier integration must use a real TaxiMaster transport order and existing driver identity. Store/order status cannot independently claim a completed taxi journey. New internal delivery interfaces are not TaxiMaster API methods.
 
-## Completed
+### Completed
 - Located actual passenger and Driver+ sources, authenticated GitHub access, preserved working tree and created branches.
 - Backend stage: native SQLite migrations; partner/admin authentication and tenant isolation; categories, stores, zones, image upload, Unicode product search, catalog; server quote snapshots, stock reservation, idempotent checkout, cancellation/rejection and merchant confirmation/readiness.
 - Internal transport-binding and balanced cash-liability ledger implemented, followed by the CommonAPI adapter below. These methods have no public completion endpoint.
@@ -27,7 +41,7 @@ Status 2026-10-17: existing GO foundation and courier_buyout_v1 retained. Shared
 - Additional stock protection: migration 002 adds optimistic product versions. Checkout and cancellation advance versions; stale merchant edits cannot overwrite reserved/restored stock. Forward migration preserves v1 data. Portal requests time out after 20 seconds while order command keys remain stable for retries.
 - FINAL checks: 30/30 Node tests and 5/5 Flutter widget tests pass. Dart analysis: 0 errors, 9 existing warnings, 5 info diagnostics. Passenger APK successfully built and its separate package/label/minSdk verified. Scanned it for 7 known server secret values from private configuration: 0 matches. MapKit client key is intentionally a client build define, not a server credential.
 
-## In progress / next
+### In progress / next
 - LATEST ADDRESS STAGE: reused shared /api/profile/favorites, map picker and owned history. Added entrance/floor/apartment/landmark, profile editing, save/update from cart, explicit reuse, first-order map confirmation, frozen quote/order details and merchant/Driver+ display. Older servers cannot silently discard nonempty details. Own address metadata is stripped from TM addresses; no invented CommonAPI fields. No new SQLite migration or second profile.
 - Checks:76 backend,16 Flutter,7 Driver JS; schema4/5/6/7→8 preserves historical snapshots, receipts/ledger and FK integrity in temporary databases. Zero Dart errors; same14 existing diagnostics. USB device is online, but these new screens have NOT been installed/accepted on the phone; widget tests are not native proof.
 - TM contract delta: live tariff27 catalog fields=id/is_active/name; group3=id/name. GET calc_order_cost diagnostics (city2km,country0,is_country=false) returned9200 both with source_distance_country0 and2. Parameter acceptance is not approach inclusion or zero-charge proof; no assigned-courier reconciliation, debit, reversal or per-order commission proof. Existing production gate preserved, no new live orders/financial actions. See INTEGRATION_NOTES.md.
@@ -95,7 +109,7 @@ Status 2026-10-17: existing GO foundation and courier_buyout_v1 retained. Shared
 - Full MVP is NOT accepted: no complete live delivery/settlement acceptance yet. Driver+ 48 is installed and connected; the separate passenger Delivery APK has not been installed.
 - Actual Yandex address picker and key/application restrictions still need a phone check; widget tests use a test-only injected picker. Browser portal visuals/form interaction remain unverified because browser control is disabled.
 
-## Blockers / validation
+### Blockers / validation
 - Flutter 3.47.7 / Dart 3.13.5 installed from official stable source at `C:\Yangi Taxi DEV\.local\tools\flutter`; PUB_CACHE `.local/pub-cache`. Use existing Windows 8.3 aliases (`C:\YANGIT~3\LOCAL~1\tools\flutter`, `C:\YANGIT~3\YANGI-~2\flutter`) for Flutter/Dart hooks: long SDK path with spaces causes native-hook invocation failure.
 - Android platform generated locally using the existing CI pattern and ignored in Git. Local debug adds `.deliverydev` suffix and label `Yangi Delivery Test`, minSdk26/compileSdk36. SDK/JDK/Gradle caches use existing workspace tools. Private MapKit defines file is outside Git; do not print its contents or inline the key in argv. Only the path is passed via `--dart-define-from-file`. Reconcile build settings with CI before distribution.
 - Standard Gradle wrapper distribution download stalled. Downloaded Gradle 9.3.1 from official `downloads.gradle.org`, verified published SHA-256 and pointed the ignored local wrapper to that archive. Build succeeded after installing required NDK28.2/SDK36/CMake3.22.1. Test kernel cache was preserved under `build/test_cache-before-delivery-20261017` and regenerated after a stale cache produced spurious SearchOptions constructor diagnostics; no changes to map source were needed.

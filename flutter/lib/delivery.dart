@@ -33,7 +33,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       _searchProducts = [],
       _products = [],
       _orders = [];
-  final Map<int, Map<String, dynamic>> _cart = {};
+  final Map<String, Map<String, dynamic>> _cart = {};
   final TextEditingController _search = TextEditingController();
   Map<String, dynamic>? _shop, _cartShop, _quote, _pending;
   int? _category;
@@ -220,7 +220,9 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   }
 
   void _quantity(Map<String, dynamic> product, int delta) {
-    final id = (product['id'] as num).toInt(),
+    if (product['has_variants'] == true && product['variant_id'] == null)
+      return;
+    final id = _cartKey(product),
         quantity = ((_cart[id]?['quantity'] ?? 0) as int) + delta;
     if (quantity > (product['stock'] as num) || quantity > 99 || quantity < 0)
       return;
@@ -236,6 +238,116 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     });
   }
 
+  String _cartKey(Map p) => '${p['id']}:${p['variant_id'] ?? ''}';
+  String _productName(Map p) =>
+      '${p['name']}${p['variant_name'] != null ? ' · ${p['variant_name']}' : ''}';
+  String _measure(Map p) => [
+        if (p['weight_g'] != null) '${p['weight_g']} г',
+        if (p['volume_ml'] != null) '${p['volume_ml']} мл'
+      ].join(' · ');
+  Future<void> _addProduct(Map<String, dynamic> p) async {
+    if (p['has_variants'] == true && p['variant_id'] == null) {
+      final variants = _rows(p['variants'] ?? []);
+      final selected = await showDialog<Map<String, dynamic>>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+                  title: Text(_t('Выберите вариант', 'Variantni tanlang')),
+                  content: SizedBox(
+                      width: double.maxFinite,
+                      child: ListView(shrinkWrap: true, children: [
+                        for (final v in variants)
+                          ListTile(
+                            title: Text('${v['name']}'),
+                            subtitle: Text(
+                                '${_money(v['price_uzs'])} · ${_measure(v)}'),
+                            enabled: (v['stock'] as num) > 0,
+                            onTap: (v['stock'] as num) > 0
+                                ? () => Navigator.pop(dialogContext, v)
+                                : null,
+                          )
+                      ])),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: Text(_t('Отмена', 'Bekor')))
+                  ]));
+      if (selected == null || !mounted) return;
+      _quantity({
+        ...p,
+        'variant_id': selected['id'],
+        'variant_name': selected['name'],
+        'price_uzs': selected['price_uzs'],
+        'stock': selected['stock'],
+        'weight_g': selected['weight_g'] ?? p['weight_g'],
+        'volume_ml': selected['volume_ml'] ?? p['volume_ml']
+      }, 1);
+    } else {
+      _quantity(p, 1);
+    }
+  }
+
+  Widget _productGrid(List<Map<String, dynamic>> products) => GridView.builder(
+      key: const ValueKey('go-products-grid'),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: products.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          mainAxisExtent:
+              260 + ((MediaQuery.textScalerOf(context).scale(16) - 16) * 6)),
+      itemBuilder: (_, index) => _productTile(products[index]));
+  Widget _productTile(Map<String, dynamic> p) => Card(
+      key: ValueKey('go-product-${p['id']}'),
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+          padding: const EdgeInsets.all(8),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+                child: InkWell(
+                    onTap: _busy ? null : () => _productDetails(p),
+                    child: SizedBox(
+                        width: double.infinity,
+                        child: p['image_id'] == null
+                            ? const Icon(Icons.shopping_bag_outlined, size: 48)
+                            : Image.network(
+                                '${widget.api.baseUrl}/api/delivery/images/${p['image_id']}',
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.image_not_supported_outlined))))),
+            TextButton(
+                onPressed: _busy ? null : () => _productDetails(p),
+                style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero, alignment: Alignment.centerLeft),
+                child: Text(_productName(p),
+                    maxLines: 2, overflow: TextOverflow.ellipsis)),
+            if (_measure(p).isNotEmpty)
+              Text(_measure(p), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(
+                '${p['has_variants'] == true ? _t('от ', 'dan ') : ''}${_money(p['price_uzs'])}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              if ((_cart[_cartKey(p)]?['quantity'] ?? 0) > 0) ...[
+                IconButton(
+                    onPressed: _busy ? null : () => _quantity(p, -1),
+                    icon: const Icon(Icons.remove_circle_outline)),
+                Text('${_cart[_cartKey(p)]!['quantity']}')
+              ],
+              IconButton(
+                  tooltip: _t('Добавить', 'Qo‘shish'),
+                  onPressed: _busy ||
+                          (p['stock'] as num) <=
+                              (_cart[_cartKey(p)]?['quantity'] ?? 0)
+                      ? null
+                      : () => _addProduct(p),
+                  icon: const Icon(Icons.add_circle_outline)),
+            ])
+          ])));
   Future<void> _pickAddress(
       {Place? initialPoint, Map<String, dynamic>? details}) async {
     if (yandexMapKitApiKey.isEmpty && widget.addressPicker == null)
@@ -333,7 +445,12 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     final quote = await widget.api.deliveryPost('/customer/quotes', {
       'shop_id': _cartShop!['id'],
       'items': _cart.entries
-          .map((e) => {'product_id': e.key, 'quantity': e.value['quantity']})
+          .map((e) => {
+                'product_id': e.value['id'],
+                'quantity': e.value['quantity'],
+                if (e.value['variant_id'] != null)
+                  'variant_id': e.value['variant_id']
+              })
           .toList(),
       'destination': {
         'address': _destination!.address,
@@ -500,16 +617,21 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                               style: Theme.of(context).textTheme.headlineSmall),
                           if ((p['description'] ?? '').toString().isNotEmpty)
                             Text('${p['description']}'),
+                          if ((p['ingredients'] ?? '').toString().isNotEmpty)
+                            Text(
+                                '${_t('Состав', 'Tarkibi')}: ${p['ingredients']}'),
+                          if (_measure(p).isNotEmpty) Text(_measure(p)),
                           Text(_money(p['price_uzs']),
                               style: Theme.of(context).textTheme.titleLarge),
                           FilledButton.icon(
-                              onPressed: (_cart[p['id']]?['quantity'] ?? 0) >=
-                                      (p['stock'] as num)
-                                  ? null
-                                  : () {
-                                      _quantity(p, 1);
-                                      refresh(() {});
-                                    },
+                              onPressed:
+                                  (_cart[_cartKey(p)]?['quantity'] ?? 0) >=
+                                          (p['stock'] as num)
+                                      ? null
+                                      : () {
+                                          _addProduct(p);
+                                          refresh(() {});
+                                        },
                               icon: const Icon(Icons.add),
                               label: Text(_t(
                                   'Добавить в корзину', 'Savatga qo‘shish'))),
@@ -519,41 +641,13 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                                 _t('Вам может понравиться',
                                     'Sizga yoqishi mumkin'),
                                 style: Theme.of(context).textTheme.titleMedium),
-                            for (final r in recommendations)
-                              Card(
-                                  child: ListTile(
-                                      leading: r['image_id'] == null
-                                          ? const Icon(
-                                              Icons.shopping_bag_outlined)
-                                          : Image.network(
-                                              '${widget.api.baseUrl}/api/delivery/images/${r['image_id']}',
-                                              width: 48,
-                                              height: 48,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) =>
-                                                  const Icon(Icons
-                                                      .image_not_supported_outlined)),
-                                      title: Text('${r['name']}'),
-                                      subtitle: Text(_money(r['price_uzs'])),
-                                      trailing: IconButton(
-                                          tooltip: _t('Добавить', 'Qo‘shish'),
-                                          onPressed: (_cart[r['id']]
-                                                          ?['quantity'] ??
-                                                      0) >=
-                                                  (r['stock'] as num)
-                                              ? null
-                                              : () {
-                                                  _quantity(r, 1);
-                                                  refresh(() {});
-                                                },
-                                          icon: const Icon(
-                                              Icons.add_circle_outline))))
+                            _productGrid(recommendations)
                           ],
                         ]))));
   }
 
   Widget _product(Map<String, dynamic> p) {
-    final quantity = (_cart[(p['id'] as num).toInt()]?['quantity'] ?? 0) as int;
+    final quantity = (_cart[_cartKey(p)]?['quantity'] ?? 0) as int;
     return Card(
         child: Padding(
             padding: const EdgeInsets.all(12),
@@ -577,7 +671,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                         style: TextButton.styleFrom(
                             padding: EdgeInsets.zero,
                             alignment: Alignment.centerLeft),
-                        child: Text('${p['name']}',
+                        child: Text(_productName(p),
                             style:
                                 const TextStyle(fontWeight: FontWeight.bold))),
                     Text(_money(p['price_uzs'])),
@@ -593,7 +687,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
               IconButton(
                   onPressed: _busy || (p['stock'] as num) <= quantity
                       ? null
-                      : () => _quantity(p, 1),
+                      : () => _addProduct(p),
                   icon: const Icon(Icons.add_circle_outline)),
             ])));
   }
@@ -761,8 +855,8 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                           Text('${(o['destination'] as Map)['address']}'),
                           Text(goAddressDetailsText(
                               o['destination'] as Map, widget.lang)),
-                          ..._rows(o['items']).map(
-                              (i) => Text('${i['name']} × ${i['quantity']}')),
+                          ..._rows(o['items']).map((i) =>
+                              Text('${_productName(i)} × ${i['quantity']}')),
                           const SizedBox(height: 8),
                           Text(_money(o['total_uzs'])),
                           GoCashHistory(order: o, lang: widget.lang),
@@ -850,7 +944,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                         : _shop != null
                             ? ListView(
                                 padding: const EdgeInsets.all(16),
-                                children: _products.map(_product).toList())
+                                children: [_productGrid(_products)])
                             : _catalogView()),
       ]),
       bottomNavigationBar: _cart.isNotEmpty && !_cartOpen && !_history
