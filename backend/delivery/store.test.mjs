@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname, basename } from 'node:path';
 import { Worker } from 'node:worker_threads';
@@ -26,7 +27,7 @@ function fixture(t, file = ':memory:') {
   const s1 = store.createShop(admin, shopInput(1)), s2 = store.createShop(admin, shopInput(2));
   for (const s of [s1, s2]) store.updateShop(admin, s.id, { ...s, active: true });
   const p1 = store.identity(store.login('partner1', password, 'local-test').token), p2 = store.identity(store.login('partner2', password, 'local-test').token);
-  const productInput = { sku: 'milk', name: 'МОЛОКО', description: 'Молоко местное', price_uzs: 10001, stock: 5, active: true };
+  const productInput = { sku: 'milk', name: 'МОЛОКО', description: 'Молоко местное', price_uzs: 10001, stock: 5, active: true, version: 1 };
   const product = store.saveProduct(p1, productInput);
   const quoteInput = { shop_id: s1.id, items: [{ product_id: product.id, quantity: 2 }], destination: { address: 'Customer address', lat: 40.001, lon: 65 } };
   return { store, admin, p1, p2, s1, s2, zone, category, product, productInput, quoteInput, clock: value => { now = value; }, quote: () => store.quote(customer, quoteInput) };
@@ -84,6 +85,28 @@ test('catalog respects blocking, Unicode search, prices and active categories', 
   status(409, () => f.quote());
   f.store.category(f.admin, { name: 'Продукты', active: false }, f.category.id);
   assert.equal(f.store.catalog().shops.length, 0);
+});
+test('a merchant edit cannot overwrite stock reserved or restored after the form loaded', t => {
+  const f = fixture(t), o = f.store.checkout(customer, { quote_id: f.quote().id }, key('stock-form'));
+  status(409, () => f.store.saveProduct(f.p1, { ...f.productInput, name: 'New description' }, f.product.id));
+  assert.equal(f.store.shop(f.s1.id).products[0].stock, 3);
+  const latest = f.store.products(f.p1)[0];
+  f.store.cancel(customer, o.id, { version: 1, reason: 'Not needed' }, key('restore-form'));
+  status(409, () => f.store.saveProduct(f.p1, { ...latest, active: true, name: 'Stale form after cancellation' }, f.product.id));
+  assert.equal(f.store.shop(f.s1.id).products[0].stock, 5);
+});
+test('migration 002 upgrades an existing v1 database and preserves its data', t => {
+  const dir = mkdtempSync(join(tmpdir(), 'yangi-delivery-migration-')); t.after(() => cleanupTemp(dir));
+  const path = join(dir, 'existing.sqlite'), old = new DatabaseSync(path);
+  old.exec(readFileSync(new URL('./migrations/001.sql', import.meta.url), 'utf8'));
+  old.exec("INSERT INTO delivery_migrations VALUES(1,1); INSERT INTO delivery_categories(name) VALUES('Existing category')");
+  old.close();
+  const upgraded = new DeliveryStore(path);
+  try {
+    assert.equal(upgraded.one('SELECT name FROM delivery_categories').name, 'Existing category');
+    assert.equal(upgraded.one('SELECT max(version) AS v FROM delivery_migrations').v, 2);
+    assert.ok(upgraded.all('PRAGMA table_info(delivery_products)').some(c => c.name === 'version'));
+  } finally { upgraded.close(); }
 });
 test('cancellation and rejection restore stock once; stale commands cannot change state', t => {
   const f = fixture(t), o = f.store.checkout(customer, { quote_id: f.quote().id }, key(8));

@@ -51,13 +51,13 @@ export class DeliveryStore {
     this.db.function('delivery_fold', { deterministic: true }, value => String(value).normalize('NFKC').toLocaleLowerCase());
     this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)');
-    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 1) { this.close(); throw new Error('Delivery database requires a newer service version'); }
-    if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=1')) {
+    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 2) { this.close(); throw new Error('Delivery database requires a newer service version'); }
+    for (const version of [1, 2]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
       this.transaction(() => {
         // Another process may have migrated while this connection waited for its lock.
-        if (this.one('SELECT 1 FROM delivery_migrations WHERE version=1')) return;
-        this.db.exec(readFileSync(new URL('./migrations/001.sql', import.meta.url), 'utf8'));
-        this.run('INSERT INTO delivery_migrations VALUES(1,?)', now());
+        if (this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) return;
+        this.db.exec(readFileSync(new URL('./migrations/' + String(version).padStart(3, '0') + '.sql', import.meta.url), 'utf8'));
+        this.run('INSERT INTO delivery_migrations VALUES(?,?)', version, now());
       });
     }
   }
@@ -173,7 +173,8 @@ export class DeliveryStore {
       const duplicate = this.one('SELECT id FROM delivery_products WHERE shop_id=? AND sku=? AND id<>?', shopId, values[0], productId ?? 0);
       if (duplicate) fail(409, 'SKU already exists');
       if (productId) {
-        if (!this.run('UPDATE delivery_products SET sku=?,name=?,description=?,price_uzs=?,stock=?,active=?,image_id=? WHERE id=? AND shop_id=?', ...values, integer(productId, 1), shopId).changes) fail(404, 'Product not found');
+        if (!this.one('SELECT 1 FROM delivery_products WHERE id=? AND shop_id=?', integer(productId, 1), shopId)) fail(404, 'Product not found');
+        if (!this.run('UPDATE delivery_products SET sku=?,name=?,description=?,price_uzs=?,stock=?,active=?,image_id=?,version=version+1 WHERE id=? AND shop_id=? AND version=?', ...values, productId, shopId, integer(input.version, 1)).changes) fail(409, 'Product changed; refresh before editing stock');
       } else productId = Number(this.run('INSERT INTO delivery_products(shop_id,sku,name,description,price_uzs,stock,active,image_id) VALUES(?,?,?,?,?,?,?,?)', shopId, ...values).lastInsertRowid);
       return this.one('SELECT * FROM delivery_products WHERE id=?', productId);
     });
@@ -248,7 +249,7 @@ export class DeliveryStore {
       const shop = this.availableShop(quote.shop_id), snapshot = JSON.parse(quote.snapshot);
       if (shop.commission_bps !== snapshot.commission_bps || shop.address !== snapshot.pickup.address || shop.lat !== snapshot.pickup.lat || shop.lon !== snapshot.pickup.lon) fail(409, 'Store changed; calculate again');
       for (const i of snapshot.items) {
-        const result = this.run('UPDATE delivery_products SET stock=stock-? WHERE id=? AND shop_id=? AND active=1 AND price_uzs=? AND stock>=?', i.quantity, i.product_id, shop.id, i.price_uzs, i.quantity);
+        const result = this.run('UPDATE delivery_products SET stock=stock-?,version=version+1 WHERE id=? AND shop_id=? AND active=1 AND price_uzs=? AND stock>=?', i.quantity, i.product_id, shop.id, i.price_uzs, i.quantity);
         if (!result.changes) fail(409, 'Price or availability changed; calculate again');
       }
       const orderId = id();
@@ -279,7 +280,7 @@ export class DeliveryStore {
   }
   restoreStock(order) {
     if (order.stock_restored) return;
-    for (const i of JSON.parse(order.snapshot).items) this.run('UPDATE delivery_products SET stock=stock+? WHERE id=? AND shop_id=?', i.quantity, i.product_id, order.shop_id);
+    for (const i of JSON.parse(order.snapshot).items) this.run('UPDATE delivery_products SET stock=stock+?,version=version+1 WHERE id=? AND shop_id=?', i.quantity, i.product_id, order.shop_id);
     this.run('UPDATE delivery_orders SET stock_restored=1 WHERE id=?', order.id);
   }
   merchantAction(user, orderId, input, key) {

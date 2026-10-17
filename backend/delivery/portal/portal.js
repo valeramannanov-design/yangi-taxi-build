@@ -10,13 +10,17 @@ const options = (list, value) => list.map(x => `<option value="${x.id}" ${x.id =
 const choose = (name, title, list, value) => `<label>${title}<select name="${name}" required><option value="">Выбрать</option>${options(list, value)}</select></label>`;
 const empty = title => `<p class="empty">${title}</p>`;
 async function request(path, { method = 'GET', body, key, raw = false } = {}) {
-  const response = await fetch('/api/delivery' + path, { method, headers: { ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(body !== undefined && !raw ? { 'Content-Type': 'application/json' } : {}), ...(key ? { 'Idempotency-Key': key } : {}) }, body: body === undefined ? undefined : raw ? body : JSON.stringify(body) });
+  const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+  const response = await fetch('/api/delivery' + path, { signal:controller.signal, method, headers: { ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(body !== undefined && !raw ? { 'Content-Type': 'application/json' } : {}), ...(key ? { 'Idempotency-Key': key } : {}) }, body: body === undefined ? undefined : raw ? body : JSON.stringify(body) });
   let value; try { value = await response.json(); } catch { throw new Error('Сервер вернул непонятный ответ'); }
   if (!response.ok || !value.ok) {
     if (response.status === 401 && token) { logoutLocal(); throw new Error('Сессия истекла. Войдите снова.'); }
     throw new Error(value.error?.message || 'Не удалось выполнить запрос');
   }
   return value.data;
+  } catch (e) { if (e.name === 'AbortError') throw new Error('Нет ответа сервера. Обновите данные или повторите действие.'); throw e; }
+  finally { clearTimeout(timeout); }
 }
 async function perform(fn) {
   if (busy) return; busy = true; notice.textContent = '';
@@ -94,11 +98,11 @@ function productsView() {
 function productForm(product) {
   const p = product || {}; let imageId = p.image_id || null;
   main.innerHTML = `<h1>${product ? 'Изменить товар' : 'Новый товар'}</h1><form id="product-form">${field('sku','Артикул',p.sku)}${field('name','Название',p.name)}<label class="full">Описание<textarea name="description" maxlength="2000">${esc(p.description)}</textarea></label>${field('price_uzs','Цена, сум',p.price_uzs,'number','min="0" max="10000000" step="1"')}${field('stock','Доступно, шт.',p.stock,'number','min="0" max="1000000" step="1"')}<label>Фотография (PNG, JPEG, WebP; до 2 МБ)<input name="photo" type="file" accept="image/png,image/jpeg,image/webp"></label>${check('active','В продаже',product ? p.active : true)}<div class="full"><button>Сохранить</button><button id="back" class="secondary" type="button">Назад</button></div></form>`;
-  document.querySelector('#back').onclick = productsView;
+  document.querySelector('#back').onclick = () => perform(() => show('products'));
   document.querySelector('#product-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; perform(async () => {
     const input = Object.fromEntries(new FormData(form)), file = input.photo;
     if (file?.size) { if (file.size > 2 * 1024 * 1024) throw new Error('Фото должно быть меньше 2 МБ'); imageId = (await request('/merchant/images', { method:'POST', body:file, raw:true })).id; form.elements.photo.value = ''; }
-    delete input.photo; input.price_uzs = Number(input.price_uzs); input.stock = Number(input.stock); input.active = form.elements.active.checked; input.image_id = imageId;
+    delete input.photo; input.price_uzs = Number(input.price_uzs); input.stock = Number(input.stock); input.active = form.elements.active.checked; input.image_id = imageId; if (product) input.version = p.version;
     await request('/merchant/products' + (product ? '/' + p.id : ''), { method:product ? 'PUT' : 'POST', body:input }); await show('products');
   }); };
 }
