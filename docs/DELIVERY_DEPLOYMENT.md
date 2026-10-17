@@ -7,7 +7,7 @@ The existing passenger server at `C:\Yangi-Taxi-client\backend` now hosts Delive
 ## Private operator data
 
 - Administrator credentials: `C:\Yangi-Taxi-client\delivery-private\admin-access.private.json`.
-- Database: `C:\Yangi-Taxi-client\delivery-private\delivery.sqlite`, schema 4.
+- Database: `C:\Yangi-Taxi-client\delivery-private\delivery.sqlite`, schema 5 (road pricing upgrade).
 - Backup paths and deployment status: `C:\Yangi-Taxi-client\delivery-private\deployment.json`.
 - Driver bridge: `C:\Yangi Taxi DEV\.local\delivery-driver-bridge.private.json`.
 - Credentials/token files are local only and protected by Windows ACL. They are not APK assets, Git content or public URLs.
@@ -23,6 +23,8 @@ The database currently has one administrator, no shops and no delivery orders. N
 Caddy now proxies Delivery paths to 8788 and preserves existing driver gateway paths to 18158. Certificate data directories and admin-disabled configuration are unchanged. The pre-existing hidden supervisor was restored for driver services/HTTPS. Existing passenger startup scripts still start the updated server using its existing data/env directory.
 
 ## Verification and gaps
+
+Latest pricing upgrade: no required geographic zones for shops, public quotes use real TM road/cost calculation. Current server settings are tariff27 “Доставка” / group3 / road limit30km; tariff monetary parameters unchanged. 58 backend tests pass; actual isolated no-zone HTTP quote/checkout verified road680m/fee5800. Production remains empty, existing env preserved and one settlement owner verified. See `DELIVERY_ROAD_PRICING.md`; rollback must use that upgrade's matching pre-migration code AND DB backup.
 
 Current follow-up: exact Driver+50 is installed. Its native fixture passed48 assertions, and a separate stationary Delivery/Driver+/real-TM cycle completed successfully on TM11708, including exact cash proofs, balanced ledger and backend/app restart. See `DELIVERY_ACCEPTANCE_11708.md`. Production catalog/orders remain empty; bridge restored and sandbox stopped. Keep the driver5/crew4 scope until passenger Android/real merchant and other outstanding acceptance is complete. Earlier follow-up paragraphs below describe intermediate failures, not the current driver/backend result.
 

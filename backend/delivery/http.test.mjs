@@ -15,7 +15,8 @@ async function fixture(t) {
   store.updateShop(admin, shop.id, { ...shop, active: true });
   const partnerToken = store.login('partner', 'unit-test-partner-password', 'test-peer').token;
   const product = store.saveProduct(store.identity(partnerToken), { name: 'Milk', description: '', sku: 'milk', price_uzs: 10000, stock: 5, active: true });
-  const handler = createDeliveryHandler({ store, passengerIdentity: req => {
+  store.savePricing(admin,{enabled:true,tariff_id:9,crew_group_id:8,max_distance_m:10000,version:1});
+  const handler = createDeliveryHandler({ store, pricingProvider:{calculate:async()=>({distance_m:0,delivery_uzs:5000}),options:async()=>({tariffs:[{id:9}],groups:[{id:8}]})}, passengerIdentity: req => {
     if (req.headers.authorization !== 'Bearer test-passenger-session') { const e = new Error('Unauthorized'); e.statusCode = 401; throw e; }
     return { id: '101', phone: '+998900000001' };
   } });

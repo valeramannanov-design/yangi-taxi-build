@@ -1,4 +1,5 @@
 import { DeliveryError } from './store.mjs';
+import { createRoadQuotes } from './road-pricing.mjs';
 import { readFileSync } from 'node:fs';
 
 const error = (status, message) => { throw new DeliveryError(status, message); };
@@ -30,8 +31,9 @@ function send(res, status, data) {
 /** Reuses the host's authenticated passenger session, never trusts identity headers.
  * It returns false for all non-delivery routes so taxi behavior stays with the host.
  */
-export function createDeliveryHandler({ store, passengerIdentity, transport = null }) {
+export function createDeliveryHandler({ store, passengerIdentity, transport = null, pricingProvider = null }) {
   if (typeof passengerIdentity !== 'function') throw new TypeError('Passenger authentication adapter required');
+  const roadQuote=createRoadQuotes(store,pricingProvider);
   return async function handle(req, res) {
     const url = new URL(req.url, 'http://local'), path = url.pathname, method = req.method;
     const files = { '/delivery': ['index.html', 'text/html; charset=utf-8'], '/delivery/': ['index.html', 'text/html; charset=utf-8'], '/delivery/portal.css': ['portal.css', 'text/css; charset=utf-8'], '/delivery/portal.js': ['portal.js', 'text/javascript; charset=utf-8'] };
@@ -58,7 +60,7 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
         result = store.login(input.login, input.password, req.socket.remoteAddress || 'unknown');
       } else if (route.startsWith('/customer/')) {
         const customer = await passengerIdentity(req);
-        if (method === 'POST' && route === '/customer/quotes') result = store.quote(customer, await json(req));
+        if (method === 'POST' && route === '/customer/quotes') result = await roadQuote(customer, await json(req));
         else if (method === 'POST' && route === '/customer/orders') result = store.checkout(customer, await json(req), key);
         else if (method === 'GET' && route === '/customer/orders') result = store.ordersForCustomer(customer);
         else if (method === 'GET' && /^\/customer\/orders\/[a-f0-9]{36}$/.test(route)) result = store.orderForCustomer(customer, route.split('/')[3]);
@@ -70,7 +72,13 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
         else if (method === 'POST' && route === '/auth/logout') { store.logout(token); result = { logged_out: true }; }
         else if (route.startsWith('/admin/')) {
           store.admin(user);
-          if (method === 'GET' && route === '/admin/config') result = { categories: store.all('SELECT * FROM delivery_categories'), zones: store.all('SELECT * FROM delivery_zones'), shops: store.all('SELECT * FROM delivery_shops') };
+          if (method === 'GET' && route === '/admin/config') result = { categories: store.all('SELECT * FROM delivery_categories'), zones: store.all('SELECT * FROM delivery_zones'), shops: store.all('SELECT * FROM delivery_shops'), pricing:store.pricing() };
+          else if(method==='GET'&&route==='/admin/pricing-options') { if(!pricingProvider)error(503,'Road pricing is not connected');result=await pricingProvider.options(); }
+          else if(method==='PUT'&&route==='/admin/pricing') {
+            const input=await json(req);
+            if(input.enabled===true){if(!pricingProvider)error(503,'Road pricing is not connected');const choices=await pricingProvider.options();if(!choices.tariffs.some(t=>t.id===input.tariff_id)||!choices.groups.some(g=>g.id===input.crew_group_id))error(422,'Select an active TaxiMaster tariff and crew group');}
+            result=store.savePricing(user,input);
+          }
           else if (method === 'POST' && route === '/admin/categories') result = store.category(user, await json(req));
           else if (method === 'PUT' && /^\/admin\/categories\/[1-9][0-9]*$/.test(route)) result = store.category(user, await json(req), Number(route.split('/')[3]));
           else if (method === 'POST' && route === '/admin/zones') result = store.zone(user, await json(req));

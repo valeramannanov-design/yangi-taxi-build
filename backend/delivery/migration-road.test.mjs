@@ -1,0 +1,28 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync,readFileSync,rmSync } from 'node:fs';
+import { join,resolve,dirname,basename } from 'node:path';
+import { tmpdir } from 'node:os';
+import { DeliveryStore } from './store.mjs';
+
+test('v4 → v5 preserves existing orders, receipts, ledger and all foreign keys',t=>{
+  const dir=mkdtempSync(join(tmpdir(),'yangi-delivery-road-migration-')),file=join(dir,'existing.sqlite');
+  t.after(()=>{const target=resolve(dir);assert.equal(dirname(target),resolve(tmpdir()));assert.ok(basename(target).startsWith('yangi-delivery-'));rmSync(target,{recursive:true,force:true});});
+  const old=new DatabaseSync(file);old.exec('PRAGMA foreign_keys=ON');
+  for(const v of [1,2,3,4]){old.exec(readFileSync(new URL('./migrations/'+String(v).padStart(3,'0')+'.sql',import.meta.url),'utf8'));old.prepare('INSERT INTO delivery_migrations VALUES(?,?)').run(v,1);}
+  old.exec("INSERT INTO delivery_users VALUES(1,'partner','test-only-hash','partner',1);INSERT INTO delivery_categories VALUES(1,'Category',1);INSERT INTO delivery_zones VALUES(1,'Old zone',39,41,64,66,3000,1000,30000,1);INSERT INTO delivery_shops VALUES(1,1,1,1,'Store','Address',40,65,1000,1)");
+  const snapshot=JSON.stringify({total_uzs:12000,delivery_uzs:6000,pricing_basis:'straight_line_zone'});
+  old.prepare('INSERT INTO delivery_quotes VALUES(?,?,?,?,?)').run('old-quote','101',1,snapshot,1000);
+  old.exec("INSERT INTO delivery_orders(id,customer_id,shop_id,quote_id,snapshot,status,transport_order_id,driver_id,crew_id,created_at,updated_at) VALUES('old-order','101',1,'old-quote','{}','completed',7001,5,4,1,1)");
+  old.prepare('UPDATE delivery_orders SET snapshot=?').run(snapshot);
+  old.exec("INSERT INTO delivery_cash_receipts VALUES('old-order',5,4,12000,1);INSERT INTO delivery_pickup_authorizations VALUES('old-order',7001,5,4,1)");
+  for(const [kind,amount] of [['driver_cash_receivable',12000],['courier_payable',-6000],['merchant_payable',-5250],['service_revenue',-750]])old.prepare('INSERT INTO delivery_ledger VALUES(?,?,?,?,?,?)').run('old-order',kind,1,5,amount,1);
+  old.close();const store=new DeliveryStore(file);
+  try{
+    assert.deepEqual(store.all('PRAGMA foreign_key_check'),[]);assert.equal(store.one('SELECT snapshot FROM delivery_orders').snapshot,snapshot);
+    assert.equal(store.one('SELECT count(*) AS n FROM delivery_cash_receipts').n,1);assert.equal(store.one('SELECT count(*) AS n,sum(amount_uzs) AS sum FROM delivery_ledger').n,4);
+    assert.equal(store.one('SELECT sum(amount_uzs) AS sum FROM delivery_ledger').sum,0);assert.equal(store.pricing().enabled,0);
+    store.run('UPDATE delivery_shops SET zone_id=NULL');assert.equal(store.one('SELECT zone_id FROM delivery_shops').zone_id,null);assert.deepEqual(store.all('PRAGMA foreign_key_check'),[]);
+  }finally{store.close();}
+});

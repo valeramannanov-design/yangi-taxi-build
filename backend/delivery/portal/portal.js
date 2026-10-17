@@ -48,13 +48,13 @@ function loginView() {
 }
 async function show(next) {
   if (!me) return; tab = next;
-  const sections = me.role === 'admin' ? [['shops','Магазины'],['categories','Категории'],['zones','Тарифы и зоны'],['orders','Заказы'],['finance','Финансы']] : [['products','Товары'],['orders','Заказы'],['finance','Финансы']];
+  const sections = me.role === 'admin' ? [['shops','Магазины'],['categories','Категории'],['pricing','Тариф доставки'],['orders','Заказы'],['finance','Финансы']] : [['products','Товары'],['orders','Заказы'],['finance','Финансы']];
   tabs.innerHTML = sections.map(([id, title]) => `<button data-tab="${id}" class="${id === tab ? 'selected' : ''}">${title}</button>`).join('');
   tabs.querySelectorAll('button').forEach(button => { button.onclick = () => perform(() => show(button.dataset.tab)); });
   if (me.role === 'admin') config = await request('/admin/config');
   if (tab === 'shops') shopsView();
   else if (tab === 'categories') categoriesView();
-  else if (tab === 'zones') zonesView();
+  else if (tab === 'pricing') await pricingView();
   else if (tab === 'products') { products = await request('/merchant/products'); productsView(); }
   else if (tab === 'orders') { orders = await request(me.role === 'admin' ? '/admin/orders' : '/merchant/orders'); if (me.role === 'admin') { transport = await request('/admin/transport'); management=await request('/admin/management'); } ordersView(); }
   else if (tab === 'finance') financeView(await request(me.role === 'admin' ? '/admin/finance' : '/merchant/finance'));
@@ -65,12 +65,12 @@ function shopsView() {
   main.querySelectorAll('[data-shop]').forEach(b => { b.onclick = () => shopForm(config.shops.find(s => s.id === Number(b.dataset.shop))); });
 }
 function shopForm(shop) {
-  if (!config.categories.length || !config.zones.length) { notice.textContent = 'Сначала добавьте категорию и зону доставки.'; return; }
+  if (!config.categories.length) { notice.textContent = 'Сначала добавьте категорию магазина.'; return; }
   const s = shop || {};
-  main.innerHTML = `<h1>${shop ? 'Изменить магазин' : 'Новый магазин'}</h1><form id="shop-form">${field('name','Название',s.name)}${field('address','Адрес',s.address)}${field('lat','Широта',s.lat,'number','step="any" min="-90" max="90"')}${field('lon','Долгота',s.lon,'number','step="any" min="-180" max="180"')}${choose('category_id','Категория',config.categories,s.category_id)}${choose('zone_id','Зона доставки',config.zones,s.zone_id)}${field('commission','Комиссия магазина, %',shop ? s.commission_bps / 100 : '','number','min="0" max="100" step="0.01"')}${shop ? check('active','Магазин активен',s.active) : field('login','Логин партнёра','','text','autocomplete="off" minlength="3"') + field('password','Первый пароль партнёра','','password','autocomplete="new-password" minlength="12"')}<div class="full"><button>Сохранить</button><button type="button" class="secondary" id="back">Назад</button></div></form>`;
+  main.innerHTML = `<h1>${shop ? 'Изменить магазин' : 'Новый магазин'}</h1><form id="shop-form">${field('name','Название',s.name)}${field('address','Адрес',s.address)}${field('lat','Широта',s.lat,'number','step="any" min="-90" max="90"')}${field('lon','Долгота',s.lon,'number','step="any" min="-180" max="180"')}${choose('category_id','Категория',config.categories,s.category_id)}${field('commission','Комиссия магазина, %',shop ? s.commission_bps / 100 : '','number','min="0" max="100" step="0.01"')}${shop ? check('active','Магазин активен',s.active) : field('login','Логин партнёра','','text','autocomplete="off" minlength="3"') + field('password','Первый пароль партнёра','','password','autocomplete="new-password" minlength="12"')}<div class="full"><button>Сохранить</button><button type="button" class="secondary" id="back">Назад</button></div></form>`;
   document.querySelector('#back').onclick = shopsView;
   document.querySelector('#shop-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; perform(async () => {
-    const input = Object.fromEntries(new FormData(form)); for (const key of ['lat','lon','category_id','zone_id']) input[key] = Number(input[key]); input.commission_bps = Math.round(Number(input.commission) * 100); delete input.commission;
+    const input = Object.fromEntries(new FormData(form)); for (const key of ['lat','lon','category_id']) input[key] = Number(input[key]); input.commission_bps = Math.round(Number(input.commission) * 100); delete input.commission;
     if (shop) input.active = form.elements.active.checked;
     await request(shop ? '/admin/shops/' + s.id : '/admin/shops', { method: shop ? 'PUT' : 'POST', body: input }); await show('shops');
   }); };
@@ -80,15 +80,10 @@ function categoriesView() {
   document.querySelector('#category-form').onsubmit = event => { event.preventDefault(); const name = event.currentTarget.elements.name.value; perform(async () => { await request('/admin/categories', { method:'POST', body:{ name, active:true } }); await show('categories'); }); };
   main.querySelectorAll('[data-category]').forEach(b => { b.onclick = () => perform(async () => { const c = config.categories.find(c => c.id === Number(b.dataset.category)); await request('/admin/categories/' + c.id, { method:'PUT', body:{ name:c.name, active:!c.active } }); await show('categories'); }); });
 }
-function zonesView() {
-  main.innerHTML = '<h1>Тарифы и зоны</h1><p>Стоимость доставки: базовая сумма плюс цена за каждый начатый километр прямого расстояния от магазина. Границы ограничивают доступные адреса.</p><button id="new-zone">Добавить зону</button><div style="height:16px"></div>' + config.zones.map(z => `<article class="card"><div class="row"><b>${esc(z.name)}</b><button class="secondary" data-zone="${z.id}">Изменить</button></div><p>${money(z.base_uzs)} + ${money(z.per_km_uzs)}/км · максимум ${z.max_distance_m} м · ${z.active ? 'активна' : 'отключена'}</p></article>`).join('');
-  document.querySelector('#new-zone').onclick = () => zoneForm();
-  main.querySelectorAll('[data-zone]').forEach(b => { b.onclick = () => zoneForm(config.zones.find(z => z.id === Number(b.dataset.zone))); });
-}
-function zoneForm(zone) {
-  const z = zone || {};
-  main.innerHTML = '<h1>Зона доставки</h1><form id="zone-form">' + field('name','Название',z.name) + [['south','Южная широта'],['north','Северная широта'],['west','Западная долгота'],['east','Восточная долгота']].map(([name,label]) => field(name,label,z[name],'number','step="any"')).join('') + [['base_uzs','Базовая стоимость, сум'],['per_km_uzs','За начатый километр, сум'],['max_distance_m','Максимальное расстояние, м']].map(([name,label]) => field(name,label,z[name],'number','min="0" step="1"')).join('') + check('active','Зона активна',zone ? z.active : true) + '<div class="full"><button>Сохранить</button></div></form>';
-  document.querySelector('#zone-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; perform(async () => { const input = Object.fromEntries(new FormData(form)); for (const key of ['south','north','west','east','base_uzs','per_km_uzs','max_distance_m']) input[key] = Number(input[key]); input.active = form.elements.active.checked; await request('/admin/zones' + (zone ? '/' + z.id : ''), { method:zone ? 'PUT' : 'POST', body:input }); await show('zones'); }); };
+async function pricingView() {
+  const choices=await request('/admin/pricing-options'),p=config.pricing;
+  main.innerHTML='<h1>Доставка по дорожному маршруту</h1><p>Цена рассчитывается сервером TaxiMaster и фиксируется при оформлении. Стоимость километра и минимальную цену меняйте в выбранном тарифе TaxiMaster. Рисовать зоны не требуется.</p><form id="pricing-form">'+choose('tariff_id','Тариф TaxiMaster',choices.tariffs,p.tariff_id)+choose('crew_group_id','Группа экипажей',choices.groups,p.crew_group_id)+field('max_distance_m','Максимальная длина маршрута, м',p.max_distance_m??'','number','min="1" max="200000" step="1"')+check('enabled','Принимать заказы доставки',!!p.enabled)+'<button>Сохранить</button></form>';
+  document.querySelector('#pricing-form').onsubmit=event=>{event.preventDefault();const form=event.currentTarget;perform(async()=>{const input=Object.fromEntries(new FormData(form));for(const k of ['tariff_id','crew_group_id','max_distance_m'])input[k]=Number(input[k]);input.enabled=form.elements.enabled.checked;input.version=p.version;await request('/admin/pricing',{method:'PUT',body:input});await show('pricing');});};
 }
 function productsView() {
   main.innerHTML = '<h1>Товары</h1><button id="new-product">Добавить товар</button><div style="height:16px"></div>' + (products.length ? products.map(p => `<article class="card"><div class="row"><div class="product-title">${p.image_id ? `<img class="thumb" src="/api/delivery/images/${esc(p.image_id)}" alt="">` : ''}<b>${esc(p.name)}</b></div><button class="secondary" data-product="${p.id}">Изменить</button></div><p>${money(p.price_uzs)} · Остаток: ${p.stock} · ${p.active ? 'В продаже' : 'Скрыт'}</p></article>`).join('') : empty('Добавьте первый товар и фотографию.'));
@@ -122,7 +117,7 @@ function ordersView() {
     panel.querySelectorAll('[data-manage]').forEach(button=>{button.onclick=()=>perform(()=>managementForm(orders.find(o=>o.id===button.dataset.manage),button.dataset.operation));});
     panel.querySelectorAll('[data-dispatch]').forEach(button => { button.onclick = () => perform(async () => {
       const o = orders.find(o => o.id === button.dataset.dispatch), available = await request('/admin/transport-options');
-      main.innerHTML = `<h1>Назначить курьера</h1><p>${esc(o.shop_name)} → ${esc(o.destination.address)}</p><p>Наличные от клиента: ${money(o.total_uzs)}. Перевозка в TaxiMaster: ${money(o.delivery_uzs)}.</p><form id="dispatch-form">${choose('crew_id','Свободный экипаж на линии',available.crews)}${choose('tariff_id','Тариф TaxiMaster',available.tariffs)}<div class="full"><button>Назначить</button><button type="button" id="back" class="secondary">Назад</button></div></form>`;
+      main.innerHTML = `<h1>Назначить курьера</h1><p>${esc(o.shop_name)} → ${esc(o.destination.address)}</p><p>Наличные от клиента: ${money(o.total_uzs)}. Перевозка в TaxiMaster: ${money(o.delivery_uzs)}.</p><form id="dispatch-form">${choose('crew_id','Свободный экипаж на линии',available.crews)}${choose('tariff_id','Тариф подтверждённого расчёта',available.tariffs.filter(t=>!o.delivery_tariff_id||t.id===o.delivery_tariff_id),o.delivery_tariff_id)}<div class="full"><button>Назначить</button><button type="button" id="back" class="secondary">Назад</button></div></form>`;
       document.querySelector('#back').onclick = () => perform(() => show('orders'));
       document.querySelector('#dispatch-form').onsubmit = event => { event.preventDefault(); const input = Object.fromEntries(new FormData(event.currentTarget)); input.crew_id = Number(input.crew_id); input.tariff_id = Number(input.tariff_id); input.version = o.version;
         perform(async () => { await request(`/admin/orders/${o.id}/dispatch`, { method:'POST', body:input, key:commandKey(o, 'dispatch-' + input.crew_id + '-' + input.tariff_id) }); await show('orders'); });
@@ -139,7 +134,7 @@ function ordersView() {
 async function managementForm(order,action){
   const job=transport.jobs.find(j=>j.order_id===order.id),bound=!!job?.transport_order_id;
   const available=(bound||action==='reassign')?await request('/admin/transport-options'):{crews:[],tariffs:[],cancel_states:[]};
-  main.innerHTML=`<h1>${action==='cancel'?'Отменить доставку':'Назначить другого курьера'}</h1><p>${esc(order.shop_name)} → ${esc(order.destination.address)}</p><p>${bound?'Прежняя перевозка будет отменена только при нулевом штрафе. Дождитесь подтверждения TaxiMaster.':''}${action==='reassign'?' Товар останется в резерве. Новое назначение появится после подтверждённой отмены прежнего.':''}</p><form id="management-form">${action==='reassign'?choose('crew_id','Новый свободный экипаж',available.crews.filter(c=>c.id!==job.crew_id))+choose('tariff_id','Тариф TaxiMaster',available.tariffs,job.tariff_id):''}${bound?choose('cancel_state_id','Причина отмены в TaxiMaster',available.cancel_states,available.cancel_states.length===1?available.cancel_states[0].id:undefined):''}${field('reason','Комментарий диспетчера','','text','maxlength="300"')}<div class="full"><button>Подтвердить</button><button type="button" id="management-back" class="secondary">Назад</button></div></form>`;
+  main.innerHTML=`<h1>${action==='cancel'?'Отменить доставку':'Назначить другого курьера'}</h1><p>${esc(order.shop_name)} → ${esc(order.destination.address)}</p><p>${bound?'Прежняя перевозка будет отменена только при нулевом штрафе. Дождитесь подтверждения TaxiMaster.':''}${action==='reassign'?' Товар останется в резерве. Новое назначение появится после подтверждённой отмены прежнего.':''}</p><form id="management-form">${action==='reassign'?choose('crew_id','Новый свободный экипаж',available.crews.filter(c=>c.id!==job.crew_id))+choose('tariff_id','Тариф подтверждённого расчёта',available.tariffs.filter(t=>!order.delivery_tariff_id||t.id===order.delivery_tariff_id),job.tariff_id):''}${bound?choose('cancel_state_id','Причина отмены в TaxiMaster',available.cancel_states,available.cancel_states.length===1?available.cancel_states[0].id:undefined):''}${field('reason','Комментарий диспетчера','','text','maxlength="300"')}<div class="full"><button>Подтвердить</button><button type="button" id="management-back" class="secondary">Назад</button></div></form>`;
   document.querySelector('#management-back').onclick=()=>perform(()=>show('orders'));
   document.querySelector('#management-form').onsubmit=event=>{
     event.preventDefault();const input=Object.fromEntries(new FormData(event.currentTarget));input.action=action;input.version=order.version;

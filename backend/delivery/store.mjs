@@ -51,14 +51,18 @@ export class DeliveryStore {
     this.db.function('delivery_fold', { deterministic: true }, value => String(value).normalize('NFKC').toLocaleLowerCase());
     this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)');
-    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 4) { this.close(); throw new Error('Delivery database requires a newer service version'); }
-    for (const version of [1, 2, 3, 4]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
-      this.transaction(() => {
+    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 5) { this.close(); throw new Error('Delivery database requires a newer service version'); }
+    for (const version of [1, 2, 3, 4, 5]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
+      // SQLite table rebuild: disable FK enforcement outside the exclusive write
+      // transaction, validate every reference before commit, then restore it.
+      if(version===5)this.db.exec('PRAGMA foreign_keys=OFF');
+      try { this.transaction(() => {
         // Another process may have migrated while this connection waited for its lock.
         if (this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) return;
         this.db.exec(readFileSync(new URL('./migrations/' + String(version).padStart(3, '0') + '.sql', import.meta.url), 'utf8'));
+        if(version===5 && this.all('PRAGMA foreign_key_check').length)throw new Error('Delivery migration has invalid references');
         this.run('INSERT INTO delivery_migrations VALUES(?,?)', version, now());
-      });
+      }); } finally { if(version===5)this.db.exec('PRAGMA foreign_keys=ON'); }
     }
   }
   close() { this.db.close(); }
@@ -124,7 +128,7 @@ export class DeliveryStore {
   }
   createShop(user, input) {
     this.admin(user); const location = point(input), hash = passwordHash(input.password), login = loginName(input.login);
-    const values = [integer(input.category_id, 1), integer(input.zone_id, 1), text(input.name, 100), text(input.address), location.lat, location.lon, integer(input.commission_bps, 0, 10000)];
+    const values = [integer(input.category_id, 1), (input.zone_id == null ? null : integer(input.zone_id, 1)), text(input.name, 100), text(input.address), location.lat, location.lon, integer(input.commission_bps, 0, 10000)];
     return this.transaction(() => {
       this.validateShopLocation(values[1], location);
       if (!this.one('SELECT 1 FROM delivery_categories WHERE id=?', values[0])) fail(422, 'Category not found');
@@ -135,15 +139,16 @@ export class DeliveryStore {
     });
   }
   validateShopLocation(zoneId, location) {
+    if (zoneId == null) return;
     const z = this.one('SELECT * FROM delivery_zones WHERE id=?', zoneId);
     if (!z || !contains(z, location)) fail(422, 'Store is outside configured zone');
   }
   updateShop(user, shopId, input) {
     this.admin(user); const location = point(input);
     return this.transaction(() => {
-      this.validateShopLocation(integer(input.zone_id, 1), location);
+      this.validateShopLocation((input.zone_id == null ? null : integer(input.zone_id, 1)), location);
       if (!this.one('SELECT 1 FROM delivery_categories WHERE id=?', integer(input.category_id, 1))) fail(422, 'Category not found');
-      if (!this.run('UPDATE delivery_shops SET category_id=?,zone_id=?,name=?,address=?,lat=?,lon=?,commission_bps=?,active=? WHERE id=?', input.category_id, input.zone_id, text(input.name, 100), text(input.address), location.lat, location.lon, integer(input.commission_bps, 0, 10000), bool(input.active), integer(shopId, 1)).changes) fail(404, 'Store not found');
+      if (!this.run('UPDATE delivery_shops SET category_id=?,zone_id=?,name=?,address=?,lat=?,lon=?,commission_bps=?,active=? WHERE id=?', input.category_id, input.zone_id ?? null, text(input.name, 100), text(input.address), location.lat, location.lon, integer(input.commission_bps, 0, 10000), bool(input.active), integer(shopId, 1)).changes) fail(404, 'Store not found');
       return this.one('SELECT * FROM delivery_shops WHERE id=?', shopId);
     });
   }
@@ -151,8 +156,8 @@ export class DeliveryStore {
     if (categoryId !== undefined) integer(categoryId, 1);
     if (typeof query !== 'string' || query.length > 100) fail(422, 'Invalid search');
     return { categories: this.all('SELECT id,name FROM delivery_categories WHERE active=1 ORDER BY name'),
-      shops: this.all('SELECT s.id,s.name,s.address,s.category_id,s.lat,s.lon FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id JOIN delivery_zones z ON z.id=s.zone_id WHERE s.active=1 AND c.active=1 AND z.active=1 AND (? IS NULL OR s.category_id=?) ORDER BY s.name', categoryId ?? null, categoryId ?? null),
-      products: query.trim() ? this.all('SELECT p.id,p.shop_id,p.name,p.description,p.price_uzs,p.stock,p.image_id FROM delivery_products p JOIN delivery_shops s ON s.id=p.shop_id JOIN delivery_categories c ON c.id=s.category_id JOIN delivery_zones z ON z.id=s.zone_id WHERE p.active=1 AND p.stock>0 AND s.active=1 AND c.active=1 AND z.active=1 AND (? IS NULL OR s.category_id=?) AND (instr(delivery_fold(p.name),delivery_fold(?))>0 OR instr(delivery_fold(p.description),delivery_fold(?))>0) ORDER BY p.name LIMIT 100', categoryId ?? null, categoryId ?? null, query.trim(), query.trim()) : [] };
+      shops: this.all('SELECT s.id,s.name,s.address,s.category_id,s.lat,s.lon FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id WHERE s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) ORDER BY s.name', categoryId ?? null, categoryId ?? null),
+      products: query.trim() ? this.all('SELECT p.id,p.shop_id,p.name,p.description,p.price_uzs,p.stock,p.image_id FROM delivery_products p JOIN delivery_shops s ON s.id=p.shop_id JOIN delivery_categories c ON c.id=s.category_id WHERE p.active=1 AND p.stock>0 AND s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) AND (instr(delivery_fold(p.name),delivery_fold(?))>0 OR instr(delivery_fold(p.description),delivery_fold(?))>0) ORDER BY p.name LIMIT 100', categoryId ?? null, categoryId ?? null, query.trim(), query.trim()) : [] };
   }
   shop(shopId) {
     const shop = this.availableShop(shopId);
@@ -160,7 +165,7 @@ export class DeliveryStore {
     return { id, name, address, category_id, lat, lon, products: this.all('SELECT id,sku,name,description,price_uzs,stock,image_id FROM delivery_products WHERE shop_id=? AND active=1 ORDER BY name', shopId) };
   }
   availableShop(shopId) {
-    const shop = this.one('SELECT s.* FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id JOIN delivery_zones z ON z.id=s.zone_id WHERE s.id=? AND s.active=1 AND c.active=1 AND z.active=1', integer(shopId, 1));
+    const shop = this.one('SELECT s.* FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id WHERE s.id=? AND s.active=1 AND c.active=1', integer(shopId, 1));
     if (!shop) fail(409, 'Store unavailable');
     return shop;
   }
@@ -202,13 +207,17 @@ export class DeliveryStore {
     if (!identity || !/^[1-9][0-9]{0,14}$/.test(String(identity.id)) || typeof identity.phone !== 'string' || !/^\+?[0-9]{7,15}$/.test(identity.phone)) fail(401, 'Passenger authentication required');
     return { id: String(identity.id), phone: identity.phone };
   }
-  quote(identity, input) {
+  quote(identity, input, road = null) {
     const customer = this.customer(identity), location = point(input.destination), address = text(input.destination.address);
     return this.transaction(() => {
       const shop = this.availableShop(input.shop_id), z = this.one('SELECT * FROM delivery_zones WHERE id=?', shop.zone_id);
-      if (!contains(z, location)) fail(422, 'Address outside delivery zone');
-      const distance_m = distanceMeters(shop, location);
-      if (distance_m > z.max_distance_m) fail(422, 'Address too far from store');
+      if (road) {
+        const current=this.pricing(),before=road.context;
+        if(!current.enabled || current.version!==before.pricing.version || shop.address!==before.shop.address || shop.lat!==before.shop.lat || shop.lon!==before.shop.lon)fail(409,'Delivery settings or store changed; calculate again');
+        integer(road.distance_m,0,current.max_distance_m);integer(road.delivery_uzs,1,100_000_000);
+      } else if (!z || !z.active || !contains(z, location)) fail(422, 'Address outside delivery zone');
+      const distance_m = road ? road.distance_m : distanceMeters(shop, location);
+      if (!road && distance_m > z.max_distance_m) fail(422, 'Address too far from store');
       if (!Array.isArray(input.items) || input.items.length < 1 || input.items.length > 50) fail(422, 'Cart must have 1–50 items');
       const seen = new Set(), items = input.items.map(row => {
         const productId = integer(row.product_id, 1), quantity = integer(row.quantity, 1, 99);
@@ -219,14 +228,27 @@ export class DeliveryStore {
       }).sort((a, b) => a.product_id - b.product_id);
       const subtotal_uzs = items.reduce((sum, i) => sum + i.price_uzs * i.quantity, 0);
       // MVP straight-line zone tariff. This is not a road-route distance or taxi fare.
-      const delivery_uzs = z.base_uzs + Math.ceil(distance_m / 1000) * z.per_km_uzs;
+      const delivery_uzs = road ? road.delivery_uzs : z.base_uzs + Math.ceil(distance_m / 1000) * z.per_km_uzs;
       const commission_uzs = Math.floor((subtotal_uzs * shop.commission_bps + 5000) / 10000);
       const snapshot = { shop_name: shop.name, pickup: { address: shop.address, lat: shop.lat, lon: shop.lon }, destination: { ...location, address }, phone: customer.phone,
-        items, subtotal_uzs, delivery_uzs, total_uzs: subtotal_uzs + delivery_uzs, commission_bps: shop.commission_bps, commission_uzs, distance_m, pricing_basis: 'straight_line_zone', payment_method: 'cash' };
+        items, subtotal_uzs, delivery_uzs, total_uzs: subtotal_uzs + delivery_uzs, commission_bps: shop.commission_bps, commission_uzs, distance_m, pricing_basis: road ? 'taximaster_road' : 'straight_line_zone', ...(road?{delivery_tariff_id:road.context.pricing.tariff_id,delivery_crew_group_id:road.context.pricing.crew_group_id,pricing_version:road.context.pricing.version}:{}), payment_method: 'cash' };
       const quoteId = id(), expires_at = this.now() + 300_000;
       this.run('INSERT INTO delivery_quotes VALUES(?,?,?,?,?)', quoteId, customer.id, shop.id, JSON.stringify(snapshot), expires_at);
       return { id: quoteId, expires_at, ...this.publicSnapshot(snapshot) };
     });
+  }
+  pricing() { return this.one('SELECT * FROM delivery_pricing WHERE id=1'); }
+  savePricing(user,input) {
+    this.admin(user);const enabled=bool(input.enabled);
+    const values=enabled?[integer(input.tariff_id,1),integer(input.crew_group_id,1),integer(input.max_distance_m,1,200_000)]:[null,null,null];
+    if(!this.run('UPDATE delivery_pricing SET enabled=?,tariff_id=?,crew_group_id=?,max_distance_m=?,version=version+1 WHERE id=1 AND version=?',enabled,...values,integer(input.version,1)).changes)fail(409,'Delivery settings changed; refresh');
+    return this.pricing();
+  }
+  roadQuoteContext(identity,input) {
+    const customer=this.customer(identity),shop=this.availableShop(input.shop_id),destination={...point(input.destination),address:text(input.destination.address)},pricing=this.pricing();
+    if(!pricing.enabled)fail(503,'Configure the delivery tariff in administration first');
+    if(!Array.isArray(input.items)||input.items.length<1||input.items.length>50)fail(422,'Cart must have 1–50 items');
+    return {customer,shop,destination,pricing};
   }
   publicSnapshot(snapshot) { const { commission_bps, commission_uzs, ...publicData } = snapshot; return publicData; }
   command(actor, key, payload, fn) {

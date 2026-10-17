@@ -17,6 +17,7 @@ export function createTaxiMasterDeliveryAdapter({ get, post, postQuery, catalog,
     async prepare(job, order, snapshot) {
       const crew = await get('get_crew_info', { crew_id: job.crew_id });
       if(!allowed(crew.crew_id,crew.driver_id))throw new Error('Courier is outside enabled Delivery scope');
+      if(snapshot.delivery_tariff_id && (snapshot.delivery_tariff_id!==job.tariff_id || snapshot.delivery_crew_group_id!==crew.crew_group_id))throw new Error('Courier group or tariff differs from the confirmed route quote');
       if (crew.crew_id !== job.crew_id || crew.online !== true || !Number.isSafeInteger(crew.driver_id) || crew.driver_id < 1) throw new Error('Courier unavailable');
       const [driver, working, current, definitions] = await Promise.all([
         get('get_driver_info', { driver_id: crew.driver_id, fields: 'driver_id,is_locked,is_dismissed' }),

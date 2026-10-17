@@ -36,6 +36,14 @@ test('CommonAPI adapter uses real crew/group/tariff and freezes only the deliver
   await f.adapter.create(prepared.body);
   assert.equal(f.calls.at(-1).name, 'create_order2');
 });
+
+test('road quotes retain their TM tariff and crew group before any transport creation',async()=>{
+  const f=fixture();f.snapshot.delivery_tariff_id=9;f.snapshot.delivery_crew_group_id=8;
+  await f.adapter.prepare(f.job,f.order,f.snapshot);
+  await assert.rejects(f.adapter.prepare({...f.job,tariff_id:10},f.order,f.snapshot));
+  f.records.get_crew_info.crew_group_id=9;await assert.rejects(f.adapter.prepare(f.job,f.order,f.snapshot));
+  assert.equal(f.calls.some(c=>c.name==='create_order2'),false);
+});
 test('CommonAPI adapter refuses occupied, locked, offline or off-line crews', async () => {
   for (const change of [f => f.records.get_current_orders.orders.push({ order_id: 1 }), f => { f.records.get_driver_info.is_locked = true; }, f => { f.records.get_crew_info.online = false; }, f => { f.records.get_crews_info.crews_info = []; }]) {
     const f = fixture(); change(f);

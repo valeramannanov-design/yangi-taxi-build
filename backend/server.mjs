@@ -2646,7 +2646,9 @@ if (process.env.DELIVERY_ENABLED === 'true') {
     const timer = setInterval(() => transport.tick().catch(() => console.warn('Delivery transport reconciliation deferred')), 5000);
     timer.unref();
   }
-  deliveryHandler = createDeliveryHandler({ store, transport, passengerIdentity: req => {
+  const { createTaxiMasterRoadPricing } = await import('./delivery/road-pricing.mjs');
+  const pricingProvider=cfg.mock?null:createTaxiMasterRoadPricing({catalog:liveCatalog,analyzeRoute:analyzeLiveRoute,calculateCost:calculateLiveCost,time:tmTime});
+  deliveryHandler = createDeliveryHandler({ store, transport, pricingProvider, passengerIdentity: req => {
     const session = auth(req);
     return { id: String(session.clientId), phone: session.phone };
   } });

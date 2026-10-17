@@ -234,7 +234,7 @@ test('migrations upgrade an existing v1 database and preserve its data', t => {
   const upgraded = new DeliveryStore(path);
   try {
     assert.equal(upgraded.one('SELECT name FROM delivery_categories').name, 'Existing category');
-    assert.equal(upgraded.one('SELECT max(version) AS v FROM delivery_migrations').v, 4);
+    assert.equal(upgraded.one('SELECT max(version) AS v FROM delivery_migrations').v, 5);
     assert.ok(upgraded.all('PRAGMA table_info(delivery_products)').some(c => c.name === 'version'));
   } finally { upgraded.close(); }
 });

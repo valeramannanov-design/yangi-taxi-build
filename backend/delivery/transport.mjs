@@ -17,6 +17,8 @@ export class DeliveryTransport {
       const order = s.one('SELECT * FROM delivery_orders WHERE id=?', orderId);
       if (!order) fail(404, 'Order not found');
       if (order.version !== version || !['confirmed', 'ready'].includes(order.status) || order.transport_order_id !== null) fail(409, 'Order cannot be dispatched');
+      const quoted=JSON.parse(order.snapshot);
+      if(quoted.delivery_tariff_id && tariff!==quoted.delivery_tariff_id)fail(409,'Use the tariff of the confirmed delivery quote');
       if (s.one('SELECT 1 FROM delivery_transport_jobs WHERE order_id=?', orderId)) fail(409, 'Dispatch already requested; reconcile its result');
       this.management.reserveCrew(orderId,crew);
       if (s.one("SELECT 1 FROM delivery_transport_jobs j JOIN delivery_orders o ON o.id=j.order_id WHERE j.crew_id=? AND (j.phase IN ('queued','creating','uncertain','review') OR (j.phase='bound' AND o.status NOT IN ('completed','cancelled','rejected')))", crew) || s.one("SELECT 1 FROM delivery_orders WHERE crew_id=? AND status IN ('assigned','accepted','picked_up')", crew)) fail(409, 'Courier already reserved');
