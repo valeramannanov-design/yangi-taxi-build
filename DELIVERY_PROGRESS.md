@@ -9,6 +9,9 @@
 
 ## Next / external blockers
 
+- Current user priority: match the actual Yandex Go mobile UI on their phone (not web/store screenshots). On connected RMX2021 the package inventory returned Yandex Navigator only, no Yandex Go; asked which phone has it / to open manually. Do not claim the mobile reference was inspected or begin a guessed redesign. ETA research only: existing owned /api/orders/:id/driver-location + get_crews_coords, coords_time in YYYYMMDDhhmmss; MapKit installed4.45 timeWithTraffic in SI seconds. No ETA implementation committed yet.
+- APK71 launch was explicitly authorized and am start accepted; USB went offline during screencap, image unusable. No visual/native acceptance claimed.
+
 1. APK71 built, verified original passenger certificate/package/ABIs and installed with adb install -r Success; device metadata confirms71, no data reset. Artifact C:\Yangi Taxi DEV\artifacts\YangiTaxiGO-Test-v71.apk; docs/GO_ANDROID_TEST_71.md. User asked to open manually for visual observation; MapKit/GPS/new-schema GO and Driver+ cash native acceptance remains unproved. Production stays5; no TEST prices as real.
 2. Dynamic ETA next; verify real available location/routing data before adding a contract, no guessed speed/countdown. Then pickup, reviews/low-rating complaints, notifications, full parcel handover, history and final visuals. First inspect/reuse existing components.
 3. Advanced catalog promotions1+1/gifts and exact visual/native acceptance remain. Percent/fixed product promotions and coupons are implemented, do not recreate. No platform-funded delivery discounts without separate accounting.

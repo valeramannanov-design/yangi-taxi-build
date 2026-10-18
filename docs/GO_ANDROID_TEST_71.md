@@ -32,3 +32,11 @@ Installed package/signature and passing Flutter widgets are not proof of MapKit,
 GPS, actual courier screen or live commission. Do not enable a TEST adapter in
 production or run acceptance5 to make the app appear functional. Compatible
 isolated/pilot staging plus separately authorized TM financial evidence remains.
+
+
+Follow-up2026-10-18: user explicitly authorized opening the installed test app;
+`am start` returned Starting Intent. Screenshot capture was incomplete and the
+device then reported offline. The PNG is unusable; app-start command acceptance
+is not proof of a rendered screen or successful login. No native visual check
+has passed. Latest mobile Yandex Go reference request remains pending: current
+RMX2021 package inventory shows Navigator, not the Go passenger app.
