@@ -508,6 +508,9 @@ class _GoPurchaseDetailsState extends State<GoPurchaseDetails>
                   lang: widget.lang,
                   enabled: _error == null && _foreground),
             GoCashHistory(order: o, lang: widget.lang),
+            if (o['status'] == 'completed')
+              GoOrderReviews(
+                  api: widget.api, orderId: widget.orderId, lang: widget.lang),
             Text('${(o['destination'] as Map?)?['address'] ?? ''}'),
             Text(goAddressDetailsText(
                 (o['destination'] as Map?) ?? {}, widget.lang)),

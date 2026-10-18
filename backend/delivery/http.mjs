@@ -64,6 +64,8 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
         if (method === 'POST' && route === '/customer/quotes') result = await roadQuote(customer, await json(req));
         else if (method === 'POST' && route === '/customer/orders') result = store.checkout(customer, await json(req), key);
         else if (method === 'GET' && route === '/customer/orders') result = store.ordersForCustomer(customer);
+        else if (method === 'GET' && /^\/customer\/orders\/[a-f0-9]{36}\/reviews$/.test(route)) result=store.reviews.forCustomer(customer,route.split('/')[3]);
+        else if (method === 'POST' && /^\/customer\/orders\/[a-f0-9]{36}\/reviews$/.test(route)) result=store.reviews.submit(customer,route.split('/')[3],await json(req),key);
         else if (method === 'GET' && route === '/customer/notifications') result = store.pickup.notifications(store.customer(customer));
         else if (method === 'POST' && /^\/customer\/notifications\/[1-9][0-9]*\/read$/.test(route)) {await json(req);result=store.pickup.readNotification(store.customer(customer),Number(route.split('/')[3]),key);}
         else if (method === 'GET' && /^\/customer\/orders\/[a-f0-9]{36}$/.test(route)) result = store.orderForCustomer(customer, route.split('/')[3]);
@@ -110,6 +112,9 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
             if (!transport) error(503, 'TaxiMaster delivery dispatch is not enabled');
             result = await transport.adapter.options();
           }
+          else if (method === 'GET' && route === '/admin/reviews') result=store.reviews.forStaff(user);
+          else if (method === 'GET' && route === '/admin/complaints') result=store.reviews.complaints(user);
+          else if (method === 'POST' && /^\/admin\/complaints\/[1-9][0-9]*$/.test(route)) result=store.reviews.updateComplaint(user,Number(route.split('/')[3]),await json(req),key);
           else if (method === 'GET' && route === '/admin/finance') result = store.finance(user);
           else error(404, 'Delivery route not found');
         } else if (route.startsWith('/merchant/')) {
@@ -123,6 +128,7 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
           else if (method === 'POST' && route === '/merchant/images') result = store.image(user, await bytes(req, 2 * 1024 * 1024));
           else if (method === 'GET' && route === '/merchant/orders') result = store.ordersForStaff(user);
           else if (method === 'POST' && /^\/merchant\/orders\/[a-f0-9]{36}\/action$/.test(route)) result = store.merchantAction(user, route.split('/')[3], await json(req), key);
+          else if (method === 'GET' && route === '/merchant/reviews') result=store.reviews.forStaff(user);
           else if (method === 'GET' && route === '/merchant/finance') result = store.finance(user);
           else error(404, 'Delivery route not found');
         } else error(404, 'Delivery route not found');

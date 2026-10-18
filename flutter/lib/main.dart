@@ -22,6 +22,7 @@ part 'delivery.dart';
 part 'go.dart';
 part 'go_eta.dart';
 part 'go_pickup.dart';
+part 'go_reviews.dart';
 
 const defaultLat = 41.3111;
 const defaultLon = 69.2797;

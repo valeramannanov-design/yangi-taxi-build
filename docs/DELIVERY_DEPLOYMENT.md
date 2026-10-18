@@ -94,3 +94,16 @@ production without consent/consistent backup and code reconciliation. Old code
 cannot open12. After any new pickup receipt/notice/coupon/stock event preserve
 its evidence and recover forward, never restore a stale snapshot. No OS push,
 paid-pickup refund or real checkout enablement is delivered by this migration.
+
+
+### Latest source requirement — schema13 / GO reviews and complaints
+
+013 adds immutable GO reviews, automatic low-rating cases and handling audit.
+Include reviews.mjs,013.sql and matching store/http/portal/Flutter parts, alongside
+all prior modules. Source requires13; source12 cannot open13. Live remains5 and
+must not be opened/migrated by development code. Dry4–12→13 is tested; see
+GO_REVIEWS.md. Keep matching code/SQLite/private configuration backups and
+reconcile local live fixes before separately approved staging/deployment. After
+new feedback/audit/money/stock writes, recover forward; no stale DB rollback.
+Complaint resolution is not a refund/financial command. No live migration or
+checkout enablement was performed. Native and browser acceptance remain pending.

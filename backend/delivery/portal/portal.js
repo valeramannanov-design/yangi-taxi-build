@@ -38,7 +38,7 @@ function commandKey(order, action) {
   if (!value) { value = Array.from(crypto.getRandomValues(new Uint8Array(20)), n => n.toString(16).padStart(2, '0')).join(''); sessionStorage.setItem(name, value); }
   return value;
 }
-function logoutLocal() { token = ''; me = null; clearInterval(timer); timer = null; tabs.innerHTML = ''; account.innerHTML = ''; loginView(); }
+function logoutLocal() { complaintPending.clear(); token = ''; me = null; clearInterval(timer); timer = null; tabs.innerHTML = ''; account.innerHTML = ''; loginView(); }
 function loginView() {
   main.innerHTML = '<h1>Кабинет партнёра</h1><p>Войдите с доступом, выданным администратором Yangi Taxi.</p><form id="login">' + field('login', 'Логин', '', 'text', 'autocomplete="username" maxlength="80"') + field('password', 'Пароль', '', 'password', 'autocomplete="current-password" maxlength="128"') + '<button>Войти</button></form>';
   document.querySelector('#login').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; perform(async () => {
@@ -52,13 +52,15 @@ function loginView() {
 }
 async function show(next) {
   if (!me) return; tab = next;
-  const sections = me.role === 'admin' ? [['shops','Магазины'],['products','Товары'],['coupons','Купоны'],['categories','Категории'],['pricing','Тариф доставки'],['orders','Заказы'],['finance','Финансы']] : [['products','Товары'],['coupons','Купоны'],['orders','Заказы'],['finance','Финансы']];
+  const sections = me.role === 'admin' ? [['shops','Магазины'],['products','Товары'],['coupons','Купоны'],['categories','Категории'],['pricing','Тариф доставки'],['orders','Заказы'],['reviews','Отзывы'],['complaints','Обращения'],['finance','Финансы']] : [['products','Товары'],['coupons','Купоны'],['orders','Заказы'],['reviews','Отзывы'],['finance','Финансы']];
   tabs.innerHTML = sections.map(([id, title]) => `<button data-tab="${id}" class="${id === tab ? 'selected' : ''}">${title}</button>`).join('');
   tabs.querySelectorAll('button').forEach(button => { button.onclick = () => perform(() => show(button.dataset.tab)); });
   if (me.role === 'admin') config = await request('/admin/config');
   if (tab === 'shops') shopsView();
   else if (tab === 'categories') categoriesView();
   else if (tab === 'pricing') await pricingView();
+  else if (tab === 'reviews') reviewsView(await request(me.role==='admin'?'/admin/reviews':'/merchant/reviews'));
+  else if (tab === 'complaints') complaintsView(await request('/admin/complaints'));
   else if (tab === 'products' || tab === 'coupons') {
     if (me.role === 'admin') {
       if (!config.shops.length) { main.innerHTML=empty('Сначала добавьте магазин.'); return; }
@@ -265,5 +267,24 @@ async function managementForm(order,action){
 }
 function financeView(rows) {
   main.innerHTML = '<h1>Финансовая сводка</h1><p>Проводки доставки и подтверждённые наличные самовывоза. Наличные самовывоза — прямая выручка магазина, не долг службы. Фактические выплаты отражаются отдельно.</p>' + (rows.length ? '<div class="card tablewrap"><table><thead><tr><th>Показатель</th><th>Заказов</th><th>Сумма</th></tr></thead><tbody>' + rows.map(r => `<tr><td>${esc(financeNames[r.kind] || r.kind)}</td><td>${r.entries}</td><td>${money(Math.abs(r.amount_uzs))}</td></tr>`).join('') + '</tbody></table></div>' : empty('Пока нет завершённых доставок.'));
+}
+function reviewsView(rows){
+ main.innerHTML='<h1>Отзывы</h1><p>Оценки завершённых GO-заказов. Оценки такси TaxiMaster остаются отдельно.</p>'+(rows.length?rows.map(r=>`<article class="card"><b>${r.target==='shop'?'Магазин':'Курьер'}${r.target_id?' #'+esc(r.target_id):''} · ${r.rating}/5</b><p>Заказ ${esc(r.order_id)}</p><p>${esc(r.comment)}</p><small>${esc(new Date(r.created_at).toLocaleString())}</small></article>`).join(''):empty('Оценок пока нет.'));
+}
+const complaintPending=new Map();
+function complaintsView(rows){
+ const titles={open:'Новое',in_review:'В работе',resolved:'Закрыто'};
+ for(const row of rows)if(complaintPending.has(row.id)&&complaintPending.get(row.id).version!==row.version)complaintPending.delete(row.id);
+ main.innerHTML='<h1>Обращения GO</h1><p>Созданы автоматически при оценке 1–2. Изменение статуса не возвращает деньги и не меняет заказ.</p>'+(rows.length?rows.map(r=>`<article class="card"><b>#${r.id} · ${esc(titles[r.status])} · ${r.target==='shop'?'Магазин':'Курьер'}${r.target_id?' #'+esc(r.target_id):''} · ${r.rating}/5</b><p>Заказ ${esc(r.order_id)} · Магазин ${esc(r.shop_id)}</p><p>${esc(r.comment)}</p>${r.events.map(e=>`<p><small>${esc(new Date(e.created_at).toLocaleString())} · ${esc(titles[e.status])}: ${esc(e.note)}</small></p>`).join('')}<form data-complaint="${r.id}"><label>Статус<select name="status">${Object.entries(titles).filter(([k])=>k!==r.status).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label><label>Результат / заметка<textarea name="note" required maxlength="1000"></textarea></label><button>Сохранить</button><p class="muted">При обрыве связи повтор отправит исходную команду. Обновление раздела покажет сохранённый результат.</p></form></article>`).join(''):empty('Обращений пока нет.'));
+ main.querySelectorAll('[data-complaint]').forEach(form=>{const existing=complaintPending.get(Number(form.dataset.complaint));if(existing){form.elements.status.value=existing.status;form.elements.note.value=existing.note;form.elements.status.disabled=true;form.elements.note.disabled=true;}form.onsubmit=e=>{
+  e.preventDefault();const row=rows.find(r=>r.id===Number(form.dataset.complaint));
+  perform(async()=>{
+   let pending=complaintPending.get(row.id);
+   if(!pending){pending={version:row.version,status:form.elements.status.value,note:form.elements.note.value.trim()};complaintPending.set(row.id,pending);}
+   form.elements.status.disabled=true;form.elements.note.disabled=true;
+   await request('/admin/complaints/'+row.id,{method:'POST',body:pending,key:commandKey(row,'complaint')});
+   complaintPending.delete(row.id);await show('complaints');
+  });
+ };});
 }
 loginView();

@@ -74,3 +74,15 @@ readiness only, no OS push. See docs/GO_SELF_PICKUP.md for exact contracts and
 launch limits. Production gate unchanged, live schema5/backend untouched.
 Source schema12 must be staged with matching modules/clients after code/backup
 reconciliation; do not run source over the live DB or resume acceptance5.
+
+
+## GO review source contract — 2026-10-18 / schema13
+
+Existing taxi /api/orders/:id/rating -> save_client_feed_back remains unchanged.
+Our authenticated /api/delivery/customer/orders/:id/reviews rates only completed
+owned GO orders: shop, and actual final courier for non-pickup transport. Low1–2
+creates an atomic own GO complaint, not a TaxiMaster dispatch message. Our
+merchant reviews/admin complaints inbox and audited versioned handling are
+implemented in reviews.mjs/http/portal; exact contract: docs/GO_REVIEWS.md.
+No TM fields/endpoints or financial operations added. Compatible source13 staging
+and native/browser acceptance pending; live schema5 and financial guard untouched.

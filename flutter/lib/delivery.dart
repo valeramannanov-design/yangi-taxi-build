@@ -791,7 +791,8 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
             child: ListTile(
                 leading: const Icon(Icons.storefront),
                 title: Text('${s['name']}'),
-                subtitle: Text('${s['address']}'),
+                subtitle: Text(
+                    '${s['address']}${s['rating'] is Map && (s['rating']['count'] as num? ?? 0) > 0 ? '\n★ ${s['rating']['average']} (${s['rating']['count']})' : ''}'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _busy
                     ? null
@@ -980,6 +981,12 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                                 '${_t('Купон', 'Kupon')} ${o['coupon']['code']}: −${_money(o['coupon']['discount_uzs'])}'),
                           Text(_money(o['total_uzs'])),
                           GoCashHistory(order: o, lang: widget.lang),
+                          if (o['status'] == 'completed')
+                            GoOrderReviews(
+                                key: ValueKey('reviews-${o['id']}'),
+                                api: widget.api,
+                                orderId: o['id'] as String,
+                                lang: widget.lang),
                           if (o['status'] == 'pending_shop')
                             TextButton(
                                 onPressed:
