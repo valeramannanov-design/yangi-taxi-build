@@ -10,6 +10,7 @@ import { isTestIsolation } from './runtime-mode.mjs';
 import { CashJournal } from './cash-journal.mjs';
 import { ProductOptions } from './product-options.mjs';
 import { Coupons } from './coupons.mjs';
+import { StorePickup, fulfillment } from './store-pickup.mjs';
 import { addressDetails } from '../address-details.mjs';
 
 export class DeliveryError extends Error {
@@ -58,14 +59,15 @@ export class DeliveryStore {
     this.cash = new CashJournal(this);
     this.options = new ProductOptions(this);
     this.couponRules = new Coupons(this);
+    this.pickup = new StorePickup(this);
     this.now = now;
     if (path !== ':memory:') mkdirSync(dirname(resolve(path)), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.function('delivery_fold', { deterministic: true }, value => String(value).normalize('NFKC').toLocaleLowerCase());
     this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)');
-    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 11) { this.close(); throw new Error('Delivery database requires a newer service version'); }
-    for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
+    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 12) { this.close(); throw new Error('Delivery database requires a newer service version'); }
+    for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
       // SQLite table rebuild: disable FK enforcement outside the exclusive write
       // transaction, validate every reference before commit, then restore it.
       if(version===5)this.db.exec('PRAGMA foreign_keys=OFF');
@@ -149,7 +151,8 @@ export class DeliveryStore {
       const partnerId = Number(this.run('INSERT INTO delivery_users(login,password_hash,role) VALUES(?,?,\'partner\')', login, hash).lastInsertRowid);
       const shopId = Number(this.run('INSERT INTO delivery_shops(partner_id,category_id,zone_id,name,address,lat,lon,commission_bps) VALUES(?,?,?,?,?,?,?,?)', partnerId, ...values).lastInsertRowid);
       this.run('UPDATE delivery_shops SET service_kind=? WHERE id=?', commerceService(input.service_kind ?? null), shopId);
-      return this.one('SELECT * FROM delivery_shops WHERE id=?', shopId);
+      if(Object.hasOwn(input,'pickup_enabled'))this.run('UPDATE delivery_shops SET pickup_enabled=? WHERE id=?',bool(input.pickup_enabled),shopId);
+      const shop=this.one('SELECT * FROM delivery_shops WHERE id=?', shopId);return {...shop,pickup_enabled:!!shop.pickup_enabled};
     });
   }
   validateShopLocation(zoneId, location) {
@@ -164,7 +167,8 @@ export class DeliveryStore {
       if (!this.one('SELECT 1 FROM delivery_categories WHERE id=?', integer(input.category_id, 1))) fail(422, 'Category not found');
       if (!this.run('UPDATE delivery_shops SET category_id=?,zone_id=?,name=?,address=?,lat=?,lon=?,commission_bps=?,active=? WHERE id=?', input.category_id, input.zone_id ?? null, text(input.name, 100), text(input.address), location.lat, location.lon, integer(input.commission_bps, 0, 10000), bool(input.active), integer(shopId, 1)).changes) fail(404, 'Store not found');
       if (Object.hasOwn(input, 'service_kind')) this.run('UPDATE delivery_shops SET service_kind=? WHERE id=?', commerceService(input.service_kind), shopId);
-      return this.one('SELECT * FROM delivery_shops WHERE id=?', shopId);
+      if (Object.hasOwn(input,'pickup_enabled')) this.run('UPDATE delivery_shops SET pickup_enabled=? WHERE id=?',bool(input.pickup_enabled),shopId);
+      const shop=this.one('SELECT * FROM delivery_shops WHERE id=?', shopId);return {...shop,pickup_enabled:!!shop.pickup_enabled};
     });
   }
   catalog(categoryId, query = '', service = null) {
@@ -172,7 +176,7 @@ export class DeliveryStore {
     if (categoryId !== undefined) integer(categoryId, 1);
     if (typeof query !== 'string' || query.length > 100) fail(422, 'Invalid search');
     const result = { service, go_checkout:this.goCheckout(), categories: this.all('SELECT c.id,c.name FROM delivery_categories c WHERE c.active=1 AND (? IS NULL OR EXISTS(SELECT 1 FROM delivery_shops s WHERE s.category_id=c.id AND s.active=1 AND s.service_kind=?)) ORDER BY c.name', service, service),
-      shops: this.all('SELECT s.id,s.name,s.address,s.category_id,s.lat,s.lon,s.service_kind FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id WHERE s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) AND (? IS NULL OR s.service_kind=?) ORDER BY s.name', categoryId ?? null, categoryId ?? null, service, service),
+      shops: this.all('SELECT s.id,s.name,s.address,s.category_id,s.lat,s.lon,s.service_kind,s.pickup_enabled FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id WHERE s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) AND (? IS NULL OR s.service_kind=?) ORDER BY s.name', categoryId ?? null, categoryId ?? null, service, service).map(s=>({...s,pickup_enabled:!!s.pickup_enabled})),
       products: query.trim() ? this.all('SELECT p.id,p.shop_id,p.name,p.description,p.price_uzs,p.stock,p.image_id FROM delivery_products p JOIN delivery_shops s ON s.id=p.shop_id JOIN delivery_categories c ON c.id=s.category_id WHERE p.active=1 AND p.stock>0 AND s.active=1 AND c.active=1 AND (? IS NULL OR s.category_id=?) AND (? IS NULL OR s.service_kind=?) AND (instr(delivery_fold(p.name),delivery_fold(?))>0 OR instr(delivery_fold(p.description),delivery_fold(?))>0) ORDER BY p.name LIMIT 100', categoryId ?? null, categoryId ?? null, service, service, query.trim(), query.trim()) : [] };
     return {...result,products:result.products.map(p=>this.options.describe(p))};
   }
@@ -181,7 +185,7 @@ export class DeliveryStore {
     const shop = this.availableShop(shopId);
     if (service && shop.service_kind !== service) fail(404, 'Store not in this service');
     const { id, name, address, category_id, lat, lon } = shop;
-    return { id, name, address, category_id, lat, lon, service_kind:shop.service_kind, products: this.all('SELECT id,sku,name,description,price_uzs,stock,image_id FROM delivery_products WHERE shop_id=? AND active=1 ORDER BY name', shopId).map(p=>this.options.describe(p)) };
+    return { id, name, address, category_id, lat, lon, service_kind:shop.service_kind,pickup_enabled:!!shop.pickup_enabled, products: this.all('SELECT id,sku,name,description,price_uzs,stock,image_id FROM delivery_products WHERE shop_id=? AND active=1 ORDER BY name', shopId).map(p=>this.options.describe(p)) };
   }
   availableShop(shopId) {
     const shop = this.one('SELECT s.* FROM delivery_shops s JOIN delivery_categories c ON c.id=s.category_id WHERE s.id=? AND s.active=1 AND c.active=1', integer(shopId, 1));
@@ -265,17 +269,19 @@ export class DeliveryStore {
     return { id: String(identity.id), phone: identity.phone };
   }
   quote(identity, input, road = null) {
-    const customer = this.customer(identity), location = point(input.destination), address = text(input.destination.address);
+    const mode=fulfillment(input),pickup=mode==='pickup';
+    const customer = this.customer(identity), location = pickup?null:point(input.destination), address = pickup?null:text(input.destination.address);
     return this.transaction(() => {
       const shop = this.availableShop(input.shop_id), z = this.one('SELECT * FROM delivery_zones WHERE id=?', shop.zone_id);
       this.assertCashShop(shop);
+      if(pickup){this.pickup.assertShop(shop);if(road)fail(422,'Pickup requires no delivery calculation');}
       if (road) {
         const current=this.pricing(),before=road.context;
         if(!current.enabled || current.version!==before.pricing.version || shop.address!==before.shop.address || shop.lat!==before.shop.lat || shop.lon!==before.shop.lon)fail(409,'Delivery settings or store changed; calculate again');
         integer(road.distance_m,0,current.max_distance_m);integer(road.delivery_uzs,1,100_000_000);
-      } else if (!z || !z.active || !contains(z, location)) fail(422, 'Address outside delivery zone');
-      const distance_m = road ? road.distance_m : distanceMeters(shop, location);
-      if (!road && distance_m > z.max_distance_m) fail(422, 'Address too far from store');
+      } else if (!pickup && (!z || !z.active || !contains(z, location))) fail(422, 'Address outside delivery zone');
+      const distance_m = pickup?null:road ? road.distance_m : distanceMeters(shop, location);
+      if (!pickup && !road && distance_m > z.max_distance_m) fail(422, 'Address too far from store');
       if (!Array.isArray(input.items) || input.items.length < 1 || input.items.length > 50) fail(422, 'Cart must have 1–50 items');
       const seen = new Set(), items = input.items.map(row => {
         const productId = integer(row.product_id, 1), quantity = integer(row.quantity, 1, 99);
@@ -288,12 +294,12 @@ export class DeliveryStore {
       const coupon = this.couponRules.quote(shop.id,customer.id,input.coupon_code,items);
       const subtotal_uzs = goods_before_coupon_uzs - (coupon?.discount_uzs??0);
       // MVP straight-line zone tariff. This is not a road-route distance or taxi fare.
-      const delivery_uzs = road ? road.delivery_uzs : z.base_uzs + Math.ceil(distance_m / 1000) * z.per_km_uzs;
+      const delivery_uzs = pickup?0:road ? road.delivery_uzs : z.base_uzs + Math.ceil(distance_m / 1000) * z.per_km_uzs;
       const go = shop.service_kind !== null;
-      if (go && (!road || road.source !== 'TEST' || !this.testIsolation)) fail(503, 'GO requires a verified pricing adapter');
+      if (go && (!this.testIsolation || !pickup&&(!road || road.source !== 'TEST'))) fail(503, 'GO requires a verified pricing adapter');
       const commission_uzs = go ? null : Math.floor((subtotal_uzs * shop.commission_bps + 5000) / 10000);
-      const snapshot = { shop_name: shop.name, service_kind:shop.service_kind, pickup: { address: shop.address, lat: shop.lat, lon: shop.lon }, destination: { ...location, address, ...deliveryAddressDetails(input.destination) }, phone: customer.phone,
-        items, ...(coupon?{coupon,goods_before_coupon_uzs}:{}), subtotal_uzs, delivery_uzs, total_uzs: subtotal_uzs + delivery_uzs, commission_bps: go ? null : shop.commission_bps, commission_uzs, ...(go?{cash_model:'courier_buyout_v1',environment:'TEST',commission_source:'TaxiMaster',commission_status:'not_verified'}:{}), distance_m, pricing_basis: go ? 'TEST' : road ? 'taximaster_road' : 'straight_line_zone', ...(road?{delivery_tariff_id:road.context.pricing.tariff_id,delivery_crew_group_id:road.context.pricing.crew_group_id,pricing_version:road.context.pricing.version}:{}), payment_method: 'cash' };
+      const snapshot = { shop_name: shop.name, service_kind:shop.service_kind,fulfillment:mode, pickup: { address: shop.address, lat: shop.lat, lon: shop.lon }, destination: pickup?null:{ ...location, address, ...deliveryAddressDetails(input.destination) }, phone: customer.phone,
+        items, ...(coupon?{coupon,goods_before_coupon_uzs}:{}), subtotal_uzs, delivery_uzs, total_uzs: subtotal_uzs + delivery_uzs, commission_bps: go ? null : shop.commission_bps, commission_uzs, ...(go?{cash_model:pickup?'store_pickup_cash_v1':'courier_buyout_v1',environment:'TEST',commission_source:pickup?'not_configured':'TaxiMaster',commission_status:pickup?'not_configured':'not_verified'}:{}), distance_m, pricing_basis: pickup?'self_pickup':go ? 'TEST' : road ? 'taximaster_road' : 'straight_line_zone', ...(road?{delivery_tariff_id:road.context.pricing.tariff_id,delivery_crew_group_id:road.context.pricing.crew_group_id,pricing_version:road.context.pricing.version}:{}), payment_method: 'cash' };
       const quoteId = id(), expires_at = this.now() + 300_000;
       this.run('INSERT INTO delivery_quotes VALUES(?,?,?,?,?)', quoteId, customer.id, shop.id, JSON.stringify(snapshot), expires_at);
       return { id: quoteId, expires_at, ...this.publicSnapshot(snapshot) };
@@ -340,7 +346,8 @@ export class DeliveryStore {
       if (this.one('SELECT 1 FROM delivery_orders WHERE quote_id=?', quoteId)) fail(409, 'Quote already used');
       const shop = this.availableShop(quote.shop_id), snapshot = JSON.parse(quote.snapshot);
       this.assertCashShop(shop);
-      if (shop.service_kind !== (snapshot.service_kind ?? null) || (snapshot.cash_model==='courier_buyout_v1' ? !this.testIsolation || snapshot.environment!=='TEST' || snapshot.pricing_basis!=='TEST' : shop.commission_bps !== snapshot.commission_bps) || shop.address !== snapshot.pickup.address || shop.lat !== snapshot.pickup.lat || shop.lon !== snapshot.pickup.lon) fail(409, 'Store changed; calculate again');
+      const pickup=snapshot.fulfillment==='pickup';if(pickup)this.pickup.assertShop(shop);
+      if (shop.service_kind !== (snapshot.service_kind ?? null) || (['courier_buyout_v1','store_pickup_cash_v1'].includes(snapshot.cash_model) ? !this.testIsolation || snapshot.environment!=='TEST' || snapshot.pricing_basis!==(pickup?'self_pickup':'TEST') : shop.commission_bps !== snapshot.commission_bps) || shop.address !== snapshot.pickup.address || shop.lat !== snapshot.pickup.lat || shop.lon !== snapshot.pickup.lon) fail(409, 'Store changed; calculate again');
       for (const i of snapshot.items) this.options.reserve(i,shop.id);
       this.couponRules.validate(shop.id,customer.id,snapshot);
       const orderId = id();
@@ -355,7 +362,7 @@ export class DeliveryStore {
     if (!row) fail(404, 'Order not found');
     const snapshot = JSON.parse(row.snapshot);
     return { id: row.id, quote_id: row.quote_id, shop_id: row.shop_id, status: row.status, version: row.version, created_at: row.created_at, updated_at: row.updated_at,
-      ready_at: row.ready_at, transport_order_id: row.transport_order_id, driver_id: row.driver_id, crew_id:row.crew_id, cash:this.cash.summary(row.id), ...(financial ? snapshot : this.publicSnapshot(snapshot)) };
+      ready_at: row.ready_at, transport_order_id: row.transport_order_id, driver_id: row.driver_id, crew_id:row.crew_id, cash:this.cash.summary(row.id), ...this.pickup.metadata(row), ...(financial ? snapshot : this.publicSnapshot(snapshot)) };
   }
   orderForCustomer(identity, orderId) {
     const customer = this.customer(identity);
@@ -376,13 +383,15 @@ export class DeliveryStore {
     this.run('UPDATE delivery_orders SET stock_restored=1 WHERE id=?', order.id);
   }
   merchantAction(user, orderId, input, key) {
-    const shopId = this.partner(user), version = integer(input.version, 1), action = text(input.action, 16);
-    if (!['confirm', 'reject', 'ready', 'cash_received'].includes(action)) fail(422, 'Unsupported action');
-    const reason = action === 'reject' ? text(input.reason, 300) : '';
-    return this.command('partner:' + user.id, key, { orderId, version, action, reason }, () => {
+    const shopId = this.partner(user), version = integer(input.version, 1), action = text(input.action, 24);
+    if (!['confirm', 'reject', 'ready', 'cash_received','set_ready_time','pickup_cash_received','pickup_handed_over','pickup_cancel'].includes(action)) fail(422, 'Unsupported action');
+    const reason = ['reject','pickup_cancel'].includes(action) ? text(input.reason, 300) : '';
+    return this.command('partner:' + user.id, key, { orderId, version, action, reason,...this.pickup.fingerprint(input) }, () => {
       const order = this.one('SELECT * FROM delivery_orders WHERE id=? AND shop_id=?', text(orderId, 50), shopId);
       if (!order) fail(404, 'Order not found');
       if (order.version !== version) fail(409, 'Order changed; refresh');
+      if(this.pickup.action(order,user,input,reason))return this.orderData(this.one('SELECT * FROM delivery_orders WHERE id=?',orderId),true);
+      if(['set_ready_time','pickup_cash_received','pickup_handed_over','pickup_cancel'].includes(action))fail(422,'Action is only for self-pickup');
       if (action === 'cash_received') {
         this.cash.merchantReceived(order,user);
         return this.orderData(this.one('SELECT * FROM delivery_orders WHERE id=?',orderId),true);
@@ -411,6 +420,7 @@ export class DeliveryStore {
     integer(taxiMasterOrderId, 1, 2147483647);
     return this.transaction(() => {
       const o = this.one('SELECT * FROM delivery_orders WHERE id=?', orderId);
+      this.pickup.assertNoTransport(o);
       if (o?.transport_order_id === taxiMasterOrderId) return;
       if (!o || !['confirmed', 'ready'].includes(o.status)) fail(409, 'Order is not ready for transport binding');
       if (o.transport_order_id !== null && o.transport_order_id !== taxiMasterOrderId) fail(409, 'Transport already bound');
@@ -422,6 +432,7 @@ export class DeliveryStore {
     // TODO: connect authenticated TM assignment/lifecycle proof before enabling couriers.
     return this.transaction(() => {
       const o = this.one('SELECT * FROM delivery_orders WHERE id=?', orderId);
+      this.pickup.assertNoTransport(o);
       if (!o || !o.transport_order_id || o.transport_order_id !== proof.transport_order_id) fail(409, 'Transport proof does not match bound order');
       const driver = integer(proof.driver_id, 1, 2147483647), crew = integer(proof.crew_id, 1, 2147483647);
       if (o.driver_id !== null && o.driver_id !== driver) fail(409, 'Courier assignment changed; reconcile');
@@ -448,6 +459,8 @@ export class DeliveryStore {
   }
   finance(user) {
     const shopId = user.role === 'admin' ? null : this.partner(user);
-    return this.all('SELECT kind,count(*) AS entries,sum(amount_uzs) AS amount_uzs FROM delivery_ledger WHERE (? IS NULL OR shop_id=?) GROUP BY kind', shopId, shopId);
+    const rows=this.all('SELECT kind,count(*) AS entries,sum(amount_uzs) AS amount_uzs FROM delivery_ledger WHERE (? IS NULL OR shop_id=?) GROUP BY kind', shopId, shopId);
+    const direct=this.one("SELECT count(*) entries,coalesce(sum(j.amount_uzs),0) amount_uzs FROM delivery_store_pickup_journal j JOIN delivery_orders o ON o.id=j.order_id WHERE j.kind='cash_received' AND (? IS NULL OR o.shop_id=?)",shopId,shopId);
+    return direct.entries?[...rows,{kind:'merchant_pickup_cash_received',...direct}]:rows;
   }
 }

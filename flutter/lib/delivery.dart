@@ -45,6 +45,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
   String? _addressNotice;
   bool _busy = false, _loaded = false, _history = false, _cartOpen = false;
   bool _catalogReload = false;
+  bool _pickup = false;
   Map<String, dynamic>? _checkoutCapability;
   bool get _canCheckout =>
       widget.checkoutEnabled &&
@@ -202,6 +203,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       if (clear != true) return;
       _cart.clear();
       _coupon.clear();
+      _pickup = false;
       _cartShop = null;
       _quote = null;
     }
@@ -234,6 +236,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
         _cart.remove(id);
         if (_cart.isEmpty) {
           _cartShop = null;
+          _pickup = false;
           _coupon.clear();
         }
       } else {
@@ -454,9 +457,11 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
 
   Future<void> _calculate() async {
     if (!_canCheckout) return;
-    if (_destination == null || _cart.isEmpty || _pending != null) return;
+    if (!_pickup && _destination == null || _cart.isEmpty || _pending != null)
+      return;
     final quote = await widget.api.deliveryPost('/customer/quotes', {
       'shop_id': _cartShop!['id'],
+      if (_pickup) 'fulfillment': 'pickup',
       if (_coupon.text.trim().isNotEmpty)
         'coupon_code': _coupon.text.trim().toUpperCase(),
       'items': _cart.entries
@@ -467,15 +472,28 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                   'variant_id': e.value['variant_id']
               })
           .toList(),
-      'destination': {
-        'address': _destination!.address,
-        'lat': _destination!.lat,
-        'lon': _destination!.lon,
-        ...goAddressDetails(_addressDetails)
-      }
+      if (!_pickup)
+        'destination': {
+          'address': _destination!.address,
+          'lat': _destination!.lat,
+          'lon': _destination!.lon,
+          ...goAddressDetails(_addressDetails)
+        }
     });
-    requireGoAddressDetailsEcho(
-        _addressDetails, {'favorite': (quote as Map)['destination']});
+    if (_pickup) {
+      if (quote is! Map ||
+          quote['fulfillment'] != 'pickup' ||
+          quote['cash_model'] != 'store_pickup_cash_v1' ||
+          quote['pricing_basis'] != 'self_pickup' ||
+          quote['delivery_uzs'] != 0 ||
+          quote['destination'] != null)
+        throw ApiException(_t(
+            'Сервер не подтвердил самовывоз. Оформление остановлено.',
+            'Server olib ketishni tasdiqlamadi. Buyurtma to‘xtatildi.'));
+    } else {
+      requireGoAddressDetailsEcho(
+          _addressDetails, {'favorite': (quote as Map)['destination']});
+    }
     if (_coupon.text.trim().isNotEmpty &&
         (quote['coupon'] is! Map ||
             quote['coupon']['code'] != _coupon.text.trim().toUpperCase() ||
@@ -530,6 +548,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
       _quote = null;
       _cart.clear();
       _coupon.clear();
+      _pickup = false;
       _cartShop = null;
       _cartOpen = false;
       _history = true;
@@ -788,48 +807,80 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
             Text('${_cartShop?['name'] ?? ''}',
                 style: Theme.of(context).textTheme.titleLarge),
             ..._cart.values.map(_product),
-            OutlinedButton.icon(
-                onPressed:
-                    _busy || _cart.isEmpty ? null : () => _run(_pickAddress),
-                icon: const Icon(Icons.location_on_outlined),
-                label: Text(_destination?.address ??
-                    _t('Выбрать адрес на карте', 'Manzilni xaritada tanlash'))),
-            if (_orders.isEmpty)
-              Text(_t('При первом заказе подтвердите точку доставки на карте.',
-                  'Birinchi buyurtmada yetkazish nuqtasini xaritada tasdiqlang.')),
-            if (_favoriteAddresses.isNotEmpty)
+            if (_cartShop?['pickup_enabled'] == true)
               Wrap(spacing: 8, children: [
-                for (final saved in _favoriteAddresses)
-                  ActionChip(
-                      label: Text('${saved['name']} · ${saved['address']}'),
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() => _useSavedAddress(saved))),
+                ChoiceChip(
+                    label: Text(_t('Доставка', 'Yetkazish')),
+                    selected: !_pickup,
+                    onSelected: _busy || _pending != null
+                        ? null
+                        : (_) => setState(() {
+                              _pickup = false;
+                              _quote = null;
+                            })),
+                ChoiceChip(
+                    key: const ValueKey('go-select-pickup'),
+                    label: Text(_t('Самовывоз', 'Olib ketish')),
+                    selected: _pickup,
+                    onSelected: _busy || _pending != null
+                        ? null
+                        : (_) => setState(() {
+                              _pickup = true;
+                              _quote = null;
+                            })),
               ]),
-            if (_orders.isNotEmpty && _orders.first['destination'] is Map)
-              TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _run(() => _useSavedAddress(
-                          Map<String, dynamic>.from(
-                              _orders.first['destination'] as Map))),
-                  child: Text(_t('Повторить последний адрес доставки',
-                      'Oxirgi yetkazish manzilini takrorlash'))),
-            if (_destination != null) ...[
-              Text(goAddressDetailsText(_addressDetails, widget.lang)),
-              TextButton(
-                  onPressed: _busy ? null : _editDeliveryDetails,
-                  child: Text(_t('Подъезд, этаж, квартира, ориентир',
-                      'Kirish, qavat, xonadon, mo‘ljal'))),
-              TextButton(
-                  onPressed: _busy ? null : () => _run(_saveDeliveryAddress),
-                  child: Text(_t('Сохранить адрес в профиле',
-                      'Manzilni profilda saqlash'))),
+            if (_pickup)
+              Text(
+                  '${_t('Забрать из', 'Olib ketish manzili')}: ${_cartShop?['address']}',
+                  key: const ValueKey('go-pickup-address')),
+            if (!_pickup) ...[
+              OutlinedButton.icon(
+                  onPressed:
+                      _busy || _cart.isEmpty ? null : () => _run(_pickAddress),
+                  icon: const Icon(Icons.location_on_outlined),
+                  label: Text(_destination?.address ??
+                      _t('Выбрать адрес на карте',
+                          'Manzilni xaritada tanlash'))),
+              if (_orders.isEmpty)
+                Text(_t(
+                    'При первом заказе подтвердите точку доставки на карте.',
+                    'Birinchi buyurtmada yetkazish nuqtasini xaritada tasdiqlang.')),
+              if (_favoriteAddresses.isNotEmpty)
+                Wrap(spacing: 8, children: [
+                  for (final saved in _favoriteAddresses)
+                    ActionChip(
+                        label: Text('${saved['name']} · ${saved['address']}'),
+                        onPressed: _busy
+                            ? null
+                            : () => _run(() => _useSavedAddress(saved))),
+                ]),
+              if (_orders.isNotEmpty && _orders.first['destination'] is Map)
+                TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => _run(() => _useSavedAddress(
+                            Map<String, dynamic>.from(
+                                _orders.first['destination'] as Map))),
+                    child: Text(_t('Повторить последний адрес доставки',
+                        'Oxirgi yetkazish manzilini takrorlash'))),
+              if (_destination != null) ...[
+                Text(goAddressDetailsText(_addressDetails, widget.lang)),
+                TextButton(
+                    onPressed: _busy ? null : _editDeliveryDetails,
+                    child: Text(_t('Подъезд, этаж, квартира, ориентир',
+                        'Kirish, qavat, xonadon, mo‘ljal'))),
+                TextButton(
+                    onPressed: _busy ? null : () => _run(_saveDeliveryAddress),
+                    child: Text(_t('Сохранить адрес в профиле',
+                        'Manzilni profilda saqlash'))),
+              ],
+              if (_addressNotice != null) Text(_addressNotice!),
             ],
-            if (_addressNotice != null) Text(_addressNotice!),
             const SizedBox(height: 12),
-            Text(_t('Оплата наличными при получении',
-                'Qabul qilishda naqd to‘lov')),
+            Text(_pickup
+                ? _t('Оплата наличными в магазине', 'Do‘konda naqd to‘lov')
+                : _t('Оплата наличными при получении',
+                    'Qabul qilishda naqd to‘lov')),
             TextField(
                 key: const ValueKey('go-coupon-code'),
                 controller: _coupon,
@@ -855,8 +906,9 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                                   '${_t('Купон', 'Kupon')} ${_quote!['coupon']['code']}: −${_money(_quote!['coupon']['discount_uzs'])}'),
                             Text(
                                 '${_t('Товары', 'Mahsulotlar')}: ${_money(_quote!['subtotal_uzs'])}'),
-                            Text(
-                                '${_t('Доставка', 'Yetkazish')}: ${_money(_quote!['delivery_uzs'])}'),
+                            if (!_pickup)
+                              Text(
+                                  '${_t('Доставка', 'Yetkazish')}: ${_money(_quote!['delivery_uzs'])}'),
                             const SizedBox(height: 8),
                             Text(
                                 '${_t('Итого', 'Jami')}: ${_money(_quote!['total_uzs'])}',
@@ -877,12 +929,14 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
             FilledButton(
                 onPressed: !_canCheckout ||
                         _busy ||
-                        _destination == null ||
+                        (!_pickup && _destination == null) ||
                         _cart.isEmpty
                     ? null
                     : () => _run(_quote == null ? _calculate : _submit),
                 child: Text(_quote == null
-                    ? _t('Рассчитать стоимость', 'Narxni hisoblash')
+                    ? (_pickup
+                        ? _t('Проверить заказ', 'Buyurtmani tekshirish')
+                        : _t('Рассчитать стоимость', 'Narxni hisoblash'))
                     : _t('Оформить заказ', 'Buyurtma berish'))),
           ]);
   Widget _historyView() => RefreshIndicator(
@@ -903,12 +957,21 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                           Text('${o['shop_name']}',
                               style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 8),
-                          Text(_status('${o['status']}'),
+                          Text(
+                              o['fulfillment'] == 'pickup' &&
+                                      o['status'] == 'completed'
+                                  ? _t('Получен', 'Olib ketildi')
+                                  : _status('${o['status']}'),
                               style:
                                   const TextStyle(fontWeight: FontWeight.bold)),
-                          Text('${(o['destination'] as Map)['address']}'),
-                          Text(goAddressDetailsText(
-                              o['destination'] as Map, widget.lang)),
+                          if (o['fulfillment'] == 'pickup')
+                            GoPickupSummary(order: o, lang: widget.lang)
+                          else ...[
+                            Text(
+                                '${(o['destination'] as Map?)?['address'] ?? ''}'),
+                            Text(goAddressDetailsText(
+                                (o['destination'] as Map?) ?? {}, widget.lang))
+                          ],
                           ..._rows(o['items']).map((i) =>
                               Text('${_productName(i)} × ${i['quantity']}')),
                           const SizedBox(height: 8),

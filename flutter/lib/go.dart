@@ -148,6 +148,11 @@ class GoHomeScreen extends StatelessWidget {
                   onPressed: onCards),
             ]),
             const SizedBox(height: 16),
+            GoReadyAlerts(
+                api: api,
+                lang: lang,
+                isActive: isActive,
+                onOrder: (id) => onPurchaseOrder({'id': id})),
             Text(lang == 'uz' ? 'Faol buyurtmalar' : 'Активные заказы',
                 style:
                     const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
@@ -355,8 +360,8 @@ class _GoOrdersPanelState extends State<GoOrdersPanel>
           child: ListTile(
               leading: const Icon(Icons.shopping_bag_outlined),
               title: Text('$label · ${o['shop_name'] ?? ''}'),
-              subtitle:
-                  Text('${_title('${o['status']}')}\n${o['total_uzs']} сум'),
+              subtitle: Text(
+                  '${o['fulfillment'] == 'pickup' ? (widget.lang == 'uz' ? 'Olib ketish' : 'Самовывоз') : _title('${o['status']}')}\n${o['total_uzs']} сум'),
               isThreeLine: true,
               onTap: () => widget.onPurchaseOrder(o))));
     }
@@ -494,11 +499,14 @@ class _GoPurchaseDetailsState extends State<GoPurchaseDetails>
                 style: Theme.of(context).textTheme.headlineSmall),
             SelectableText('#${o['id']}'),
             Text('${o['status']}'),
-            GoCourierEta(
-                api: widget.api,
-                order: o,
-                lang: widget.lang,
-                enabled: _error == null && _foreground),
+            if (o['fulfillment'] == 'pickup')
+              GoPickupSummary(order: o, lang: widget.lang)
+            else
+              GoCourierEta(
+                  api: widget.api,
+                  order: o,
+                  lang: widget.lang,
+                  enabled: _error == null && _foreground),
             GoCashHistory(order: o, lang: widget.lang),
             Text('${(o['destination'] as Map?)?['address'] ?? ''}'),
             Text(goAddressDetailsText(

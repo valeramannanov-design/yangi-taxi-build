@@ -20,6 +20,7 @@ export class DeliveryManagement {
     return s.command('admin:'+user.id,key,{orderId,...payload},()=>{
       const order=s.one('SELECT * FROM delivery_orders WHERE id=?',orderId),job=s.one('SELECT * FROM delivery_transport_jobs WHERE order_id=?',orderId);
       if (!order) throw new DeliveryError(404,'Order not found');
+      s.pickup.assertNoTransport(order);
       if (order.version!==version || !['pending_shop','confirmed','ready','assigned','accepted'].includes(order.status) || this.active(orderId) || this.hasGoods(orderId)) fail('Order changed, goods pickup authorized, or operation unresolved');
       if (action==='reassign') { if (order.status==='pending_shop') fail('Store has not confirmed');this.reserveCrew(orderId,payload.crew_id);if(job?.crew_id===payload.crew_id) fail('Choose another courier'); }
       if (job && !['queued','blocked','bound'].includes(job.phase)) fail('Transport creation must be reconciled first');

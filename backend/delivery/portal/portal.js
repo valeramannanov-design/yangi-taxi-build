@@ -7,7 +7,7 @@ const couponsPath = () => me.role === 'admin' ? `/admin/shops/${productShopId}/c
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = v => Number(v || 0).toLocaleString('ru-RU') + ' сум';
 const statusNames = { pending_shop: 'Новый заказ', confirmed: 'Подтверждён магазином', ready: 'Готов к выдаче', assigned: 'Курьер назначен', accepted: 'Курьер принял', picked_up: 'Товар у курьера', completed: 'Доставлен', cancelled: 'Отменён', rejected: 'Магазин отказал' };
-const financeNames = { merchant_cash_received:'Магазины получили наличные',courier_cash_advanced:'Курьеры оплатили товары',courier_cash_received:'Курьеры получили от клиентов',goods_reimbursement:'Возмещение стоимости товаров',delivery_cash_earned:'Оплата доставки до комиссии TaxiMaster', driver_cash_receivable: 'Наличные у курьеров', courier_payable: 'К выплате курьерам', merchant_payable: 'К выплате магазинам', service_revenue: 'Комиссия службы' };
+const financeNames = { merchant_pickup_cash_received:'Наличные самовывоза, полученные магазином', merchant_cash_received:'Магазины получили наличные',courier_cash_advanced:'Курьеры оплатили товары',courier_cash_received:'Курьеры получили от клиентов',goods_reimbursement:'Возмещение стоимости товаров',delivery_cash_earned:'Оплата доставки до комиссии TaxiMaster', driver_cash_receivable: 'Наличные у курьеров', courier_payable: 'К выплате курьерам', merchant_payable: 'К выплате магазинам', service_revenue: 'Комиссия службы' };
 const field = (name, title, value = '', type = 'text', extra = '') => `<label>${esc(title)}<input name="${esc(name)}" type="${type}" value="${esc(value)}" ${extra} required></label>`;
 const check = (name, label, value) => `<label class="check"><input name="${name}" type="checkbox" ${value ? 'checked' : ''}>${label}</label>`;
 const options = (list, value) => list.map(x => `<option value="${x.id}" ${x.id === value ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
@@ -102,10 +102,10 @@ function shopsView() {
 function shopForm(shop) {
   if (!config.categories.length) { notice.textContent = 'Сначала добавьте категорию магазина.'; return; }
   const s = shop || {};
-  main.innerHTML = `<h1>${shop ? 'Изменить магазин' : 'Новый магазин'}</h1><form id="shop-form">${field('name','Название',s.name)}${field('address','Адрес',s.address)}${field('lat','Широта',s.lat,'number','step="any" min="-90" max="90"')}${field('lon','Долгота',s.lon,'number','step="any" min="-180" max="180"')}${choose('category_id','Категория',config.categories,s.category_id)}${choose('service_kind','Раздел GO',[{id:'food',name:'Еда'},{id:'market',name:'Маркет'}],s.service_kind)}${field('commission','Историческая комиссия партнёра, % (не комиссия TaxiMaster)',shop ? s.commission_bps / 100 : 0,'number','readonly')}${shop ? check('active','Магазин активен',s.active) : field('login','Логин партнёра','','text','autocomplete="off" minlength="3"') + field('password','Первый пароль партнёра','','password','autocomplete="new-password" minlength="12"')}<div class="full"><button>Сохранить</button><button type="button" class="secondary" id="back">Назад</button></div></form>`;
+  main.innerHTML = `<h1>${shop ? 'Изменить магазин' : 'Новый магазин'}</h1><form id="shop-form">${field('name','Название',s.name)}${field('address','Адрес',s.address)}${field('lat','Широта',s.lat,'number','step="any" min="-90" max="90"')}${field('lon','Долгота',s.lon,'number','step="any" min="-180" max="180"')}${choose('category_id','Категория',config.categories,s.category_id)}${choose('service_kind','Раздел GO',[{id:'food',name:'Еда'},{id:'market',name:'Маркет'}],s.service_kind)}${check('pickup_enabled','Самовывоз доступен',!!s.pickup_enabled)}${field('commission','Историческая комиссия партнёра, % (не комиссия TaxiMaster)',shop ? s.commission_bps / 100 : 0,'number','readonly')}${shop ? check('active','Магазин активен',s.active) : field('login','Логин партнёра','','text','autocomplete="off" minlength="3"') + field('password','Первый пароль партнёра','','password','autocomplete="new-password" minlength="12"')}<div class="full"><button>Сохранить</button><button type="button" class="secondary" id="back">Назад</button></div></form>`;
   document.querySelector('#back').onclick = shopsView;
   document.querySelector('#shop-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; perform(async () => {
-    const input = Object.fromEntries(new FormData(form)); for (const key of ['lat','lon','category_id']) input[key] = Number(input[key]); input.commission_bps = Math.round(Number(input.commission) * 100); delete input.commission;
+    const input = Object.fromEntries(new FormData(form)); for (const key of ['lat','lon','category_id']) input[key] = Number(input[key]); input.pickup_enabled=form.elements.pickup_enabled.checked; input.commission_bps = Math.round(Number(input.commission) * 100); delete input.commission;
     if (shop) input.active = form.elements.active.checked;
     await request(shop ? '/admin/shops/' + s.id : '/admin/shops', { method: shop ? 'PUT' : 'POST', body: input }); await show('shops');
   }); };
@@ -196,13 +196,32 @@ function cashHistory(o){
  const names={shop_paid:'Курьер подтвердил оплату магазину',shop_received:'Магазин подтвердил получение денег',client_arrived:'Курьер у получателя',client_cash:'Наличные клиента получены',completed:'Завершение подтверждено'};
  return '<p><b>'+esc(o.environment==='TEST'?'TEST · тестовые суммы':'Наличные: курьер оплачивает товары')+'</b></p><ul>'+o.cash.events.map(e=>'<li>'+esc(names[e.kind]||e.kind)+' · '+money(e.amount_uzs)+'</li>').join('')+'</ul>';
 }
+function orderCard(o){
+ const pickup=o.fulfillment==='pickup',events=o.pickup_cash?.events||[],paid=events.some(e=>e.kind==='cash_received');
+ const button=(action,title,danger=false)=>`<button ${danger?'class="danger"':''} data-order="${o.id}" data-action="${action}">${title}</button>`;
+ let actions='';
+ if(me.role==='partner'){
+  if(o.status==='pending_shop')actions=button('confirm','Подтвердить')+button('reject','Отказать',true);
+  else if(pickup){
+   if(o.status==='confirmed')actions=button('ready','Готов к выдаче')+button('set_ready_time','Изменить время готовности');
+   if(o.status==='ready')actions=paid?button('pickup_handed_over','Заказ выдан клиенту'):button('pickup_cash_received','Подтвердить наличные: '+money(o.total_uzs));
+   if(['confirmed','ready'].includes(o.status)&&!paid)actions+=button('pickup_cancel','Отменить самовывоз',true);
+  }else{
+   if(o.cash?.shop_paid&&!o.cash.shop_received&&['assigned','accepted'].includes(o.status))actions+=button('cash_received','Получены наличные от курьера: '+money(o.subtotal_uzs));
+   if(['confirmed','assigned','accepted'].includes(o.status)&&!o.ready_at)actions+=button('ready','Готов к выдаче');
+  }
+ }
+ const place=pickup?o.pickup:o.destination;
+ const status=pickup&&o.status==='completed'?'Выдан клиенту':statusNames[o.status]||o.status;
+ return `<article class="card"><div class="row"><b>${esc(o.shop_name)}</b><span class="badge">${esc(status)}</span></div>${pickup?'<p><b>Самовывоз · наличные в магазине</b></p>':''}<p class="mono">${esc(o.id)}</p><p>${o.items.map(i=>esc(i.name)+(i.variant_name?' · '+esc(i.variant_name):'')+' × '+i.quantity).join('<br>')}</p><p>${esc(place?.address)}<br>${destinationDetails(place||{})}<br>${esc(o.phone)}</p>${pickup?'<p>Ожидаемая готовность: '+(o.ready_expected_at?esc(new Date(o.ready_expected_at).toLocaleString('ru-RU')):'магазин уточняет')+'</p>':''}<div class="row"><span>Товары ${money(o.subtotal_uzs)}${pickup?'':' · Доставка '+money(o.delivery_uzs)}</span><b>${money(o.total_uzs)}</b></div>${o.coupon?'<p>Купон '+esc(o.coupon.code)+': −'+money(o.coupon.discount_uzs)+'</p>':''}${pickup?'<ul>'+events.map(e=>'<li>'+esc(e.kind==='cash_received'?'Наличные получены магазином':'Товар выдан')+' · '+money(e.amount_uzs)+'</li>').join('')+'</ul>':cashHistory(o)}<div class="actions">${actions}</div></article>`;
+}
 function ordersView() {
-  main.innerHTML = '<div class="row"><h1>Заказы</h1><button id="refresh" class="secondary">Обновить</button></div>' + (orders.length ? orders.map(o => `<article class="card"><div class="row"><b>${esc(o.shop_name)}</b><span class="badge">${esc(statusNames[o.status] || o.status)}</span></div><p class="mono">${esc(o.id)}</p><p>${o.items.map(i => `${esc(i.name)}${i.variant_name?' · '+esc(i.variant_name):''} × ${i.quantity}`).join('<br>')}</p><p>${esc(o.destination.address)}<br>${destinationDetails(o.destination)}<br>${esc(o.phone)}</p><div class="row"><span class="muted">Товары ${money(o.subtotal_uzs)} · Доставка ${money(o.delivery_uzs)}</span><b class="price">${money(o.total_uzs)}</b></div>${o.coupon?'<p>Купон '+esc(o.coupon.code)+': −'+money(o.coupon.discount_uzs)+'</p>':''}${cashHistory(o)}${me.role === 'partner' ? `<div class="actions">${o.cash?.shop_paid && !o.cash.shop_received && ['assigned','accepted'].includes(o.status) ? `<button data-order="${o.id}" data-action="cash_received">Получены наличные от курьера: ${money(o.subtotal_uzs)}</button>` : ''}${o.status === 'pending_shop' ? `<button data-order="${o.id}" data-action="confirm">Подтвердить</button><button class="danger" data-order="${o.id}" data-action="reject">Отказать</button>` : ['confirmed','assigned','accepted'].includes(o.status) && !o.ready_at ? `<button data-order="${o.id}" data-action="ready">Готов к выдаче</button>` : ''}</div>` : ''}</article>`).join('') : empty('Заказов пока нет.'));
+  main.innerHTML = '<div class="row"><h1>Заказы</h1><button id="refresh" class="secondary">Обновить</button></div>' + (orders.length ? orders.map(orderCard).join('') : empty('Заказов пока нет.'));
   document.querySelector('#refresh').onclick = () => perform(() => show('orders'));
   if (me.role === 'admin') {
     const panel = document.createElement('section');
     const phases = { queued:'Ожидает назначения', creating:'Создаётся в TaxiMaster', uncertain:'Проверяется результат создания', bound:'Связан с TaxiMaster', blocked:'Назначение отклонено', review:'Нужна проверка диспетчера' };
-    panel.innerHTML = '<h2>Назначение курьеров</h2>' + (transport.enabled ? orders.filter(o => ['pending_shop','confirmed','ready','assigned','accepted','picked_up'].includes(o.status)).map(o => {
+    panel.innerHTML = '<h2>Назначение курьеров</h2>' + (transport.enabled ? orders.filter(o => o.fulfillment!=='pickup' && ['pending_shop','confirmed','ready','assigned','accepted','picked_up'].includes(o.status)).map(o => {
       const job = transport.jobs.find(j => j.order_id === o.id);
       const actions=management.filter(a=>a.order_id===o.id),pending=actions.find(a=>['queued','sending','uncertain','review'].includes(a.phase)),last=actions[0];
       const allowed=!o.cash?.shop_paid && !pending && ['pending_shop','confirmed','ready','assigned','accepted'].includes(o.status) && (!job || ['queued','blocked','bound'].includes(job.phase));
@@ -221,9 +240,16 @@ function ordersView() {
   }
   main.querySelectorAll('[data-order]').forEach(b => { b.onclick = () => {
     const o = orders.find(o => o.id === b.dataset.order), action = b.dataset.action;
-    const reason = action === 'reject' ? prompt('Причина отказа:') : undefined;
-    if (action === 'reject' && !reason?.trim()) return;
-    perform(async () => { await request(`/merchant/orders/${o.id}/action`, { method:'POST', body:{ action, version:o.version, ...(reason ? { reason:reason.trim() } : {}) }, key:commandKey(o, action) }); await show('orders'); });
+    const reason = ['reject','pickup_cancel'].includes(action) ? prompt('Причина отказа/отмены:') : undefined;
+    if (['reject','pickup_cancel'].includes(action) && !reason?.trim()) return;
+    const extra={};
+    if(o.fulfillment==='pickup' && ['confirm','set_ready_time'].includes(action)){
+      const value=prompt('Через сколько минут заказ будет готов?');if(value===null)return;
+      const minutes=Number(value);if(!Number.isInteger(minutes)||minutes<1||minutes>1440){notice.textContent='Укажите от 1 до 1440 минут';return;}extra.ready_in_minutes=minutes;
+    }
+    if(action==='pickup_cash_received'){if(!confirm('Подтверждаете фактическое получение от клиента '+money(o.total_uzs)+'?'))return;extra.amount_uzs=o.total_uzs;}
+    if(action==='pickup_handed_over'&&!confirm('Товары переданы клиенту и заказ можно завершить?'))return;
+    perform(async () => { await request(`/merchant/orders/${o.id}/action`, { method:'POST', body:{ action, version:o.version, ...extra, ...(reason ? { reason:reason.trim() } : {}) }, key:commandKey(o, action) }); await show('orders'); });
   }; });
 }
 async function managementForm(order,action){
@@ -238,6 +264,6 @@ async function managementForm(order,action){
   };
 }
 function financeView(rows) {
-  main.innerHTML = '<h1>Финансовая сводка</h1><p>Данные по доставленным заказам. Записи показывают собранные наличные и обязательства; фактические выплаты отражаются отдельно.</p>' + (rows.length ? '<div class="card tablewrap"><table><thead><tr><th>Показатель</th><th>Заказов</th><th>Сумма</th></tr></thead><tbody>' + rows.map(r => `<tr><td>${esc(financeNames[r.kind] || r.kind)}</td><td>${r.entries}</td><td>${money(Math.abs(r.amount_uzs))}</td></tr>`).join('') + '</tbody></table></div>' : empty('Пока нет завершённых доставок.'));
+  main.innerHTML = '<h1>Финансовая сводка</h1><p>Проводки доставки и подтверждённые наличные самовывоза. Наличные самовывоза — прямая выручка магазина, не долг службы. Фактические выплаты отражаются отдельно.</p>' + (rows.length ? '<div class="card tablewrap"><table><thead><tr><th>Показатель</th><th>Заказов</th><th>Сумма</th></tr></thead><tbody>' + rows.map(r => `<tr><td>${esc(financeNames[r.kind] || r.kind)}</td><td>${r.entries}</td><td>${money(Math.abs(r.amount_uzs))}</td></tr>`).join('') + '</tbody></table></div>' : empty('Пока нет завершённых доставок.'));
 }
 loginView();

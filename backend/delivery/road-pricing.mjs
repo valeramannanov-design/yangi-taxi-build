@@ -1,4 +1,5 @@
 import { DeliveryError, distanceMeters } from './store.mjs';
+import { fulfillment } from './store-pickup.mjs';
 
 /** Existing host TM methods only. No Yandex price formula or local fare fallback. */
 export function createTaxiMasterRoadPricing({ catalog, analyzeRoute, calculateCost, time }) {
@@ -28,6 +29,7 @@ export function createTaxiMasterRoadPricing({ catalog, analyzeRoute, calculateCo
 export function createRoadQuotes(store,provider) {
   const pending=new Set();
   return async (identity,input)=>{
+    if(fulfillment(input)==='pickup')return store.quote(identity,input);
     const context=store.roadQuoteContext(identity,input);
     if(provider?.environment==='TEST' && !store.testIsolation)throw new DeliveryError(503,'TEST pricing is forbidden outside isolated tests');
     if(store.testIsolation && provider?.environment!=='TEST')throw new DeliveryError(503,'Isolated TEST requires its TEST adapter');

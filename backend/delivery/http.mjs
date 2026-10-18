@@ -64,6 +64,8 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
         if (method === 'POST' && route === '/customer/quotes') result = await roadQuote(customer, await json(req));
         else if (method === 'POST' && route === '/customer/orders') result = store.checkout(customer, await json(req), key);
         else if (method === 'GET' && route === '/customer/orders') result = store.ordersForCustomer(customer);
+        else if (method === 'GET' && route === '/customer/notifications') result = store.pickup.notifications(store.customer(customer));
+        else if (method === 'POST' && /^\/customer\/notifications\/[1-9][0-9]*\/read$/.test(route)) {await json(req);result=store.pickup.readNotification(store.customer(customer),Number(route.split('/')[3]),key);}
         else if (method === 'GET' && /^\/customer\/orders\/[a-f0-9]{36}$/.test(route)) result = store.orderForCustomer(customer, route.split('/')[3]);
         else if (method === 'POST' && /^\/customer\/orders\/[a-f0-9]{36}\/cancel$/.test(route)) result = store.cancel(customer, route.split('/')[3], await json(req), key);
         else error(404, 'Delivery route not found');

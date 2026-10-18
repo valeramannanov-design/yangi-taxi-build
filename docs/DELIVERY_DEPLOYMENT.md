@@ -83,3 +83,14 @@ client/order DTO. Existing owned driver-location endpoint adds freshness metadat
 an old response intentionally yields no ETA. No financial/tariff methods changed.
 Do not deploy repository server.mjs over local production fixes. Source tests and
 APK72 compilation do not replace native MapKit/GPS/moving-courier acceptance.
+
+### Latest source requirement — schema12 / self-pickup
+
+012 adds shop pickup capability, order expected readiness, immutable direct-store
+cash journal and owned in-app ready notices. Include store-pickup.mjs with all
+matching store/http/road-pricing/transport/management/portal and Flutter parts.
+Source requires12; live host remains5. Dry4–11→12 is tested, but never apply to
+production without consent/consistent backup and code reconciliation. Old code
+cannot open12. After any new pickup receipt/notice/coupon/stock event preserve
+its evidence and recover forward, never restore a stale snapshot. No OS push,
+paid-pickup refund or real checkout enablement is delivered by this migration.

@@ -21,6 +21,7 @@ import 'package:yandex_maps_mapkit/yandex_map.dart' as ym_widget;
 part 'delivery.dart';
 part 'go.dart';
 part 'go_eta.dart';
+part 'go_pickup.dart';
 
 const defaultLat = 41.3111;
 const defaultLon = 69.2797;

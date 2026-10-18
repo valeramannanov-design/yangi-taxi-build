@@ -60,3 +60,17 @@ Source schema11 unchanged, live backend/schema5 untouched. Include new
 backend/driver-tracking.mjs when separately staging compatible reconciled code;
 never deploy UI alone expecting freshness from an older response. APK71 lacks
 ETA; next build72 needs package/install/native checks, not just widget success.
+
+## Self-pickup source contract — 2026-10-18 / schema12
+
+Our existing quote API now supports explicit fulfillment=pickup, real catalog
+prices/coupons, store_pickup_cash_v1 and self_pickup basis; no destination, route,
+TM price request or courier. Admin pickup_enabled controls availability. Merchant
+owns ready_in_minutes/readiness/exact cash/handover commands; new immutable
+pickup journal is direct-store cash, no driver0 ledger or invented commission.
+Actual paid refund/reversal remains TODO/unavailable. Existing courier paths
+reject pickup orders. Own /customer/notifications+owned read ack supply in-app
+readiness only, no OS push. See docs/GO_SELF_PICKUP.md for exact contracts and
+launch limits. Production gate unchanged, live schema5/backend untouched.
+Source schema12 must be staged with matching modules/clients after code/backup
+reconciliation; do not run source over the live DB or resume acceptance5.

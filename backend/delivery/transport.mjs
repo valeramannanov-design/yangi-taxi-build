@@ -16,6 +16,7 @@ export class DeliveryTransport {
     return s.command('admin:' + user.id, key, { action: 'dispatch', orderId, crew, tariff, version }, () => {
       const order = s.one('SELECT * FROM delivery_orders WHERE id=?', orderId);
       if (!order) fail(404, 'Order not found');
+      s.pickup.assertNoTransport(order);
       if (order.version !== version || !['confirmed', 'ready'].includes(order.status) || order.transport_order_id !== null) fail(409, 'Order cannot be dispatched');
       const quoted=JSON.parse(order.snapshot);
       if(quoted.delivery_tariff_id && tariff!==quoted.delivery_tariff_id)fail(409,'Use the tariff of the confirmed delivery quote');
