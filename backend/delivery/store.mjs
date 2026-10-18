@@ -9,6 +9,7 @@ import { dirname, resolve } from 'node:path';
 import { isTestIsolation } from './runtime-mode.mjs';
 import { CashJournal } from './cash-journal.mjs';
 import { ProductOptions } from './product-options.mjs';
+import { Coupons } from './coupons.mjs';
 import { addressDetails } from '../address-details.mjs';
 
 export class DeliveryError extends Error {
@@ -56,14 +57,15 @@ export class DeliveryStore {
     this.testIsolationPath = path;
     this.cash = new CashJournal(this);
     this.options = new ProductOptions(this);
+    this.couponRules = new Coupons(this);
     this.now = now;
     if (path !== ':memory:') mkdirSync(dirname(resolve(path)), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.function('delivery_fold', { deterministic: true }, value => String(value).normalize('NFKC').toLocaleLowerCase());
     this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)');
-    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 10) { this.close(); throw new Error('Delivery database requires a newer service version'); }
-    for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
+    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 11) { this.close(); throw new Error('Delivery database requires a newer service version'); }
+    for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
       // SQLite table rebuild: disable FK enforcement outside the exclusive write
       // transaction, validate every reference before commit, then restore it.
       if(version===5)this.db.exec('PRAGMA foreign_keys=OFF');
@@ -187,6 +189,10 @@ export class DeliveryStore {
     return shop;
   }
   products(user) { return this.#products(this.partner(user)); }
+  coupons(user) { return this.couponRules.list(this.partner(user)); }
+  saveCoupon(user,input,couponId) { return this.couponRules.save(this.partner(user),input,couponId); }
+  adminCoupons(user,shopId) { this.admin(user);return this.couponRules.list(this.#adminShop(shopId)); }
+  adminSaveCoupon(user,shopId,input,couponId) { this.admin(user);return this.couponRules.save(this.#adminShop(shopId),input,couponId); }
   adminProducts(user, shopId) { this.admin(user); return this.#products(this.#adminShop(shopId)); }
   adminSaveProduct(user, shopId, input, productId) { this.admin(user); return this.#saveProduct(this.#adminShop(shopId), input, productId); }
   #adminShop(shopId) {
@@ -278,14 +284,16 @@ export class DeliveryStore {
         if (!product || product.stock < quantity) fail(409, 'Product unavailable');
         return this.options.line(product,{...row,quantity});
       }).sort((a, b) => a.product_id - b.product_id);
-      const subtotal_uzs = items.reduce((sum, i) => sum + i.price_uzs * i.quantity, 0);
+      const goods_before_coupon_uzs = items.reduce((sum, i) => sum + i.price_uzs * i.quantity, 0);
+      const coupon = this.couponRules.quote(shop.id,customer.id,input.coupon_code,items);
+      const subtotal_uzs = goods_before_coupon_uzs - (coupon?.discount_uzs??0);
       // MVP straight-line zone tariff. This is not a road-route distance or taxi fare.
       const delivery_uzs = road ? road.delivery_uzs : z.base_uzs + Math.ceil(distance_m / 1000) * z.per_km_uzs;
       const go = shop.service_kind !== null;
       if (go && (!road || road.source !== 'TEST' || !this.testIsolation)) fail(503, 'GO requires a verified pricing adapter');
       const commission_uzs = go ? null : Math.floor((subtotal_uzs * shop.commission_bps + 5000) / 10000);
       const snapshot = { shop_name: shop.name, service_kind:shop.service_kind, pickup: { address: shop.address, lat: shop.lat, lon: shop.lon }, destination: { ...location, address, ...deliveryAddressDetails(input.destination) }, phone: customer.phone,
-        items, subtotal_uzs, delivery_uzs, total_uzs: subtotal_uzs + delivery_uzs, commission_bps: go ? null : shop.commission_bps, commission_uzs, ...(go?{cash_model:'courier_buyout_v1',environment:'TEST',commission_source:'TaxiMaster',commission_status:'not_verified'}:{}), distance_m, pricing_basis: go ? 'TEST' : road ? 'taximaster_road' : 'straight_line_zone', ...(road?{delivery_tariff_id:road.context.pricing.tariff_id,delivery_crew_group_id:road.context.pricing.crew_group_id,pricing_version:road.context.pricing.version}:{}), payment_method: 'cash' };
+        items, ...(coupon?{coupon,goods_before_coupon_uzs}:{}), subtotal_uzs, delivery_uzs, total_uzs: subtotal_uzs + delivery_uzs, commission_bps: go ? null : shop.commission_bps, commission_uzs, ...(go?{cash_model:'courier_buyout_v1',environment:'TEST',commission_source:'TaxiMaster',commission_status:'not_verified'}:{}), distance_m, pricing_basis: go ? 'TEST' : road ? 'taximaster_road' : 'straight_line_zone', ...(road?{delivery_tariff_id:road.context.pricing.tariff_id,delivery_crew_group_id:road.context.pricing.crew_group_id,pricing_version:road.context.pricing.version}:{}), payment_method: 'cash' };
       const quoteId = id(), expires_at = this.now() + 300_000;
       this.run('INSERT INTO delivery_quotes VALUES(?,?,?,?,?)', quoteId, customer.id, shop.id, JSON.stringify(snapshot), expires_at);
       return { id: quoteId, expires_at, ...this.publicSnapshot(snapshot) };
@@ -334,8 +342,10 @@ export class DeliveryStore {
       this.assertCashShop(shop);
       if (shop.service_kind !== (snapshot.service_kind ?? null) || (snapshot.cash_model==='courier_buyout_v1' ? !this.testIsolation || snapshot.environment!=='TEST' || snapshot.pricing_basis!=='TEST' : shop.commission_bps !== snapshot.commission_bps) || shop.address !== snapshot.pickup.address || shop.lat !== snapshot.pickup.lat || shop.lon !== snapshot.pickup.lon) fail(409, 'Store changed; calculate again');
       for (const i of snapshot.items) this.options.reserve(i,shop.id);
+      this.couponRules.validate(shop.id,customer.id,snapshot);
       const orderId = id();
       this.run('INSERT INTO delivery_orders(id,customer_id,shop_id,quote_id,snapshot,status,created_at,updated_at) VALUES(?,?,?,?,?,\'pending_shop\',?,?)', orderId, customer.id, shop.id, quoteId, quote.snapshot, this.now(), this.now());
+      this.couponRules.redeem(orderId,customer.id,snapshot);
       this.event(orderId, 'passenger:' + customer.id, 'created');
       return this.orderForCustomer(customer, orderId);
     });

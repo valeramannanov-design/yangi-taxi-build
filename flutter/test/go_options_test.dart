@@ -145,7 +145,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Выбрать адрес на карте'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Рассчитать стоимость'), 150);
+    await tester.scrollUntilVisible(find.text('Рассчитать стоимость'), 150,
+        scrollable: find
+            .descendant(
+                of: find.byKey(const ValueKey('go-cart-scroll')),
+                matching: find.byType(Scrollable))
+            .first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Рассчитать стоимость'));
     await tester.pumpAndSettle();

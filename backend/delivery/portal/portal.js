@@ -3,6 +3,7 @@ let token = '', me = null, tab = '', busy = false, config = null, products = [],
 let productShopId = null;
 const productsPath = () => me.role === 'admin' ? `/admin/shops/${productShopId}/products` : '/merchant/products';
 const imagesPath = () => me.role === 'admin' ? `/admin/shops/${productShopId}/images` : '/merchant/images';
+const couponsPath = () => me.role === 'admin' ? `/admin/shops/${productShopId}/coupons` : '/merchant/coupons';
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = v => Number(v || 0).toLocaleString('ru-RU') + ' сум';
 const statusNames = { pending_shop: 'Новый заказ', confirmed: 'Подтверждён магазином', ready: 'Готов к выдаче', assigned: 'Курьер назначен', accepted: 'Курьер принял', picked_up: 'Товар у курьера', completed: 'Доставлен', cancelled: 'Отменён', rejected: 'Магазин отказал' };
@@ -51,19 +52,20 @@ function loginView() {
 }
 async function show(next) {
   if (!me) return; tab = next;
-  const sections = me.role === 'admin' ? [['shops','Магазины'],['products','Товары'],['categories','Категории'],['pricing','Тариф доставки'],['orders','Заказы'],['finance','Финансы']] : [['products','Товары'],['orders','Заказы'],['finance','Финансы']];
+  const sections = me.role === 'admin' ? [['shops','Магазины'],['products','Товары'],['coupons','Купоны'],['categories','Категории'],['pricing','Тариф доставки'],['orders','Заказы'],['finance','Финансы']] : [['products','Товары'],['coupons','Купоны'],['orders','Заказы'],['finance','Финансы']];
   tabs.innerHTML = sections.map(([id, title]) => `<button data-tab="${id}" class="${id === tab ? 'selected' : ''}">${title}</button>`).join('');
   tabs.querySelectorAll('button').forEach(button => { button.onclick = () => perform(() => show(button.dataset.tab)); });
   if (me.role === 'admin') config = await request('/admin/config');
   if (tab === 'shops') shopsView();
   else if (tab === 'categories') categoriesView();
   else if (tab === 'pricing') await pricingView();
-  else if (tab === 'products') {
+  else if (tab === 'products' || tab === 'coupons') {
     if (me.role === 'admin') {
       if (!config.shops.length) { main.innerHTML=empty('Сначала добавьте магазин.'); return; }
       if (!config.shops.some(s=>s.id===productShopId)) productShopId=config.shops[0].id;
     }
-    products = await request(productsPath()); productsView();
+    if(tab==='coupons')couponsView(await request(couponsPath()));
+    else {products = await request(productsPath()); productsView();}
     if (me.role === 'admin') {
       const label=document.createElement('label'); label.textContent='Магазин';
       const select=document.createElement('select'); select.innerHTML=options(config.shops,productShopId);
@@ -71,7 +73,7 @@ async function show(next) {
         if(busy){select.value=String(productShopId);return;}
         perform(async()=>{
           const previous=productShopId;
-          try{productShopId=Number(select.value);await show('products');}
+          try{productShopId=Number(select.value);await show(tab);}
           catch(e){productShopId=previous;select.value=String(previous);throw e;}
         });
       };
@@ -80,6 +82,17 @@ async function show(next) {
   }
   else if (tab === 'orders') { orders = await request(me.role === 'admin' ? '/admin/orders' : '/merchant/orders'); if (me.role === 'admin') { transport = await request('/admin/transport'); management=await request('/admin/management'); } ordersView(); }
   else if (tab === 'finance') financeView(await request(me.role === 'admin' ? '/admin/finance' : '/merchant/finance'));
+}
+function couponsView(rows){
+ main.innerHTML='<h1>Купоны магазина</h1><p>За счёт магазина, только на товары без действующей акции. Доставка не меняется. Использование учитывается при оформлении и не восстанавливается при отмене заказа.</p><button id="new-coupon">Добавить купон</button>'+rows.map(c=>`<article class="card"><b>${esc(c.code)}</b><p>${c.kind==='percent'?esc(c.amount)+'%':money(c.amount)} · от ${money(c.min_goods_uzs)} · ${c.active?'Включён':'Отключён'}</p><p>${esc(new Date(c.starts_at).toLocaleString())} — ${esc(new Date(c.ends_at).toLocaleString())}</p><p>Использовано: ${c.uses}/${c.max_uses} · На пассажира: ${c.per_customer}</p><button class="secondary" data-coupon="${c.id}">Изменить</button></article>`).join('');
+ main.querySelector('#new-coupon').onclick=()=>couponForm();
+ main.querySelectorAll('[data-coupon]').forEach(b=>{b.onclick=()=>couponForm(rows.find(c=>c.id===Number(b.dataset.coupon)));});
+}
+function couponForm(coupon){
+ const c=coupon||{},date=value=>value==null?'':new Date(value-new Date(value).getTimezoneOffset()*60000).toISOString().slice(0,16);
+ main.innerHTML=`<h1>${coupon?'Изменить купон':'Новый купон'}</h1><form id="coupon-form">${field('code','Код',c.code,'text','pattern="[A-Za-z0-9_-]{3,32}" maxlength="32"')}<label>Скидка<select name="kind"><option value="percent">Процент</option><option value="fixed">Сум на заказ</option></select></label>${field('amount','Размер скидки',c.amount,'number','min="1" max="10000000" step="1"')}${field('starts_at','Начало (местное время)',date(c.starts_at),'datetime-local')}${field('ends_at','Окончание (местное время)',date(c.ends_at),'datetime-local')}${field('min_goods_uzs','Товары без акций от, сум',c.min_goods_uzs??0,'number','min="0" max="100000000" step="1"')}${field('max_uses','Всего использований',c.max_uses,'number','min="1" max="1000000" step="1"')}${field('per_customer','Использований на пассажира',c.per_customer,'number','min="1" max="1000000" step="1"')}${check('active','Купон включён',coupon?c.active:true)}<div class="full"><button>Сохранить</button><button type="button" class="secondary" id="back">Назад</button></div></form>`;
+ const form=main.querySelector('#coupon-form');form.elements.kind.value=c.kind||'percent';main.querySelector('#back').onclick=()=>perform(()=>show('coupons'));
+ form.onsubmit=event=>{event.preventDefault();perform(async()=>{const input=Object.fromEntries(new FormData(form));for(const k of ['amount','min_goods_uzs','max_uses','per_customer'])input[k]=Number(input[k]);for(const k of ['starts_at','ends_at']){input[k]=new Date(input[k]).getTime();if(!Number.isSafeInteger(input[k]))throw new Error('Проверьте период купона');}input.active=form.elements.active.checked;if(coupon)input.version=c.version;await request(couponsPath()+(coupon?'/'+c.id:''),{method:coupon?'PUT':'POST',body:input});await show('coupons');});};
 }
 function shopsView() {
   main.innerHTML = '<h1>Магазины</h1><button id="new-shop">Добавить магазин</button><div style="height:16px"></div>' + config.shops.map(s => `<article class="card"><div class="row"><b>${esc(s.name)}</b><span class="badge">${s.active ? 'Работает' : 'Отключён'}</span></div><p>${esc(s.address)}</p><div class="muted">Комиссия партнёра (история): ${s.commission_bps / 100}%</div><div class="actions"><button data-shop="${s.id}" class="secondary">Изменить</button></div></article>`).join('');
@@ -184,7 +197,7 @@ function cashHistory(o){
  return '<p><b>'+esc(o.environment==='TEST'?'TEST · тестовые суммы':'Наличные: курьер оплачивает товары')+'</b></p><ul>'+o.cash.events.map(e=>'<li>'+esc(names[e.kind]||e.kind)+' · '+money(e.amount_uzs)+'</li>').join('')+'</ul>';
 }
 function ordersView() {
-  main.innerHTML = '<div class="row"><h1>Заказы</h1><button id="refresh" class="secondary">Обновить</button></div>' + (orders.length ? orders.map(o => `<article class="card"><div class="row"><b>${esc(o.shop_name)}</b><span class="badge">${esc(statusNames[o.status] || o.status)}</span></div><p class="mono">${esc(o.id)}</p><p>${o.items.map(i => `${esc(i.name)}${i.variant_name?' · '+esc(i.variant_name):''} × ${i.quantity}`).join('<br>')}</p><p>${esc(o.destination.address)}<br>${destinationDetails(o.destination)}<br>${esc(o.phone)}</p><div class="row"><span class="muted">Товары ${money(o.subtotal_uzs)} · Доставка ${money(o.delivery_uzs)}</span><b class="price">${money(o.total_uzs)}</b></div>${cashHistory(o)}${me.role === 'partner' ? `<div class="actions">${o.cash?.shop_paid && !o.cash.shop_received && ['assigned','accepted'].includes(o.status) ? `<button data-order="${o.id}" data-action="cash_received">Получены наличные от курьера: ${money(o.subtotal_uzs)}</button>` : ''}${o.status === 'pending_shop' ? `<button data-order="${o.id}" data-action="confirm">Подтвердить</button><button class="danger" data-order="${o.id}" data-action="reject">Отказать</button>` : ['confirmed','assigned','accepted'].includes(o.status) && !o.ready_at ? `<button data-order="${o.id}" data-action="ready">Готов к выдаче</button>` : ''}</div>` : ''}</article>`).join('') : empty('Заказов пока нет.'));
+  main.innerHTML = '<div class="row"><h1>Заказы</h1><button id="refresh" class="secondary">Обновить</button></div>' + (orders.length ? orders.map(o => `<article class="card"><div class="row"><b>${esc(o.shop_name)}</b><span class="badge">${esc(statusNames[o.status] || o.status)}</span></div><p class="mono">${esc(o.id)}</p><p>${o.items.map(i => `${esc(i.name)}${i.variant_name?' · '+esc(i.variant_name):''} × ${i.quantity}`).join('<br>')}</p><p>${esc(o.destination.address)}<br>${destinationDetails(o.destination)}<br>${esc(o.phone)}</p><div class="row"><span class="muted">Товары ${money(o.subtotal_uzs)} · Доставка ${money(o.delivery_uzs)}</span><b class="price">${money(o.total_uzs)}</b></div>${o.coupon?'<p>Купон '+esc(o.coupon.code)+': −'+money(o.coupon.discount_uzs)+'</p>':''}${cashHistory(o)}${me.role === 'partner' ? `<div class="actions">${o.cash?.shop_paid && !o.cash.shop_received && ['assigned','accepted'].includes(o.status) ? `<button data-order="${o.id}" data-action="cash_received">Получены наличные от курьера: ${money(o.subtotal_uzs)}</button>` : ''}${o.status === 'pending_shop' ? `<button data-order="${o.id}" data-action="confirm">Подтвердить</button><button class="danger" data-order="${o.id}" data-action="reject">Отказать</button>` : ['confirmed','assigned','accepted'].includes(o.status) && !o.ready_at ? `<button data-order="${o.id}" data-action="ready">Готов к выдаче</button>` : ''}</div>` : ''}</article>`).join('') : empty('Заказов пока нет.'));
   document.querySelector('#refresh').onclick = () => perform(() => show('orders'));
   if (me.role === 'admin') {
     const panel = document.createElement('section');

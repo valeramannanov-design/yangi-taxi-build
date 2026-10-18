@@ -147,7 +147,12 @@ void main() {
     await tester.tap(find.text('Рассчитать стоимость'));
     await tester.pumpAndSettle();
     expect(find.text('Итого: 17000 сум'), findsOneWidget);
-    await tester.ensureVisible(find.text('Оформить заказ'));
+    await tester.scrollUntilVisible(find.text('Оформить заказ'), 150,
+        scrollable: find
+            .descendant(
+                of: find.byKey(const ValueKey('go-cart-scroll')),
+                matching: find.byType(Scrollable))
+            .first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Оформить заказ'));
     await tester.pumpAndSettle();

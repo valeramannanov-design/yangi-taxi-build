@@ -454,6 +454,9 @@ class _GoPurchaseDetailsState extends State<GoPurchaseDetails> {
                   title: Text(
                       '${item['name']}${item['variant_name'] != null ? ' · ${item['variant_name']}' : ''} × ${item['quantity']}'),
                   trailing: Text('${item['price_uzs']} сум')),
+            if (o['coupon'] is Map)
+              Text(
+                  '${widget.lang == 'uz' ? 'Kupon' : 'Купон'} ${o['coupon']['code']}: −${o['coupon']['discount_uzs']} сум'),
             Text(
                 '${widget.lang == 'uz' ? 'Jami' : 'Итого'}: ${o['total_uzs']} сум',
                 style: Theme.of(context).textTheme.titleLarge)

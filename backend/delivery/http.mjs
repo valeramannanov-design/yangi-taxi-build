@@ -87,6 +87,9 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
           else if (method === 'POST' && route === '/admin/shops') result = store.createShop(user, await json(req));
           else if (method === 'PUT' && /^\/admin\/shops\/[1-9][0-9]*$/.test(route)) result = store.updateShop(user, Number(route.split('/')[3]), await json(req));
           else if (method === 'GET' && /^\/admin\/shops\/[1-9][0-9]*\/products$/.test(route)) result = store.adminProducts(user, Number(route.split('/')[3]));
+          else if (method === 'GET' && /^\/admin\/shops\/[1-9][0-9]*\/coupons$/.test(route)) result = store.adminCoupons(user, Number(route.split('/')[3]));
+          else if (method === 'POST' && /^\/admin\/shops\/[1-9][0-9]*\/coupons$/.test(route)) result = store.adminSaveCoupon(user, Number(route.split('/')[3]), await json(req));
+          else if (method === 'PUT' && /^\/admin\/shops\/[1-9][0-9]*\/coupons\/[1-9][0-9]*$/.test(route)) result = store.adminSaveCoupon(user, Number(route.split('/')[3]), await json(req), Number(route.split('/')[5]));
           else if (method === 'POST' && /^\/admin\/shops\/[1-9][0-9]*\/products$/.test(route)) result = store.adminSaveProduct(user, Number(route.split('/')[3]), await json(req));
           else if (method === 'POST' && /^\/admin\/shops\/[1-9][0-9]*\/images$/.test(route)) result = store.adminImage(user, Number(route.split('/')[3]), await bytes(req, 2 * 1024 * 1024));
           else if (method === 'PUT' && /^\/admin\/shops\/[1-9][0-9]*\/products\/[1-9][0-9]*$/.test(route)) result = store.adminSaveProduct(user, Number(route.split('/')[3]), await json(req), Number(route.split('/')[5]));
@@ -110,6 +113,9 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
         } else if (route.startsWith('/merchant/')) {
           store.partner(user);
           if (method === 'GET' && route === '/merchant/products') result = store.products(user);
+          else if (method === 'GET' && route === '/merchant/coupons') result = store.coupons(user);
+          else if (method === 'POST' && route === '/merchant/coupons') result = store.saveCoupon(user, await json(req));
+          else if (method === 'PUT' && /^\/merchant\/coupons\/[1-9][0-9]*$/.test(route)) result = store.saveCoupon(user, await json(req), Number(route.split('/')[3]));
           else if (method === 'POST' && route === '/merchant/products') result = store.saveProduct(user, await json(req));
           else if (method === 'PUT' && /^\/merchant\/products\/[1-9][0-9]*$/.test(route)) result = store.saveProduct(user, await json(req), Number(route.split('/')[3]));
           else if (method === 'POST' && route === '/merchant/images') result = store.image(user, await bytes(req, 2 * 1024 * 1024));

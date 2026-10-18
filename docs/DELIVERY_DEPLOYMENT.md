@@ -65,3 +65,13 @@ Dry upgrades through10 preserve v9 variants and prior cash evidence. Continue th
 consistent backup/rollback procedure above; never restore stale money/stock data
 after new writes. No production migration or checkout enablement authorized by
 this implementation. TEST promotion/receipt proof is not a live TM commission proof.
+
+### Latest source requirement — schema11 / merchant coupons
+
+011 adds own coupon configuration and immutable per-order redemptions. Include
+coupons.mjs with store/http,011.sql,matching portal and Flutter. Source requires11;
+production remains5 and has not been migrated. Dry4–10→11 preserves earlier
+finance/options/promotions. Follow the consistent code+DB+private-config backup
+procedure above. Never restore stale usage/stock/cash evidence after new writes.
+Coupon discounts lower merchant buyout only; they do not prove or modify TM
+approach/commission. No production checkout enablement or live migration here.

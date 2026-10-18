@@ -350,7 +350,12 @@ void main() {
         isNotNull);
     await tester.tap(find.text('Рассчитать стоимость'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Оформить заказ'), 150);
+    await tester.scrollUntilVisible(find.text('Оформить заказ'), 150,
+        scrollable: find
+            .descendant(
+                of: find.byKey(const ValueKey('go-cart-scroll')),
+                matching: find.byType(Scrollable))
+            .first);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Оформить заказ'));
     await tester.pumpAndSettle();

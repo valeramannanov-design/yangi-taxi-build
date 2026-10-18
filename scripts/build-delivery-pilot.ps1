@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputApk,
     [string]$FlutterCommand = 'flutter',
     [string]$NodeCommand = 'node',
+    [ValidateRange(0,2100000000)][int]$BuildNumber = 0,
     [string]$ExpectedCertificateSha256 = '7c41284d1df4efc72e838f4c1cbd632c9c0f94ab194849fe0e0242de3d98f997'
 )
 $ErrorActionPreference = 'Stop'
@@ -14,7 +15,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Delivery build configuration or live preflight
 Push-Location (Join-Path $projectRoot 'flutter')
 try {
     # A pilot uses the separate debug package. No production application is replaced.
-    & $FlutterCommand build apk --debug "--dart-define-from-file=$configPath"
+    $buildArguments = @('build','apk','--debug',"--dart-define-from-file=$configPath")
+    if($BuildNumber -gt 0){$buildArguments += "--build-number=$BuildNumber"}
+    & $FlutterCommand @buildArguments
     if ($LASTEXITCODE -ne 0) { throw 'Flutter APK build failed' }
     $source = Join-Path $projectRoot 'flutter/build/app/outputs/flutter-apk/app-debug.apk'
     & (Join-Path $PSScriptRoot 'check-delivery-pilot-apk.ps1') -Apk $source -ExpectedCertificateSha256 $ExpectedCertificateSha256
