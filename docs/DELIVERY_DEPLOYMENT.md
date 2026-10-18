@@ -107,3 +107,17 @@ reconcile local live fixes before separately approved staging/deployment. After
 new feedback/audit/money/stock writes, recover forward; no stale DB rollback.
 Complaint resolution is not a refund/financial command. No live migration or
 checkout enablement was performed. Native and browser acceptance remain pending.
+
+
+### Latest source requirement — schema14 / general inbox and Android push
+
+014 preserves012 notice IDs/read acknowledgements and adds unique event keys,
+owned Android installations and durable send queue. Include notifications.mjs,
+android-push.mjs,014.sql,matching store/reviews/http/server and Flutter parts.
+Source requires14; live remains5 untouched; dry4–13→14 is tested. Do not open live
+DB with source code or overwrite local server fixes. See GO_NOTIFICATIONS.md for
+actual own API, optional private FCM config and required native acceptance.
+Without real client/service-account config, sender and SDK remain disabled.
+No real push, production migration or checkout enablement was performed. Keep
+matching code/DB/private-config backups and recover forward after new writes;
+stale snapshots must not erase read/audit/outbox/cash/coupon/stock evidence.

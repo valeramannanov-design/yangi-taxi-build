@@ -148,7 +148,7 @@ class GoHomeScreen extends StatelessWidget {
                   onPressed: onCards),
             ]),
             const SizedBox(height: 16),
-            GoReadyAlerts(
+            GoNotificationHub(
                 api: api,
                 lang: lang,
                 isActive: isActive,

@@ -52,6 +52,8 @@ export class Reviews{
    if(row.version!==version||row.status===status)fail(409,'Complaint changed; refresh');
    this.s.run('UPDATE delivery_complaints SET status=?,version=version+1,updated_at=? WHERE id=? AND version=?',status,this.s.now(),id,version);
    this.s.run('INSERT INTO delivery_complaint_events(complaint_id,actor,status,note,created_at) VALUES(?,?,?,?,?)',id,'admin:'+user.id,status,note,this.s.now());
+   const review=this.s.one('SELECT order_id FROM delivery_reviews WHERE id=?',row.review_id),order=this.s.one('SELECT * FROM delivery_orders WHERE id=?',review.order_id);
+   this.s.notifications.emit(order,'complaint_updated',`complaint:${id}:${version+1}`,id);
    return this.s.one('SELECT * FROM delivery_complaints WHERE id=?',id);
   });
  }

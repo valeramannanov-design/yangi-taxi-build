@@ -86,3 +86,15 @@ merchant reviews/admin complaints inbox and audited versioned handling are
 implemented in reviews.mjs/http/portal; exact contract: docs/GO_REVIEWS.md.
 No TM fields/endpoints or financial operations added. Compatible source13 staging
 and native/browser acceptance pending; live schema5 and financial guard untouched.
+
+
+## General GO inbox / Android source — 2026-10-18 / schema14
+
+Our existing /api/delivery/customer/notifications now includes confirmed lifecycle
+and complaint events with owned read/count/cursor. Actual own push register/revoke
+and optional FCM HTTP-v1/OAuth sender/outbox implemented; no new TM API/fields or
+financial engine. Current SDK5/17 uses registered Firebase Installation ID (FID).
+Android-only client setting defaults off; no real Firebase client/service-account
+configuration available, so no actual background push sent/accepted. Exact config,
+protocol and limitations: docs/GO_NOTIFICATIONS.md. Source14/native staging and
+production reconciliation still pending; live5 and financial guard untouched.

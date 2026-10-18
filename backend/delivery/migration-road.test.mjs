@@ -6,7 +6,7 @@ import { join,resolve,dirname,basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DeliveryStore } from './store.mjs';
 
-for(const baseline of [4,5,6,7,8,9,10,11,12])test('schema'+baseline+' → schema13 preserves orders, receipts, ledger and foreign keys',t=>{
+for(const baseline of [4,5,6,7,8,9,10,11,12,13])test('schema'+baseline+' → schema14 preserves orders, receipts, ledger and foreign keys',t=>{
   const dir=mkdtempSync(join(tmpdir(),'yangi-delivery-road-migration-')),file=join(dir,'existing.sqlite');
   t.after(()=>{const target=resolve(dir);assert.equal(dirname(target),resolve(tmpdir()));assert.ok(basename(target).startsWith('yangi-delivery-'));rmSync(target,{recursive:true,force:true});});
   const old=new DatabaseSync(file);old.exec('PRAGMA foreign_keys=ON');
@@ -21,9 +21,11 @@ for(const baseline of [4,5,6,7,8,9,10,11,12])test('schema'+baseline+' → schema
   if(baseline>=8)old.exec("INSERT INTO delivery_cash_journal VALUES('old-order','completed',5,4,12000,'tm-transport:7001',1)");
   if(baseline>=9)old.exec("INSERT INTO delivery_products(id,shop_id,sku,name,description,price_uzs,stock,active,ingredients,volume_ml,variants_json) VALUES(1,1,'old','TEST old','',1000,2,1,'Water',500,'[{\"id\":\"retained\",\"name\":\"TEST\",\"price_uzs\":1000,\"stock\":2,\"active\":true}]')");
   if(baseline>=10)old.exec("UPDATE delivery_products SET promotion_json='{\"kind\":\"percent\",\"amount\":10,\"starts_at\":0,\"ends_at\":1}'");
+  if(baseline>=12)old.exec("INSERT INTO delivery_notifications(id,customer_id,order_id,kind,created_at,read_at) VALUES(7,'101','old-order','pickup_ready',1,2)");
   old.close();const store=new DeliveryStore(file);
   try{
-    assert.equal(store.one('SELECT max(version) AS version FROM delivery_migrations').version,13);assert.equal(store.one('SELECT count(*) AS n FROM delivery_cash_journal').n,baseline>=8?1:0);
+    assert.equal(store.one('SELECT max(version) AS version FROM delivery_migrations').version,14);assert.equal(store.one('SELECT count(*) AS n FROM delivery_cash_journal').n,baseline>=8?1:0);
+    if(baseline>=12){const n=store.one('SELECT * FROM delivery_notifications WHERE id=7');assert.equal(n.read_at,2);assert.equal(n.event_key,'pickup-ready:old-order');}assert.equal(store.one('SELECT count(*) n FROM delivery_push_outbox').n,0);
     assert.equal(store.one('SELECT count(*) n FROM delivery_coupons').n,0);assert.equal(store.one('SELECT count(*) n FROM delivery_coupon_redemptions').n,0);
     if(baseline>=9){const product=store.options.describe(store.one('SELECT * FROM delivery_products WHERE id=1'));assert.equal(product.variants[0].id,'retained');assert.equal(product.ingredients,'Water');assert.equal(product.price_uzs,1000);assert.equal(product.original_price_uzs,undefined);}
     if(baseline>=10)assert.equal(store.options.describe(store.one('SELECT * FROM delivery_products WHERE id=1'),true).promotion.amount,10);

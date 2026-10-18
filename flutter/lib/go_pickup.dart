@@ -51,7 +51,8 @@ class GoPickupSummary extends StatelessWidget {
   }
 }
 
-class GoReadyAlerts extends StatefulWidget {
+// Compatibility wrapper: pickup and the general inbox share loading/ack logic.
+class GoReadyAlerts extends StatelessWidget {
   const GoReadyAlerts(
       {super.key,
       required this.api,
@@ -63,110 +64,10 @@ class GoReadyAlerts extends StatefulWidget {
   final bool isActive;
   final ValueChanged<String> onOrder;
   @override
-  State<GoReadyAlerts> createState() => _GoReadyAlertsState();
-}
-
-class _GoReadyAlertsState extends State<GoReadyAlerts>
-    with WidgetsBindingObserver {
-  List<Map<String, dynamic>> _rows = [];
-  Timer? _poll;
-  bool _busy = false, _reading = false, _foreground = true;
-  int _generation = 0;
-  final Map<int, String> _keys = {};
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _foreground = WidgetsBinding.instance.lifecycleState == null ||
-        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
-    _poll =
-        Timer.periodic(const Duration(seconds: 30), (_) => unawaited(_load()));
-    if (widget.isActive) unawaited(_load());
-  }
-
-  @override
-  void didUpdateWidget(covariant GoReadyAlerts oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isActive != oldWidget.isActive || widget.api != oldWidget.api) {
-      _generation++;
-      _busy = false;
-      _rows = [];
-      if (widget.isActive) unawaited(_load());
-    }
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    _foreground = state == AppLifecycleState.resumed;
-    _generation++;
-    _busy = false;
-    if (mounted) setState(() => _rows = []);
-    if (_foreground) unawaited(_load());
-  }
-
-  Future<void> _load() async {
-    if (_busy || !widget.isActive || !_foreground) return;
-    _busy = true;
-    final generation = ++_generation;
-    try {
-      final data = await widget.api
-          .deliveryGet('/customer/notifications')
-          .timeout(const Duration(seconds: 15));
-      if (mounted && generation == _generation)
-        setState(() => _rows = (data as List)
-            .whereType<Map>()
-            .where((n) =>
-                n['kind'] == 'pickup_ready' &&
-                n['status'] == 'ready' &&
-                n['read_at'] == null &&
-                n['id'] is int &&
-                n['order_id'] is String)
-            .map((n) => Map<String, dynamic>.from(n))
-            .take(3)
-            .toList());
-    } catch (_) {
-      /* Optional on older servers; never invent readiness notifications. */
-      if (mounted && generation == _generation) setState(() => _rows = []);
-    } finally {
-      if (generation == _generation) _busy = false;
-    }
-  }
-
-  Future<void> _open(Map<String, dynamic> notice) async {
-    if (_reading) return;
-    setState(() => _reading = true);
-    final id = notice['id'] as int;
-    try {
-      await widget.api.deliveryPost('/customer/notifications/$id/read', {},
-          idempotencyKey: _keys.putIfAbsent(id, deliveryRequestKey));
-      if (mounted) setState(() => _rows.removeWhere((n) => n['id'] == id));
-    } catch (_) {/* Retain unread state for retry. */} finally {
-      if (mounted) setState(() => _reading = false);
-    }
-    if (mounted) widget.onOrder(notice['order_id'] as String);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _generation++;
-    _poll?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Column(children: [
-        for (final n in _rows)
-          Card(
-              key: ValueKey('go-ready-${n['id']}'),
-              child: ListTile(
-                  leading: const Icon(Icons.takeout_dining_outlined),
-                  title: Text(widget.lang == 'uz'
-                      ? 'Buyurtma olib ketishga tayyor'
-                      : 'Заказ готов к самовывозу'),
-                  subtitle: Text(
-                      '${n['shop_name']} · ${(n['pickup'] as Map?)?['address'] ?? ''}'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _reading ? null : () => _open(n)))
-      ]);
+  Widget build(BuildContext context) => GoNotificationHub(
+      api: api,
+      lang: lang,
+      isActive: isActive,
+      onOrder: onOrder,
+      pickupOnly: true);
 }

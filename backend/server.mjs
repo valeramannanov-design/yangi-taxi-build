@@ -2652,7 +2652,10 @@ if (process.env.DELIVERY_ENABLED === 'true') {
   }
   const { createTaxiMasterRoadPricing } = await import('./delivery/road-pricing.mjs');
   const pricingProvider=cfg.mock?null:createTaxiMasterRoadPricing({catalog:liveCatalog,analyzeRoute:analyzeLiveRoute,calculateCost:calculateLiveCost,time:tmTime});
-  deliveryHandler = createDeliveryHandler({ store, transport, pricingProvider, passengerIdentity: req => {
+  const {androidFcmFromEnv,AndroidPushWorker}=await import('./delivery/android-push.mjs');
+  const push=androidFcmFromEnv();
+  if(push){const worker=new AndroidPushWorker(store,push);const pushTimer=setInterval(()=>worker.tick().catch(()=>console.error('GO push queue error')),10000);pushTimer.unref();}
+  deliveryHandler = createDeliveryHandler({ store, transport, pricingProvider, push, passengerIdentity: req => {
     const session = auth(req);
     return { id: String(session.clientId), phone: session.phone };
   } });

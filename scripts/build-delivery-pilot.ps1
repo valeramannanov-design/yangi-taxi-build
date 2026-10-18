@@ -12,6 +12,8 @@ $destination = [System.IO.Path]::GetFullPath($OutputApk)
 $projectRoot = Split-Path -Parent $PSScriptRoot
 & $NodeCommand (Join-Path $PSScriptRoot 'check-delivery-build.mjs') --file $configPath --probe
 if ($LASTEXITCODE -ne 0) { throw 'Delivery build configuration or live preflight failed' }
+& $NodeCommand (Join-Path $PSScriptRoot 'configure-go-android.mjs') (Join-Path $projectRoot 'flutter/android') $configPath
+if ($LASTEXITCODE -ne 0) { throw 'Android notification configuration failed' }
 Push-Location (Join-Path $projectRoot 'flutter')
 try {
     # A pilot uses the separate debug package. No production application is replaced.

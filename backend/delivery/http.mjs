@@ -31,7 +31,7 @@ function send(res, status, data) {
 /** Reuses the host's authenticated passenger session, never trusts identity headers.
  * It returns false for all non-delivery routes so taxi behavior stays with the host.
  */
-export function createDeliveryHandler({ store, passengerIdentity, transport = null, pricingProvider = null }) {
+export function createDeliveryHandler({ store, passengerIdentity, transport = null, pricingProvider = null, push = null }) {
   if (typeof passengerIdentity !== 'function') throw new TypeError('Passenger authentication adapter required');
   const roadQuote=createRoadQuotes(store,pricingProvider);
   return async function handle(req, res) {
@@ -66,8 +66,11 @@ export function createDeliveryHandler({ store, passengerIdentity, transport = nu
         else if (method === 'GET' && route === '/customer/orders') result = store.ordersForCustomer(customer);
         else if (method === 'GET' && /^\/customer\/orders\/[a-f0-9]{36}\/reviews$/.test(route)) result=store.reviews.forCustomer(customer,route.split('/')[3]);
         else if (method === 'POST' && /^\/customer\/orders\/[a-f0-9]{36}\/reviews$/.test(route)) result=store.reviews.submit(customer,route.split('/')[3],await json(req),key);
-        else if (method === 'GET' && route === '/customer/notifications') result = store.pickup.notifications(store.customer(customer));
-        else if (method === 'POST' && /^\/customer\/notifications\/[1-9][0-9]*\/read$/.test(route)) {await json(req);result=store.pickup.readNotification(store.customer(customer),Number(route.split('/')[3]),key);}
+        else if (method === 'GET' && route === '/customer/notification-summary') result={...store.notifications.summary(customer),push:{available:!!push,project_id:push?.projectId??null}};
+        else if (method === 'POST' && route === '/customer/push/register') {if(!push)error(503,'Android push is not configured');result=store.notifications.register(customer,await json(req),key);}
+        else if (method === 'POST' && route === '/customer/push/revoke') result=store.notifications.revoke(customer,await json(req),key);
+        else if (method === 'GET' && route === '/customer/notifications') result = store.notifications.list(customer,{before:url.searchParams.has('before')?Number(url.searchParams.get('before')):undefined});
+        else if (method === 'POST' && /^\/customer\/notifications\/[1-9][0-9]*\/read$/.test(route)) {await json(req);result=store.notifications.read(customer,Number(route.split('/')[3]),key);}
         else if (method === 'GET' && /^\/customer\/orders\/[a-f0-9]{36}$/.test(route)) result = store.orderForCustomer(customer, route.split('/')[3]);
         else if (method === 'POST' && /^\/customer\/orders\/[a-f0-9]{36}\/cancel$/.test(route)) result = store.cancel(customer, route.split('/')[3], await json(req), key);
         else error(404, 'Delivery route not found');

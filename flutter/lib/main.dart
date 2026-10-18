@@ -4,6 +4,9 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
@@ -23,6 +26,8 @@ part 'go.dart';
 part 'go_eta.dart';
 part 'go_pickup.dart';
 part 'go_reviews.dart';
+part 'go_notifications.dart';
+part 'go_android_push.dart';
 
 const defaultLat = 41.3111;
 const defaultLon = 69.2797;
@@ -1622,6 +1627,7 @@ class _YangiTaxiAppState extends State<YangiTaxiApp> {
   }
 
   Future<void> logout() async {
+    try { await GoAndroidPush.instance.disable(api); } catch (_) { /* SDK unregister and local opt-out are attempted even when server is offline. */ }
     api.token = null;
     rememberedPhone = '';
     await storage.delete(key: 'session');
@@ -12416,6 +12422,7 @@ class SettingsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
 
+                  GoAndroidPushSetting(api: api, lang: lang),
                   sectionTitle(lang == 'uz' ? 'ILOVA' : 'ПРИЛОЖЕНИЕ'),
                   premiumCard(
                     Column(

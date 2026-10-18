@@ -29,7 +29,7 @@ export class StorePickup{
   if(action==='ready'){
    if(order.status!=='confirmed'||order.ready_at!==null)fail('Pickup is not awaiting readiness');
    s.availableShop(order.shop_id);s.run('UPDATE delivery_orders SET ready_at=? WHERE id=?',s.now(),order.id);s.transition(order,'ready',actor);
-   s.run("INSERT OR IGNORE INTO delivery_notifications(customer_id,order_id,kind,created_at) VALUES(?,?,'pickup_ready',?)",order.customer_id,order.id,s.now());return true;
+   return true;
   }
   if(['reject','pickup_cancel'].includes(action)){
    if(action==='reject'?order.status!=='pending_shop':!['confirmed','ready'].includes(order.status))fail('Pickup cannot be cancelled in this state');
@@ -49,13 +49,6 @@ export class StorePickup{
   }
   fail('Unsupported self-pickup action',422);
  }
- notifications(customer){return this.s.all('SELECT n.id,n.order_id,n.kind,n.created_at,n.read_at,o.status,o.snapshot FROM delivery_notifications n JOIN delivery_orders o ON o.id=n.order_id WHERE n.customer_id=? AND o.customer_id=? ORDER BY n.id DESC LIMIT 100',customer.id,customer.id).map(({snapshot,...row})=>({...row,shop_name:JSON.parse(snapshot).shop_name,pickup:JSON.parse(snapshot).pickup}));}
- readNotification(customer,id,key){
-  if(!Number.isSafeInteger(id)||id<1)fail('Invalid notification',422);
-  const s=this.s;return s.command('passenger:'+customer.id,key,{action:'read_pickup_notice',id},()=>{
-   if(!s.one('SELECT 1 FROM delivery_notifications WHERE id=? AND customer_id=?',id,customer.id))fail('Notification not found',404);
-   s.run('UPDATE delivery_notifications SET read_at=coalesce(read_at,?) WHERE id=? AND customer_id=?',s.now(),id,customer.id);
-   return s.one('SELECT id,read_at FROM delivery_notifications WHERE id=? AND customer_id=?',id,customer.id);
-  });
- }
+ notifications(customer){return this.s.notifications.list(customer).filter(n=>n.kind==='pickup_ready');}
+ readNotification(customer,id,key){return this.s.notifications.read(customer,id,key);}
 }

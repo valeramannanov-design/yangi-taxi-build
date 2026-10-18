@@ -35,6 +35,8 @@ jobs:
         run: |
           flutter create --platforms=android --org uz.yangi --project-name yangi_taxi shell
           cp -R shell/android flutter/android
+      - name: Configure Android notifications
+        run: node scripts/configure-go-android.mjs flutter/android
       - name: Configure Android app
         run: |
           mkdir -p flutter/android/app/src/main/res/mipmap-xxxhdpi

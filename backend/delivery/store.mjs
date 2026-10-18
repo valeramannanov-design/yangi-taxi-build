@@ -12,6 +12,7 @@ import { ProductOptions } from './product-options.mjs';
 import { Coupons } from './coupons.mjs';
 import { StorePickup, fulfillment } from './store-pickup.mjs';
 import { Reviews } from './reviews.mjs';
+import { Notifications } from './notifications.mjs';
 import { addressDetails } from '../address-details.mjs';
 
 export class DeliveryError extends Error {
@@ -62,14 +63,15 @@ export class DeliveryStore {
     this.couponRules = new Coupons(this);
     this.pickup = new StorePickup(this);
     this.reviews = new Reviews(this);
+    this.notifications = new Notifications(this);
     this.now = now;
     if (path !== ':memory:') mkdirSync(dirname(resolve(path)), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db.function('delivery_fold', { deterministic: true }, value => String(value).normalize('NFKC').toLocaleLowerCase());
     this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)');
-    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 13) { this.close(); throw new Error('Delivery database requires a newer service version'); }
-    for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
+    if ((this.one('SELECT max(version) AS v FROM delivery_migrations').v || 0) > 14) { this.close(); throw new Error('Delivery database requires a newer service version'); }
+    for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) if (!this.one('SELECT 1 FROM delivery_migrations WHERE version=?', version)) {
       // SQLite table rebuild: disable FK enforcement outside the exclusive write
       // transaction, validate every reference before commit, then restore it.
       if(version===5)this.db.exec('PRAGMA foreign_keys=OFF');
@@ -356,6 +358,7 @@ export class DeliveryStore {
       this.run('INSERT INTO delivery_orders(id,customer_id,shop_id,quote_id,snapshot,status,created_at,updated_at) VALUES(?,?,?,?,?,\'pending_shop\',?,?)', orderId, customer.id, shop.id, quoteId, quote.snapshot, this.now(), this.now());
       this.couponRules.redeem(orderId,customer.id,snapshot);
       this.event(orderId, 'passenger:' + customer.id, 'created');
+      this.notifications.emit(this.one('SELECT * FROM delivery_orders WHERE id=?',orderId),'order_created','created:'+orderId);
       return this.orderForCustomer(customer, orderId);
     });
   }
@@ -378,6 +381,7 @@ export class DeliveryStore {
   transition(order, status, actor, reason = '', action = status) {
     if (!this.run('UPDATE delivery_orders SET status=?,version=version+1,updated_at=? WHERE id=? AND version=?', status, this.now(), order.id, order.version).changes) fail(409, 'Order changed; refresh');
     this.event(order.id, actor, action, reason);
+    this.notifications.transition(order,status,action);
   }
   restoreStock(order) {
     if (order.stock_restored) return;

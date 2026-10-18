@@ -19,7 +19,7 @@ Authoritative new scope: `docs/YANGI_TAXI_GO_SPEC.md`. Supersedes the previous D
 | Parcel delivery | ЧАСТИЧНО ГОТОВ | Existing taxi delivery tariff and route can be reused; sender/recipient contacts, handover and allowed parcel rules not complete |
 | Unified history/active service orders | ТРЕБУЕТ ИНТЕГРАЦИИ | Existing taxi history/current API plus owned Delivery orders; classify legacy purchases explicitly rather than calling them parcels |
 | GO shared profile/history and manual recommendations | ЧАСТИЧНО ГОТОВ | Local source/tests connected; see `docs/GO_FOUNDATION.md`; visual/device/final metadata remain |
-| Reviews/complaints, promotions, notifications | ЧАСТИЧНО ГОТОВ / ОТСУТСТВУЕТ | Taxi feedback/promo mechanisms exist; GO restaurant/courier reviews and low-rating complaint inbox implemented in source013 (docs/GO_REVIEWS.md); general OS push/outbox/rules and native/browser acceptance remain |
+| Reviews/complaints, promotions, notifications | ЧАСТИЧНО ГОТОВ / ОТСУТСТВУЕТ | Taxi feedback/promo mechanisms exist; GO restaurant/courier reviews and low-rating complaint inbox implemented in source013 (docs/GO_REVIEWS.md); general inbox and Android FCM/outbox prepared in source014 (docs/GO_NOTIFICATIONS.md); actual Firebase config/background push activation and native/browser acceptance remain |
 
 ## Repositories / access audit
 
