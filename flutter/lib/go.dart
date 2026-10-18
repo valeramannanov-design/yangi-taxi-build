@@ -406,29 +406,78 @@ class GoPurchaseDetails extends StatefulWidget {
   State<GoPurchaseDetails> createState() => _GoPurchaseDetailsState();
 }
 
-class _GoPurchaseDetailsState extends State<GoPurchaseDetails> {
+class _GoPurchaseDetailsState extends State<GoPurchaseDetails>
+    with WidgetsBindingObserver {
   Map<String, dynamic>? _order;
   String? _error;
+  Timer? _poll;
+  bool _loading = false, _foreground = true;
+  int _generation = 0;
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    WidgetsBinding.instance.addObserver(this);
+    _foreground = WidgetsBinding.instance.lifecycleState == null ||
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    _poll = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted && _foreground && ModalRoute.of(context)?.isCurrent != false)
+        unawaited(_load());
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_load());
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant GoPurchaseDetails oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.orderId != oldWidget.orderId) {
+      _generation++;
+      _loading = false;
+      _order = null;
+      _error = null;
+      unawaited(_load());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _generation++;
+    _loading = false;
+    setState(() {
+      _foreground = state == AppLifecycleState.resumed;
+    });
+    if (_foreground) unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _generation++;
+    _poll?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
+    if (_loading || !_foreground) return;
+    _loading = true;
+    final generation = ++_generation;
     try {
-      final data =
-          await widget.api.deliveryGet('/customer/orders/${widget.orderId}');
-      if (mounted)
+      final data = await widget.api
+          .deliveryGet('/customer/orders/${widget.orderId}')
+          .timeout(const Duration(seconds: 15));
+      if (mounted && generation == _generation)
         setState(() {
           _order = Map<String, dynamic>.from(data as Map);
           _error = null;
         });
     } catch (_) {
-      if (mounted)
+      if (mounted && generation == _generation)
         setState(() => _error = widget.lang == 'uz'
             ? 'Buyurtma yuklanmadi'
             : 'Не удалось загрузить заказ');
+    } finally {
+      if (generation == _generation) _loading = false;
     }
   }
 
@@ -445,6 +494,11 @@ class _GoPurchaseDetailsState extends State<GoPurchaseDetails> {
                 style: Theme.of(context).textTheme.headlineSmall),
             SelectableText('#${o['id']}'),
             Text('${o['status']}'),
+            GoCourierEta(
+                api: widget.api,
+                order: o,
+                lang: widget.lang,
+                enabled: _error == null && _foreground),
             GoCashHistory(order: o, lang: widget.lang),
             Text('${(o['destination'] as Map?)?['address'] ?? ''}'),
             Text(goAddressDetailsText(

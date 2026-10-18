@@ -45,3 +45,18 @@ Migration009 adds product columns/JSON and catalog_version only; schema7 recomme
 Cart request uses existing product_id/quantity plus variant_id when required. Server ignores forged option names/prices and freezes real name/price/composition/measurement in existing quote/order JSON. Selecting two options creates two lines for the same product. Existing Driver+ info combines base and option name so the current item renderer can display it. Promotions/coupons are not implemented by this stage; no duplicate discount deduction or mock production feature.
 
 UI rule verification remains blocked by a nontargetable main TaxiMaster window: launched minimized Enterprise handle disappeared on restore (`window id 655432 was not found`). Catalog API queries were not repeated, and no real finance/settings changes made. Need actual readable rules/debit/reversal evidence, not another incomplete API catalog response.
+
+## ETA source contract — 2026-10-18
+
+Existing owned /api/orders/:id/driver-location now includes own tracking metadata:
+source, checked_at, location_observed_at, location_age_seconds, available. These
+are host response fields, not invented TM wire fields. Real TM reads remain
+get_order_state/get_crews_coords. Exact crew match replaces first-coordinate
+selection. TM_TIME_ZONE normalizes coords_time; invalid/ambiguous/old/future GPS
+cannot produce ETA. Existing delivery DTO exposes existing crew_id for assignment
+matching. MapKit4.45 weight.timeWithTraffic.value supplies actual travel seconds;
+no new TM tariff/payment API and no speed formula. See docs/GO_DYNAMIC_ETA.md.
+Source schema11 unchanged, live backend/schema5 untouched. Include new
+backend/driver-tracking.mjs when separately staging compatible reconciled code;
+never deploy UI alone expecting freshness from an older response. APK71 lacks
+ETA; next build72 needs package/install/native checks, not just widget success.

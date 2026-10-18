@@ -75,3 +75,11 @@ finance/options/promotions. Follow the consistent code+DB+private-config backup
 procedure above. Never restore stale usage/stock/cash evidence after new writes.
 Coupon discounts lower merchant buyout only; they do not prove or modify TM
 approach/commission. No production checkout enablement or live migration here.
+
+### ETA compatibility follow-up (source only, schema11 unchanged)
+
+Include backend/driver-tracking.mjs with reconciled server.mjs and matching GO
+client/order DTO. Existing owned driver-location endpoint adds freshness metadata;
+an old response intentionally yields no ETA. No financial/tariff methods changed.
+Do not deploy repository server.mjs over local production fixes. Source tests and
+APK72 compilation do not replace native MapKit/GPS/moving-courier acceptance.

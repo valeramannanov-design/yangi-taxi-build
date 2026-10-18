@@ -3,6 +3,7 @@ import { addressDetails } from './address-details.mjs';
 import { createOrderRequestGuard } from './order-idempotency.mjs';
 import { createAtomicJsonWriter } from './atomic-json-store.mjs';
 import { assertOwnedOrder } from './order-ownership.mjs';
+import { driverTracking } from './driver-tracking.mjs';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -2540,9 +2541,9 @@ async function realRoute(req, res, path, url) {
     let location = null;
     if (state.crew_id) {
       const coords = await tmGet('get_crews_coords', { crew_id: state.crew_id });
-      location = coords.crews_coords?.[0] || null;
+      location = coords.crews_coords?.find(c => c.crew_id === state.crew_id) || null;
     }
-    return send(res, 200, { ok: true, data: { state, location } });
+    return send(res, 200, { ok: true, data: { state, location, tracking:driverTracking(state,location,{timeZone:cfg.timeZone}) } });
   }
 
   const ratingMatch = /^\/api\/orders\/(\d+)\/rating$/.exec(path);
